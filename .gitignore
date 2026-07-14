@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Xcode
+#
+# gitignore contributors: goldin2008, bignerdranch
+
+## Build results
+build/
+DerivedData/
+
+## User-specific
+*.xcuserstate
+*.xcuserdatad
+*.xcworkspace/
+!default.xcworkspace
+
+## XcodeGen
+## If you want to force developers to run xcodegen locally, uncomment:
+# *.xcodeproj
+
+## Playgrounds
+*.xcplaygroundpage/
+*.xcplaygroundfilter/
+
+## Swift Package Manager
+.build/
+.swiftpm/
+
+# .NET / C# / Visual Studio / JetBrains Rider
+#
+bin/
+obj/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+
+# Secrets
+*.pem
+*.key
+*.p12
+*.developerprofile
