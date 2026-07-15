@@ -26,7 +26,7 @@ WORKDIR /app
 COPY --from=publish /app/publish .
 
 # Expose standard container port
-EXPOSE 8080
-ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 5000
+ENV ASPNETCORE_URLS=http://+:5000
 
 ENTRYPOINT ["dotnet", "ThermoHammer.Api.dll"]
