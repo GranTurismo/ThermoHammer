@@ -47,5 +47,12 @@ public static class ThermoEndpointsMapper
 
             return Results.Ok("Data saved successfully");
         });
+
+        app.MapGet("/leaderboard", async () =>
+        {
+            var hammers = await db.Hammers.Include(o => o.Stamps).Select(o => o.ToDto()).ToListAsync();
+
+            return Results.Ok(hammers);
+        });
     }
 }
