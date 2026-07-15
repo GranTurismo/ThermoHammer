@@ -13,6 +13,7 @@
 		3AEF1EBEFCCE4FE01814563C /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */; };
 		7300C25E2DA6E7B88D56EEF9 /* StressEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F40CC95B1045168CA386E8 /* StressEngine.swift */; };
 		800D5F4180B9EFF3AF40226D /* CpuThrottlingTestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */; };
+		B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7DD55569A14DD3A42D804BF7 /* Assets.xcassets */; };
 		BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B3232B3AD29924355737D0 /* StabilityChart.swift */; };
 		EC899A6254442B582B3009DC /* CoreStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709D367D4E29A88B1729A141 /* CoreStatusView.swift */; };
 /* End PBXBuildFile section */
@@ -20,9 +21,10 @@
 /* Begin PBXFileReference section */
 		10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		329D81879CF186B50E3D88C3 /* LeaderboardService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardService.swift; sourceTree = "<group>"; };
-		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E61339A94C4606A3CBEE8AF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		709D367D4E29A88B1729A141 /* CoreStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreStatusView.swift; sourceTree = "<group>"; };
+		7DD55569A14DD3A42D804BF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuThrottlingTestApp.swift; sourceTree = "<group>"; };
 		9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
 		B1B3232B3AD29924355737D0 /* StabilityChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilityChart.swift; sourceTree = "<group>"; };
@@ -33,6 +35,7 @@
 		400004CC2FB39BE1D04BF8C9 /* CpuThrottlingTest */ = {
 			isa = PBXGroup;
 			children = (
+				7DD55569A14DD3A42D804BF7 /* Assets.xcassets */,
 				4E61339A94C4606A3CBEE8AF /* ContentView.swift */,
 				709D367D4E29A88B1729A141 /* CoreStatusView.swift */,
 				85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */,
@@ -69,6 +72,7 @@
 			buildConfigurationList = 8A9E96C9D9A3BE49AF9ECE52 /* Build configuration list for PBXNativeTarget "CpuThrottlingTest" */;
 			buildPhases = (
 				D94475EBDD458BFE01675F52 /* Sources */,
+				80EA9387E8DD830D74D2C2EE /* Resources */,
 			);
 			buildRules = (
 			);
@@ -91,6 +95,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					AC8C79E85C66EB939D4F0181 = {
+						DevelopmentTeam = RJX83ALG73;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -113,6 +118,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		80EA9387E8DD830D74D2C2EE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D94475EBDD458BFE01675F52 /* Sources */ = {
@@ -140,7 +156,7 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = C58ABB3474;
+				DEVELOPMENT_TEAM = RJX83ALG73;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -217,7 +233,7 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = C58ABB3474;
+				DEVELOPMENT_TEAM = RJX83ALG73;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;

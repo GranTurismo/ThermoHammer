@@ -13,6 +13,7 @@ targets:
       CODE_SIGN_STYLE: Automatic
       DEVELOPMENT_TEAM: "RJX83ALG73"
       CODE_SIGNING_ALLOWED: YES
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       GENERATE_INFOPLIST_FILE: YES
       INFOPLIST_KEY_UILaunchScreen_Generation: YES
       INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
