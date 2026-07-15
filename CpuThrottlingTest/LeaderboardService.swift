@@ -145,4 +145,30 @@ class LeaderboardService {
         return "macOS Device"
         #endif
     }
+    
+    func fetchLeaderboard() async throws -> [HammerDto] {
+        let url = baseURL.appendingPathComponent("leaderboard")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "LeaderboardService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch leaderboard from server"])
+        }
+        
+        let decoder = JSONDecoder()
+        return try decoder.decode([HammerDto].self, from: data)
+    }
+}
+
+struct HammerDto: Codable, Identifiable {
+    let id: Int
+    let stamps: [DeviceHammerStamp]?
+    let type: Int
+    let deviceManufacturer: String
+    let deviceModel: String
+    let os: Int
+    let osVersion: String
 }

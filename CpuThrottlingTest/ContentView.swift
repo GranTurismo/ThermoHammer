@@ -29,6 +29,8 @@ struct ContentView: View {
     @State private var submitSuccessMessage: String? = nil
     @State private var submitErrorMessage: String? = nil
     
+    @State private var selectedTab = 0
+    
     var body: some View {
         ZStack {
             // Dark futuristic background gradient
@@ -39,34 +41,45 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
             
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 20) {
-                    
-                    // --- App Header ---
-                    headerSection
-                    
-                    // --- Top Stats Dashboard ---
-                    statsPanelSection
-                    
-                    // --- Test Duration Options (Only when idle) ---
-                    if !engine.isRunning {
-                        optionsSection
+            VStack(spacing: 0) {
+                if selectedTab == 0 {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 20) {
+                            
+                            // --- App Header ---
+                            headerSection
+                            
+                            // --- Top Stats Dashboard ---
+                            statsPanelSection
+                            
+                            // --- Test Duration Options (Only when idle) ---
+                            if !engine.isRunning {
+                                optionsSection
+                            }
+                            
+                            // --- Start/Stop Pulsing Button ---
+                            controlButtonSection
+                            
+                            // --- Main Stability Graph ---
+                            StabilityChart(points: engine.chartPoints, events: engine.thermalEvents)
+                                .padding(.horizontal, 4)
+                            
+                            // --- Core Status Meters ---
+                            CoreStatusView(coreImpacts: engine.coreImpacts)
+                                .padding(.horizontal, 4)
+                            
+                            Spacer(minLength: 30)
+                        }
+                        .padding()
                     }
-                    
-                    // --- Start/Stop Pulsing Button ---
-                    controlButtonSection
-                    
-                    // --- Main Stability Graph ---
-                    StabilityChart(points: engine.chartPoints, events: engine.thermalEvents)
-                        .padding(.horizontal, 4)
-                    
-                    // --- Core Status Meters ---
-                    CoreStatusView(coreImpacts: engine.coreImpacts)
-                        .padding(.horizontal, 4)
-                    
-                    Spacer(minLength: 30)
+                } else {
+                    LeaderboardView()
                 }
-                .padding()
+                
+                // Floating bottom tab bar
+                if !engine.isRunning {
+                    customTabBar
+                }
             }
             
             // --- Summary Overlay ---
@@ -964,6 +977,55 @@ struct ContentView: View {
             )
             .shadow(color: .black.opacity(0.5), radius: 15)
         }
+    }
+    
+    private var customTabBar: some View {
+        HStack {
+            Spacer()
+            
+            Button(action: {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    selectedTab = 0
+                }
+            }) {
+                VStack(spacing: 4) {
+                    Image(systemName: "gauge.with.needle.fill")
+                        .font(.system(size: 20))
+                    Text("Diagnostics")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(selectedTab == 0 ? .white : .secondary)
+                .frame(maxWidth: .infinity)
+            }
+            
+            Button(action: {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    selectedTab = 1
+                }
+            }) {
+                VStack(spacing: 4) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 20))
+                    Text("Leaderboard")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(selectedTab == 1 ? .white : .secondary)
+                .frame(maxWidth: .infinity)
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 10)
+        .background(
+            Color(white: 0.08)
+                .opacity(0.85)
+                .background(Material.thinMaterial)
+        )
+        .overlay(
+            Divider()
+                .background(Color.white.opacity(0.1)),
+            alignment: .top
+        )
     }
 }
 

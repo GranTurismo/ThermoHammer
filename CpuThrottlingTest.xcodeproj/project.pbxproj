@@ -10,6 +10,7 @@
 		05701C2CB46B4DC6EBBE6599 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E61339A94C4606A3CBEE8AF /* ContentView.swift */; };
 		16C2FB538E1824283D5E11CC /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */; };
 		1C27089C0110F943DC74725E /* LeaderboardService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329D81879CF186B50E3D88C3 /* LeaderboardService.swift */; };
+		3AEF1EBEFCCE4FE01814563C /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */; };
 		7300C25E2DA6E7B88D56EEF9 /* StressEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F40CC95B1045168CA386E8 /* StressEngine.swift */; };
 		800D5F4180B9EFF3AF40226D /* CpuThrottlingTestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */; };
 		BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B3232B3AD29924355737D0 /* StabilityChart.swift */; };
@@ -19,10 +20,11 @@
 /* Begin PBXFileReference section */
 		10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		329D81879CF186B50E3D88C3 /* LeaderboardService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardService.swift; sourceTree = "<group>"; };
-		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E61339A94C4606A3CBEE8AF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		709D367D4E29A88B1729A141 /* CoreStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreStatusView.swift; sourceTree = "<group>"; };
 		85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuThrottlingTestApp.swift; sourceTree = "<group>"; };
+		9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
 		B1B3232B3AD29924355737D0 /* StabilityChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilityChart.swift; sourceTree = "<group>"; };
 		B4F40CC95B1045168CA386E8 /* StressEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -35,6 +37,7 @@
 				709D367D4E29A88B1729A141 /* CoreStatusView.swift */,
 				85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */,
 				329D81879CF186B50E3D88C3 /* LeaderboardService.swift */,
+				9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */,
 				10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */,
 				B1B3232B3AD29924355737D0 /* StabilityChart.swift */,
 				B4F40CC95B1045168CA386E8 /* StressEngine.swift */,
@@ -86,6 +89,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					AC8C79E85C66EB939D4F0181 = {
+						DevelopmentTeam = "";
+					};
+				};
 			};
 			buildConfigurationList = 50B783BA2CA1D07B9F1E0FE3 /* Build configuration list for PBXProject "CpuThrottlingTest" */;
 			developmentRegion = en;
@@ -115,6 +123,7 @@
 				EC899A6254442B582B3009DC /* CoreStatusView.swift in Sources */,
 				800D5F4180B9EFF3AF40226D /* CpuThrottlingTestApp.swift in Sources */,
 				1C27089C0110F943DC74725E /* LeaderboardService.swift in Sources */,
+				3AEF1EBEFCCE4FE01814563C /* LeaderboardView.swift in Sources */,
 				16C2FB538E1824283D5E11CC /* NetworkMonitor.swift in Sources */,
 				BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */,
 				7300C25E2DA6E7B88D56EEF9 /* StressEngine.swift in Sources */,
@@ -128,11 +137,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = C58ABB3474;
+				CODE_SIGN_IDENTITY = "";
+				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -142,7 +150,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.CpuThrottlingTest;
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -207,11 +214,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = C58ABB3474;
+				CODE_SIGN_IDENTITY = "";
+				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -221,7 +227,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.CpuThrottlingTest;
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
