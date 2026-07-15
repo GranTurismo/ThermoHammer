@@ -3,12 +3,14 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ThermoHammer.Api.Models;
 
-static class ThermoEndpointsMapper
+namespace ThermoHammer.Api.EndpointsMapper;
+
+public static class ThermoEndpointsMapper
 {
-    static void MapEndpoints(this IEndpointRouteBuilder app)
+    public static void MapEndpoints(this IEndpointRouteBuilder app)
     {
-        ThermoDbContext db = app.ServiceProvider.GetRequiredService<ThermoDbContext>();
-        ThermoEncryptor encryptor = app.ServiceProvider.GetRequiredService<ThermoEncryptor>();
+        var db = app.ServiceProvider.GetRequiredService<ThermoDbContext>();
+        var encryptor = app.ServiceProvider.GetRequiredService<ThermoEncryptor>();
 
         app.MapGet("/health", () => "OK");
 

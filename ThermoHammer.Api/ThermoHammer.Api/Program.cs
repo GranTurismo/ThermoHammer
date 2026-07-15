@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ThermoHammer.Api.EndpointsMapper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,7 +11,6 @@ builder.Services.AddDbContext<ThermoDbContext>(o =>
 o.UseSqlServer(
     builder.Configuration.GetValue<string>("ConnectionStrings:DefaultConnection")
     ));
-
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -20,4 +20,5 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.MapEndpoints();
 app.Run();
