@@ -1,3 +1,5 @@
+namespace ThermoHammer.Api.Models;
+
 public class Hammer
 {
     public int Id { get; set; }
@@ -16,4 +18,15 @@ public enum OsPlatform
 public class HammerStamp
 {
     public int Id { get; set; }
+    public int ElapsedMs { get; set; } //milliseconds passed since start
+    public int Score { get; set; } // IPS - instructions per second
+    public ThermalState ThermalState { get; set; }
+}
+
+public enum ThermalState
+{
+    Nominal,
+    Fair,
+    Serious,
+    Critical
 }
