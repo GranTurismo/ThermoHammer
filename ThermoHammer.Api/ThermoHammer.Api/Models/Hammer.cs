@@ -5,7 +5,7 @@ namespace ThermoHammer.Api.Models;
 public class Hammer
 {
     public int Id { get; set; }
-    public HammerStamp[] Stamps { get; set; }
+    public List<HammerStamp> Stamps { get; set; }
     public HammerType Type { get; set; }
     public string DeviceManufacturer { get; set; }
     public string DeviceModel { get; set; }
