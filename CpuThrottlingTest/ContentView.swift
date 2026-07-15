@@ -20,6 +20,15 @@ struct ContentView: View {
     @State private var showBackgroundCancelledWarning = false
     @State private var showManualCancelledWarning = false
     
+    // Network & Leaderboards
+    @StateObject private var networkMonitor = NetworkMonitor.shared
+    @State private var isInitializingServer = false
+    @State private var showInitError = false
+    @State private var initErrorMessage = ""
+    @State private var isSubmittingScore = false
+    @State private var submitSuccessMessage: String? = nil
+    @State private var submitErrorMessage: String? = nil
+    
     var body: some View {
         ZStack {
             // Dark futuristic background gradient
@@ -79,11 +88,26 @@ struct ContentView: View {
             if showManualCancelledWarning {
                 manualCancelledOverlay
             }
+            
+            // --- Server Session Init Overlay ---
+            if isInitializingServer {
+                serverInitOverlay
+            }
+            
+            // --- Server Session Error Overlay ---
+            if showInitError {
+                serverInitErrorOverlay
+            }
         }
         .preferredColorScheme(.dark)
         .onChange(of: engine.isRunning) { newValue in
             // When the test stops, calculate summary
             if !newValue && engine.elapsedTime > 0 {
+                // Reset submit outcomes for a clean state
+                submitSuccessMessage = nil
+                submitErrorMessage = nil
+                isSubmittingScore = false
+                
                 if engine.wasCancelledDueToBackground {
                     withAnimation(.spring()) {
                         showBackgroundCancelledWarning = true
@@ -118,16 +142,36 @@ struct ContentView: View {
     private var headerSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("THERMOHAMMER")
-                    .font(.system(size: 24, weight: .black, design: .monospaced))
-                    .tracking(2)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.white, .secondary],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                HStack(spacing: 8) {
+                    Text("THERMOHAMMER")
+                        .font(.system(size: 24, weight: .black, design: .monospaced))
+                        .tracking(2)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.white, .secondary],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
+                    
+                    // Connection Status Capsule
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(networkMonitor.isConnected ? Color.green : Color.yellow)
+                            .frame(width: 5, height: 5)
+                        Text(networkMonitor.isConnected ? "ONLINE" : "OFFLINE")
+                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .foregroundColor(networkMonitor.isConnected ? .green : .yellow)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.04))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(networkMonitor.isConnected ? Color.green.opacity(0.15) : Color.yellow.opacity(0.15), lineWidth: 1)
                     )
+                }
                 
                 Text("iOS CPU Stress & Throttling Diagnostic")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -345,6 +389,131 @@ struct ContentView: View {
                 Divider()
                     .background(Color.white.opacity(0.1))
                 
+                // --- Leaderboard Section ---
+                VStack(spacing: 8) {
+                    if engine.sessionId != nil, engine.encryptionKey != nil {
+                        // Online mode
+                        if let successMsg = submitSuccessMessage {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text(successMsg)
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.green)
+                            }
+                            .padding(.vertical, 8)
+                        } else if let errorMsg = submitErrorMessage {
+                            VStack(alignment: .center, spacing: 4) {
+                                HStack {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                    Text("SUBMISSION FAILED")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.red)
+                                }
+                                Text(errorMsg)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.vertical, 8)
+                        } else if isSubmittingScore {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+                                Text("SUBMITTING SCORE...")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.blue)
+                            }
+                            .padding(.vertical, 8)
+                        } else {
+                            Button(action: {
+                                isSubmittingScore = true
+                                submitSuccessMessage = nil
+                                submitErrorMessage = nil
+                                
+                                Task {
+                                    do {
+                                        let hmacHash = ThermoHasher.computeHash(
+                                            encryptionKey: engine.encryptionKey!,
+                                            stamps: engine.recordedStamps
+                                        )
+                                        
+                                        let durationType: Int
+                                        switch engine.testDuration {
+                                        case .minutes5: durationType = 0
+                                        case .minutes15: durationType = 1
+                                        case .minutes30: durationType = 2
+                                        }
+                                        
+                                        let payload = HammerPayload(
+                                            stamps: engine.recordedStamps,
+                                            type: durationType,
+                                            deviceManufacturer: "Apple",
+                                            deviceModel: LeaderboardService.shared.getDeviceModelName(),
+                                            os: 1, // iOS
+                                            osVersion: UIDevice.current.systemVersion,
+                                            sessionId: engine.sessionId!,
+                                            hash: hmacHash
+                                        )
+                                        
+                                        try await LeaderboardService.shared.submitScore(payload: payload)
+                                        
+                                        await MainActor.run {
+                                            isSubmittingScore = false
+                                            submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
+                                        }
+                                    } catch {
+                                        await MainActor.run {
+                                            isSubmittingScore = false
+                                            submitErrorMessage = error.localizedDescription
+                                        }
+                                    }
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "crown.fill")
+                                    Text("SUBMIT SCORE TO LEADERBOARD")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.blue, Color.purple],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(10)
+                            }
+                        }
+                    } else {
+                        // Offline mode
+                        HStack {
+                            Image(systemName: "wifi.slash")
+                                .foregroundColor(.secondary)
+                            Text("OFFLINE MODE - LEADERBOARD UNAVAILABLE")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.white.opacity(0.02))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(.vertical, 8)
+                
+                Divider()
+                    .background(Color.white.opacity(0.1))
+                
                 // Done Button
                 Button(action: {
                     withAnimation(.spring()) {
@@ -494,7 +663,42 @@ struct ContentView: View {
                         withAnimation(.spring()) {
                             showStartWarning = false
                         }
-                        engine.startTest(duration: selectedDuration)
+                        
+                        if networkMonitor.isConnected {
+                            // Online Mode: initialize session
+                            withAnimation(.spring()) {
+                                isInitializingServer = true
+                            }
+                            
+                            Task {
+                                do {
+                                    let session = try await LeaderboardService.shared.createSession()
+                                    await MainActor.run {
+                                        engine.sessionId = session.id
+                                        engine.encryptionKey = session.encryptionKey
+                                        withAnimation(.spring()) {
+                                            isInitializingServer = false
+                                        }
+                                        engine.startTest(duration: selectedDuration)
+                                    }
+                                } catch {
+                                    await MainActor.run {
+                                        withAnimation(.spring()) {
+                                            isInitializingServer = false
+                                        }
+                                        initErrorMessage = error.localizedDescription
+                                        withAnimation(.spring()) {
+                                            showInitError = true
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Offline Mode: start test immediately
+                            engine.sessionId = nil
+                            engine.encryptionKey = nil
+                            engine.startTest(duration: selectedDuration)
+                        }
                     }) {
                         Text("PROCEED")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -628,6 +832,123 @@ struct ContentView: View {
                         .padding(.vertical, 12)
                         .background(Color.white)
                         .cornerRadius(12)
+                }
+                .padding(.bottom, 5)
+            }
+            .padding(24)
+            .frame(width: 320)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(white: 0.1).opacity(0.95))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+            .shadow(color: .black.opacity(0.5), radius: 15)
+        }
+    }
+    
+    private var serverInitOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.8)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+                    .scaleEffect(1.5)
+                    .padding(.top, 10)
+                
+                Text("CONNECTING TO SERVER")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                
+                Text("Initializing secure diagnostic session for leaderboard verification...")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 10)
+            }
+            .padding(24)
+            .frame(width: 280)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(white: 0.1).opacity(0.95))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                      )
+            )
+            .shadow(color: .black.opacity(0.5), radius: 15)
+        }
+    }
+    
+    private var serverInitErrorOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.8)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.spring()) {
+                        showInitError = false
+                    }
+                }
+            
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.system(size: 40))
+                        .foregroundColor(.yellow)
+                        .shadow(color: .yellow.opacity(0.3), radius: 8)
+                    
+                    Text("SESSION FAILED")
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .tracking(1)
+                        .foregroundColor(.white)
+                }
+                .padding(.top, 10)
+                
+                Text("Could not connect to the diagnostic server:\n\(initErrorMessage)\n\nWould you like to run in Offline mode instead? (Offline runs cannot be submitted to the leaderboard.)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                
+                Divider()
+                    .background(Color.white.opacity(0.1))
+                
+                HStack(spacing: 12) {
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            showInitError = false
+                        }
+                    }) {
+                        Text("CANCEL")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                    }
+                    
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            showInitError = false
+                        }
+                        // Proceed in Offline Mode
+                        engine.sessionId = nil
+                        engine.encryptionKey = nil
+                        engine.startTest(duration: selectedDuration)
+                    }) {
+                        Text("RUN OFFLINE")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                    }
                 }
                 .padding(.bottom, 5)
             }

@@ -17,29 +17,32 @@ public class ThermoEncryptor
         return encryptionKey;
     }
 
-    public bool IsValid(string encryptionKey, HammerStamp[] stamps)
+    public bool IsValid(string encryptionKey, Hammer hammer)
     {
-        if (stamps == null || string.IsNullOrEmpty(encryptionKey))
+        if (hammer == null || hammer.Stamps == null || string.IsNullOrEmpty(encryptionKey) || string.IsNullOrEmpty(hammer.Hash))
             return false;
 
         // Use StringBuilder to avoid massive string allocations inside the loop
         var sb = new StringBuilder();
-        foreach (HammerStamp stamp in stamps)
+        foreach (HammerStamp stamp in hammer.Stamps)
         {
             sb.Append(Baseize(stamp.ElapsedMs.ToString()));
             sb.Append(Baseize(stamp.Score.ToString()));
             sb.Append(Baseize(stamp.ThermalState.ToString()));
         }
 
-        // Use modern, optimized static helper which avoids instantiating/disposing SHA256 objects
-        byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
-        string generatedHash = Convert.ToBase64String(hashBytes);
+        // Encrypt the stamp representation using HMAC-SHA256 with the session's encryption key
+        byte[] keyBytes = Encoding.UTF8.GetBytes(encryptionKey);
+        byte[] dataBytes = Encoding.UTF8.GetBytes(sb.ToString());
+        
+        byte[] computedHmacBytes = HMACSHA256.HashData(keyBytes, dataBytes);
+        string computedHash = Convert.ToBase64String(computedHmacBytes);
 
         // Prevent timing attacks when verifying hashes
-        byte[] generatedBytes = Encoding.UTF8.GetBytes(generatedHash);
-        byte[] inputBytes = Encoding.UTF8.GetBytes(encryptionKey);
+        byte[] generatedBytes = Encoding.UTF8.GetBytes(computedHash);
+        byte[] providedBytes = Encoding.UTF8.GetBytes(hammer.Hash);
 
-        return CryptographicOperations.FixedTimeEquals(generatedBytes, inputBytes);
+        return CryptographicOperations.FixedTimeEquals(generatedBytes, providedBytes);
     }
 
     private string Baseize(string txt)

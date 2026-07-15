@@ -6,6 +6,7 @@ public class Hammer
 {
     public int Id { get; set; }
     public HammerStamp[] Stamps { get; set; }
+    public HammerType Type { get; set; }
     public string DeviceManufacturer { get; set; }
     public string DeviceModel { get; set; }
     public OsPlatform Os { get; set; }
@@ -13,6 +14,14 @@ public class Hammer
     [JsonIgnore]
     public ThermoSession Session { get; set; }
     public int SessionId { get; set; }
+    public string Hash { get; set; }
+}
+
+public enum HammerType
+{
+    FiveMinutes,
+    FifteenMinutes,
+    ThirtyMinutes
 }
 
 public enum OsPlatform

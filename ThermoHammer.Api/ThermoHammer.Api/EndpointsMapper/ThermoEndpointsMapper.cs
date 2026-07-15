@@ -24,7 +24,7 @@ static class ThermoEndpointsMapper
             await db.Sessions.AddAsync(ts);
             await db.SaveChangesAsync();
 
-            return Results.Ok(encryptionKey);
+            return Results.Ok(ts);
         });
 
         app.MapPost("/hammer", async (Hammer hammer) =>
@@ -33,7 +33,7 @@ static class ThermoEndpointsMapper
             if (session is null)
                 return Results.NotFound("Session not found");
 
-            bool isValid = encryptor.IsValid(session.EncryptionKey, hammer.Stamps);
+            bool isValid = encryptor.IsValid(session.EncryptionKey, hammer);
 
             if (!isValid)
                 return Results.BadRequest("Invalid data");

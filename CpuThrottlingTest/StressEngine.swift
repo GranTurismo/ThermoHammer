@@ -62,6 +62,12 @@ class StressEngine: ObservableObject {
     @Published var wasCancelledDueToBackground = false
     @Published var wasCompleted = false
     
+    var recordedStamps: [DeviceHammerStamp] = []
+    private var statsSampleCount = 0
+    
+    var sessionId: Int? = nil
+    var encryptionKey: String? = nil
+    
     var testDuration: TestDuration = .minutes5
     
     let coreCount: Int
@@ -122,6 +128,8 @@ class StressEngine: ObservableObject {
         
         wasCancelledDueToBackground = false
         wasCompleted = false
+        recordedStamps = []
+        statsSampleCount = 0
         testDuration = duration
         elapsedTime = 0
         overallStability = 100.0
@@ -240,6 +248,22 @@ class StressEngine: ObservableObject {
             guard let self = self, self.isRunning else { return }
             self.coreImpacts = newImpacts
             self.overallStability = min(100.0, max(0.0, newStability))
+            
+            self.statsSampleCount += 1
+            let elapsed = self.statsSampleCount * 250
+            let scoreVal = Int(totalSpeed * 4)
+            
+            let thermalVal: Int
+            switch self.currentThermalState {
+            case .nominal: thermalVal = 0
+            case .fair: thermalVal = 1
+            case .serious: thermalVal = 2
+            case .critical: thermalVal = 3
+            @unknown default: thermalVal = 0
+            }
+            
+            let stamp = DeviceHammerStamp(elapsedMs: elapsed, score: scoreVal, thermalState: thermalVal)
+            self.recordedStamps.append(stamp)
         }
     }
     

@@ -1,0 +1,148 @@
+import Foundation
+import CryptoKit
+#if canImport(UIKit)
+import UIKit
+#endif
+
+struct DeviceHammerStamp: Codable {
+    let elapsedMs: Int
+    let score: Int
+    let thermalState: Int // 0 = Nominal, 1 = Fair, 2 = Serious, 3 = Critical
+}
+
+struct HammerPayload: Codable {
+    let stamps: [DeviceHammerStamp]
+    let type: Int // 0 = 5 min, 1 = 15 min, 2 = 30 min (matching HammerType enum)
+    let deviceManufacturer: String
+    let deviceModel: String
+    let os: Int // 1 = iOS (matching OsPlatform enum)
+    let osVersion: String
+    let sessionId: Int
+    let hash: String
+}
+
+struct SessionResponse: Codable {
+    let id: Int
+    let encryptionKey: String
+}
+
+struct ThermoHasher {
+    static func baseize(_ txt: String) -> String {
+        var bytes = [UInt8]()
+        for scalar in txt.unicodeScalars {
+            let val = scalar.value
+            bytes.append(UInt8(val & 0xFF))
+            bytes.append(UInt8((val >> 8) & 0xFF))
+            bytes.append(UInt8((val >> 16) & 0xFF))
+            bytes.append(UInt8((val >> 24) & 0xFF))
+        }
+        return Data(bytes).base64EncodedString()
+    }
+    
+    static func computeHash(encryptionKey: String, stamps: [DeviceHammerStamp]) -> String {
+        var sb = ""
+        for stamp in stamps {
+            let thermalStateStr: String
+            switch stamp.thermalState {
+            case 0: thermalStateStr = "Nominal"
+            case 1: thermalStateStr = "Fair"
+            case 2: thermalStateStr = "Serious"
+            case 3: thermalStateStr = "Critical"
+            default: thermalStateStr = "Nominal"
+            }
+            
+            sb += baseize(String(stamp.elapsedMs))
+            sb += baseize(String(stamp.score))
+            sb += baseize(thermalStateStr)
+        }
+        
+        let keyData = Data(encryptionKey.utf8)
+        let messageData = Data(sb.utf8)
+        
+        let symmetricKey = SymmetricKey(data: keyData)
+        let signature = HMAC<SHA256>.authenticationCode(for: messageData, using: symmetricKey)
+        
+        return Data(signature).base64EncodedString()
+    }
+}
+
+class LeaderboardService {
+    static let shared = LeaderboardService()
+    
+    private let baseURL = URL(string: "https://thapi.gtgroup.dev")!
+    
+    private init() {}
+    
+    func createSession() async throws -> SessionResponse {
+        let url = baseURL.appendingPathComponent("session")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "LeaderboardService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize server session"])
+        }
+        
+        let decoder = JSONDecoder()
+        return try decoder.decode(SessionResponse.self, from: data)
+    }
+    
+    func submitScore(payload: HammerPayload) async throws {
+        let url = baseURL.appendingPathComponent("hammer")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let encoder = JSONEncoder()
+        request.httpBody = try encoder.encode(payload)
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw NSError(domain: "LeaderboardService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Server rejected score submission"])
+        }
+    }
+    
+    func getDeviceModelName() -> String {
+        #if os(iOS)
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let machineMirror = Mirror(reflecting: systemInfo.machine)
+        let identifier = machineMirror.children.reduce("") { identifier, element in
+            guard let value = element.value as? Int8, value != 0 else { return identifier }
+            return identifier + String(UnicodeScalar(UInt8(value)))
+        }
+        
+        // Map common codes to user-friendly names
+        switch identifier {
+        case "iPhone14,2": return "iPhone 13 Pro"
+        case "iPhone14,3": return "iPhone 13 Pro Max"
+        case "iPhone14,4": return "iPhone 13 mini"
+        case "iPhone14,5": return "iPhone 13"
+        case "iPhone14,7": return "iPhone 14"
+        case "iPhone14,8": return "iPhone 14 Plus"
+        case "iPhone15,2": return "iPhone 14 Pro"
+        case "iPhone15,3": return "iPhone 14 Pro Max"
+        case "iPhone15,4": return "iPhone 15"
+        case "iPhone15,5": return "iPhone 15 Plus"
+        case "iPhone16,1": return "iPhone 15 Pro"
+        case "iPhone16,2": return "iPhone 15 Pro Max"
+        case "iPhone17,1": return "iPhone 16 Pro"
+        case "iPhone17,2": return "iPhone 16 Pro Max"
+        case "iPhone17,3": return "iPhone 16"
+        case "iPhone17,4": return "iPhone 16 Plus"
+        default:
+            if identifier.hasPrefix("iPhone") {
+                return "iPhone (\(identifier))"
+            } else if identifier.hasPrefix("iPad") {
+                return "iPad (\(identifier))"
+            }
+            return identifier
+        }
+        #else
+        return "macOS Device"
+        #endif
+    }
+}
