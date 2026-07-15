@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ThermoHammer.Api.Models;
 
 public class Hammer
@@ -8,6 +10,9 @@ public class Hammer
     public string DeviceModel { get; set; }
     public OsPlatform Os { get; set; }
     public string OsVersion { get; set; }
+    [JsonIgnore]
+    public ThermoSession Session { get; set; }
+    public int SessionId { get; set; }
 }
 
 public enum OsPlatform
@@ -18,6 +23,7 @@ public enum OsPlatform
 public class HammerStamp
 {
     public int Id { get; set; }
+    public int HammerId { get; set; }
     public int ElapsedMs { get; set; } //milliseconds passed since start
     public int Score { get; set; } // IPS - instructions per second
     public ThermalState ThermalState { get; set; }
