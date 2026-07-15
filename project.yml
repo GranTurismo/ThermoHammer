@@ -1,6 +1,6 @@
 name: CpuThrottlingTest
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: com.granturismo
 targets:
   CpuThrottlingTest:
     type: application
@@ -9,7 +9,7 @@ targets:
     sources:
       - path: CpuThrottlingTest
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.example.CpuThrottlingTest
+      PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.thermohammer
       CODE_SIGN_STYLE: Automatic
       DEVELOPMENT_TEAM: "Gogita Kupatadze"
       CODE_SIGNING_ALLOWED: YES
