@@ -46,8 +46,9 @@ public static class ThermoEndpointsMapper
 
         app.MapGet("/leaderboard", async (ThermoDbContext db) =>
         {
-            var hammers = await db.Hammers.Select(o => o.ToDto())
+            var hammers = await db.Hammers
             .OrderByDescending(o => o.StabilityPercentage)
+            .Select(o => o.ToDto())
             .ToListAsync();
 
             return Results.Ok(hammers);
