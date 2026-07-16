@@ -162,6 +162,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = (
 					UIInterfaceOrientationPortrait,
 					UIInterfaceOrientationPortraitUpsideDown,
@@ -246,6 +247,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = (
 					UIInterfaceOrientationPortrait,
 					UIInterfaceOrientationPortraitUpsideDown,
