@@ -21,7 +21,7 @@
 /* Begin PBXFileReference section */
 		10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		329D81879CF186B50E3D88C3 /* LeaderboardService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardService.swift; sourceTree = "<group>"; };
-		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E61339A94C4606A3CBEE8AF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		709D367D4E29A88B1729A141 /* CoreStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreStatusView.swift; sourceTree = "<group>"; };
 		7DD55569A14DD3A42D804BF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -95,6 +95,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					AC8C79E85C66EB939D4F0181 = {
+						DevelopmentTeam = "Gogita Kupatadze (RJX83ALG73)";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -155,8 +156,10 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = C58ABB3474;
+				DEVELOPMENT_TEAM = "Gogita Kupatadze (RJX83ALG73)";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
+				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -232,8 +235,10 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = C58ABB3474;
+				DEVELOPMENT_TEAM = "Gogita Kupatadze (RJX83ALG73)";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
+				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
