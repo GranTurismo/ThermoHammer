@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ThermoHammer.Api.Migrations
 {
     /// <inheritdoc />
+
     public partial class init : Migration
     {
         /// <inheritdoc />

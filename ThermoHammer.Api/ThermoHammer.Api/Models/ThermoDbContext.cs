@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using ThermoHammer.Api.Models;
 
+namespace ThermoHammer.Api.Models;
+
 public class ThermoDbContext(DbContextOptions<ThermoDbContext> options) : DbContext(options)
 {
-    public DbSet<ThermoSession> Sessions { get; set; }
-    public DbSet<Hammer> Hammers { get; set; }
+    public DbSet<ThermoSession> Sessions => Set<ThermoSession>();
+    public DbSet<Hammer> Hammers => Set<Hammer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

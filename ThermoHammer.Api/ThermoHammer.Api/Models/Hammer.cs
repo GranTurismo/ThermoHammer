@@ -5,40 +5,40 @@ namespace ThermoHammer.Api.Models;
 public class HammerDto
 {
     public int Id { get; set; }
-    public HammerType Type { get; set; }
-    public string DeviceManufacturer { get; set; }
-    public string DeviceModel { get; set; }
-    public OsPlatform Os { get; set; }
-    public string OsVersion { get; set; }
-    public double StabilityPercentage { get; set; }
+    public required HammerType Type { get; set; }
+    public required string DeviceManufacturer { get; set; }
+    public required string DeviceModel { get; set; }
+    public required OsPlatform Os { get; set; }
+    public required string OsVersion { get; set; }
+    public required double StabilityPercentage { get; set; }
 }
 
 public class Hammer
 {
     public int Id { get; set; }
-    public List<HammerStamp> Stamps { get; set; }
-    public HammerType Type { get; set; }
-    public string DeviceManufacturer { get; set; }
-    public string DeviceModel { get; set; }
-    public OsPlatform Os { get; set; }
-    public string OsVersion { get; set; }
+    public required List<HammerStamp> Stamps { get; set; }
+    public required HammerType Type { get; set; }
+    public required string DeviceManufacturer { get; set; }
+    public required string DeviceModel { get; set; }
+    public required OsPlatform Os { get; set; }
+    public required string OsVersion { get; set; }
     [JsonIgnore]
     public ThermoSession Session { get; set; }
     public int SessionId { get; set; }
-    public string Hash { get; set; }
+    public required string Hash { get; set; }
     public double StabilityPercentage { get; set; }
 }
 
 public class HammerRequest
 {
-    public List<HammerStamp> Stamps { get; set; }
+    public required List<HammerStamp> Stamps { get; set; }
     public HammerType Type { get; set; }
-    public string DeviceManufacturer { get; set; }
-    public string DeviceModel { get; set; }
+    public required string DeviceManufacturer { get; set; }
+    public required string DeviceModel { get; set; }
     public OsPlatform Os { get; set; }
-    public string OsVersion { get; set; }
+    public required string OsVersion { get; set; }
     public int SessionId { get; set; }
-    public string Hash { get; set; }
+    public required string Hash { get; set; }
 }
 
 public enum HammerType
