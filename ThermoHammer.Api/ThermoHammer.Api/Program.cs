@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ThermoHammer.Api.EndpointsMapper;
+using ThermoHammer.Api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
