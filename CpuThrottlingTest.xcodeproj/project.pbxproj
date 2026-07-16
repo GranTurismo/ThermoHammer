@@ -95,7 +95,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					AC8C79E85C66EB939D4F0181 = {
-						DevelopmentTeam = "Gogita Kupatadze (RJX83ALG73)";
+						DevelopmentTeam = RJX83ALG73;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -156,7 +156,8 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "Gogita Kupatadze (RJX83ALG73)";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RJX83ALG73;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
@@ -167,6 +168,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -235,7 +237,8 @@
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "Gogita Kupatadze (RJX83ALG73)";
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = RJX83ALG73;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
@@ -246,6 +249,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";

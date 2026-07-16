@@ -11,10 +11,12 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.thermohammer
       CODE_SIGN_STYLE: Automatic
-      DEVELOPMENT_TEAM: "Gogita Kupatadze (RJX83ALG73)"
+      DEVELOPMENT_TEAM: "RJX83ALG73"
       CODE_SIGNING_ALLOWED: YES
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       GENERATE_INFOPLIST_FILE: YES
+      MARKETING_VERSION: "1.0"
+      CURRENT_PROJECT_VERSION: "1"
       INFOPLIST_KEY_CFBundleDisplayName: "ThermoHammer"
       INFOPLIST_KEY_CFBundleName: "ThermoHammer"
       INFOPLIST_KEY_UILaunchScreen_Generation: YES
