@@ -10,7 +10,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddScoped<ThermoEncryptor>();
 builder.Services.AddDbContext<ThermoDbContext>(o =>
 o.UseSqlServer(
-    builder.Configuration.GetValue<string>("ConnectionStrings:DefaultConnection")
+    builder.Configuration.GetConnectionString("DefaultConnection")
     ));
 var app = builder.Build();
 
