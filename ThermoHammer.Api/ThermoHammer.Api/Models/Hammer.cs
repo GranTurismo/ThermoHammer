@@ -5,12 +5,12 @@ namespace ThermoHammer.Api.Models;
 public class HammerDto
 {
     public int Id { get; set; }
-    public List<HammerStamp> Stamps { get; set; }
     public HammerType Type { get; set; }
     public string DeviceManufacturer { get; set; }
     public string DeviceModel { get; set; }
     public OsPlatform Os { get; set; }
     public string OsVersion { get; set; }
+    public int StabilityPercentage { get; set; }
 }
 
 public class Hammer
@@ -24,6 +24,19 @@ public class Hammer
     public string OsVersion { get; set; }
     [JsonIgnore]
     public ThermoSession Session { get; set; }
+    public int SessionId { get; set; }
+    public string Hash { get; set; }
+    public int StabilityPercentage { get; set; }
+}
+
+public class HammerRequest
+{
+    public List<HammerStamp> Stamps { get; set; }
+    public HammerType Type { get; set; }
+    public string DeviceManufacturer { get; set; }
+    public string DeviceModel { get; set; }
+    public OsPlatform Os { get; set; }
+    public string OsVersion { get; set; }
     public int SessionId { get; set; }
     public string Hash { get; set; }
 }
@@ -59,17 +72,37 @@ public enum ThermalState
 
 public static class HammerExtensions
 {
+    public static Hammer ToDao(this HammerRequest request)
+    {
+        double maxScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Max(s => s.Score) : 0;
+        double minScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Min(s => s.Score) : 0;
+        int stability = maxScore > 0 ? (int)Math.Round((minScore / maxScore) * 100) : 100;
+
+        return new Hammer
+        {
+            Stamps = request.Stamps!,
+            Type = request.Type,
+            DeviceManufacturer = request.DeviceManufacturer,
+            DeviceModel = request.DeviceModel,
+            Os = request.Os,
+            OsVersion = request.OsVersion,
+            SessionId = request.SessionId,
+            Hash = request.Hash,
+            StabilityPercentage = stability
+        };
+    }
+
     public static HammerDto ToDto(this Hammer hammer)
     {
         return new HammerDto
         {
             Id = hammer.Id,
-            Stamps = hammer.Stamps,
             Type = hammer.Type,
             DeviceManufacturer = hammer.DeviceManufacturer,
             DeviceModel = hammer.DeviceModel,
             Os = hammer.Os,
-            OsVersion = hammer.OsVersion
+            OsVersion = hammer.OsVersion,
+            StabilityPercentage = hammer.StabilityPercentage
         };
     }
 }

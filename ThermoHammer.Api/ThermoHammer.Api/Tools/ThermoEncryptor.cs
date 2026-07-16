@@ -17,7 +17,7 @@ public class ThermoEncryptor
         return encryptionKey;
     }
 
-    public bool IsValid(string encryptionKey, Hammer hammer)
+    public bool IsValid(string encryptionKey, HammerRequest hammer)
     {
         if (hammer == null || hammer.Stamps == null || string.IsNullOrEmpty(encryptionKey) || string.IsNullOrEmpty(hammer.Hash))
             return false;
@@ -34,7 +34,7 @@ public class ThermoEncryptor
         // Encrypt the stamp representation using HMAC-SHA256 with the session's encryption key
         byte[] keyBytes = Encoding.UTF8.GetBytes(encryptionKey);
         byte[] dataBytes = Encoding.UTF8.GetBytes(sb.ToString());
-        
+
         byte[] computedHmacBytes = HMACSHA256.HashData(keyBytes, dataBytes);
         string computedHash = Convert.ToBase64String(computedHmacBytes);
 

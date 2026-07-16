@@ -161,6 +161,22 @@ class LeaderboardService {
         let decoder = JSONDecoder()
         return try decoder.decode([HammerDto].self, from: data)
     }
+    
+    func fetchStamps(for hammerId: Int) async throws -> [DeviceHammerStamp] {
+        let url = baseURL.appendingPathComponent("stamps/\(hammerId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "LeaderboardService", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch stamps detail from server"])
+        }
+        
+        let decoder = JSONDecoder()
+        return try decoder.decode([DeviceHammerStamp].self, from: data)
+    }
 }
 
 struct HammerDto: Codable, Identifiable {
@@ -171,4 +187,5 @@ struct HammerDto: Codable, Identifiable {
     let deviceModel: String
     let os: Int
     let osVersion: String
+    let stabilityPercentage: Int
 }

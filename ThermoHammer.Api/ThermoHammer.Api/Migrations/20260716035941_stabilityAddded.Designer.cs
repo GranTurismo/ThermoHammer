@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ThermoHammer.Api.Migrations
 {
     [DbContext(typeof(ThermoDbContext))]
-    partial class ThermoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716035941_stabilityAddded")]
+    partial class stabilityAddded
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -49,9 +52,6 @@ namespace ThermoHammer.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("SessionId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StabilityPercentage")
                         .HasColumnType("int");
 
                     b.Property<int>("Type")

@@ -29,20 +29,20 @@ public static class ThermoEndpointsMapper
             return Results.Ok(ts);
         });
 
-        app.MapPost("/hammer", async (Hammer hammer) =>
+        app.MapPost("/hammer", async (HammerRequest hammerRequest) =>
         {
-            var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == hammer.SessionId);
+            var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == hammerRequest.SessionId);
             if (session is null)
                 return Results.NotFound("Session not found");
 
-            bool isValid = encryptor.IsValid(session.EncryptionKey, hammer);
+            bool isValid = encryptor.IsValid(session.EncryptionKey, hammerRequest);
 
             if (!isValid)
                 return Results.BadRequest("Invalid data");
 
             session.State = SessionState.Closed;
 
-            await db.Hammers.AddAsync(hammer);
+            await db.Hammers.AddAsync(hammerRequest.ToDao());
             await db.SaveChangesAsync();
 
             return Results.Ok("Data saved successfully");
@@ -50,9 +50,17 @@ public static class ThermoEndpointsMapper
 
         app.MapGet("/leaderboard", async () =>
         {
-            var hammers = await db.Hammers.Include(o => o.Stamps).Select(o => o.ToDto()).ToListAsync();
+            var hammers = await db.Hammers.Select(o => o.ToDto()).ToListAsync();
 
             return Results.Ok(hammers);
+        });
+
+        app.MapGet("/stamps/{id:int}", async (int id) =>
+        {
+            var hammer = await db.Hammers.Include(h => h.Stamps).FirstOrDefaultAsync(h => h.Id == id);
+            if (hammer is null)
+                return Results.NotFound("Hammer not found");
+            return Results.Ok(hammer.Stamps);
         });
     }
 }
