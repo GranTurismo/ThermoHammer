@@ -10,7 +10,7 @@ public class HammerDto
     public string DeviceModel { get; set; }
     public OsPlatform Os { get; set; }
     public string OsVersion { get; set; }
-    public int StabilityPercentage { get; set; }
+    public double StabilityPercentage { get; set; }
 }
 
 public class Hammer
@@ -26,7 +26,7 @@ public class Hammer
     public ThermoSession Session { get; set; }
     public int SessionId { get; set; }
     public string Hash { get; set; }
-    public int StabilityPercentage { get; set; }
+    public double StabilityPercentage { get; set; }
 }
 
 public class HammerRequest
@@ -76,7 +76,7 @@ public static class HammerExtensions
     {
         double maxScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Max(s => s.Score) : 0;
         double minScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Min(s => s.Score) : 0;
-        int stability = maxScore > 0 ? (int)Math.Round((minScore / maxScore) * 100) : 100;
+        double stability = maxScore > 0 ? ((minScore / maxScore) * 100) : 100;
 
         return new Hammer
         {

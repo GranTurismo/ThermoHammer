@@ -9,14 +9,10 @@ public static class ThermoEndpointsMapper
 {
     public static void MapEndpoints(this IEndpointRouteBuilder app)
     {
-        var db = app.ServiceProvider.GetRequiredService<ThermoDbContext>();
-        var encryptor = app.ServiceProvider.GetRequiredService<ThermoEncryptor>();
-
         app.MapGet("/health", () => "OK");
 
-        app.MapPost("/session", async () =>
+        app.MapPost("/session", async (ThermoDbContext db, ThermoEncryptor encryptor) =>
         {
-            var encryptor = new ThermoEncryptor();
             string encryptionKey = encryptor.GenerateKey();
             ThermoSession ts = new()
             {
@@ -29,7 +25,7 @@ public static class ThermoEndpointsMapper
             return Results.Ok(ts);
         });
 
-        app.MapPost("/hammer", async (HammerRequest hammerRequest) =>
+        app.MapPost("/hammer", async (HammerRequest hammerRequest, ThermoDbContext db, ThermoEncryptor encryptor) =>
         {
             var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == hammerRequest.SessionId);
             if (session is null)
@@ -48,14 +44,14 @@ public static class ThermoEndpointsMapper
             return Results.Ok("Data saved successfully");
         });
 
-        app.MapGet("/leaderboard", async () =>
+        app.MapGet("/leaderboard", async (ThermoDbContext db) =>
         {
             var hammers = await db.Hammers.Select(o => o.ToDto()).ToListAsync();
 
             return Results.Ok(hammers);
         });
 
-        app.MapGet("/stamps/{id:int}", async (int id) =>
+        app.MapGet("/stamps/{id:int}", async (int id, ThermoDbContext db) =>
         {
             var hammer = await db.Hammers.Include(h => h.Stamps).FirstOrDefaultAsync(h => h.Id == id);
             if (hammer is null)
