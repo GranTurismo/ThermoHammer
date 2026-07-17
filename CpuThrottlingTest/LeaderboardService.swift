@@ -187,5 +187,5 @@ struct HammerDto: Codable, Identifiable {
     let deviceModel: String
     let os: Int
     let osVersion: String
-    let stabilityPercentage: Int
+    let stabilityPercentage: Double
 }
