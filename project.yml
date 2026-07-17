@@ -8,22 +8,6 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: CpuThrottlingTest
-    postBuildScripts:
-      - name: "Trick App Store Connect Xcode Beta check"
-        script: |
-          plist="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
-          if [ -f "$plist" ]; then
-            echo "Modifying Info.plist DT keys for App Store Connect submission..."
-            /usr/bin/plutil -replace DTXcode -string "1540" "$plist"
-            /usr/bin/plutil -replace DTXcodeBuild -string "15F31d" "$plist"
-            /usr/bin/plutil -replace DTSDKBuild -string "21F77" "$plist"
-            /usr/bin/plutil -replace DTPlatformBuild -string "21F77" "$plist"
-            /usr/bin/plutil -replace DTPlatformVersion -string "17.5" "$plist"
-            /usr/bin/plutil -replace DTSDKName -string "iphoneos17.5" "$plist"
-          fi
-          touch "${DERIVED_FILE_DIR}/trick_asc_completed.txt"
-        outputs:
-          - "$(DERIVED_FILE_DIR)/trick_asc_completed.txt"
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.thermohammer
       CODE_SIGN_STYLE: Automatic
