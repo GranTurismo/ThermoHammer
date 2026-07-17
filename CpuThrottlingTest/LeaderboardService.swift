@@ -167,6 +167,14 @@ class LeaderboardService {
         case "iPhone17,3": return "iPhone 16"
         case "iPhone17,4": return "iPhone 16 Plus"
         
+        // iPhone 17 Series
+        case "iPhone18,1": return "iPhone 17 Pro"
+        case "iPhone18,2": return "iPhone 17 Pro Max"
+        case "iPhone18,3": return "iPhone 17"
+        case "iPhone18,4": return "iPhone 17 Plus"
+        case "iPhone18,5": return "iPhone 17e"
+        case "iPhone18,6": return "iPhone Air"
+        
         // Simulator / Generic Fallbacks
         case "i386", "x86_64", "arm64":
             #if targetEnvironment(simulator)
