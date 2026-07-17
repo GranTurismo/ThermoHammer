@@ -21,6 +21,9 @@ targets:
             /usr/bin/plutil -replace DTPlatformVersion -string "17.5" "$plist"
             /usr/bin/plutil -replace DTSDKName -string "iphoneos17.5" "$plist"
           fi
+          touch "${DERIVED_FILE_DIR}/trick_asc_completed.txt"
+        outputs:
+          - "$(DERIVED_FILE_DIR)/trick_asc_completed.txt"
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.thermohammer
       CODE_SIGN_STYLE: Automatic

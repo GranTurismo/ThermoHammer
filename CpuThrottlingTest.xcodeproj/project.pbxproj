@@ -21,7 +21,7 @@
 /* Begin PBXFileReference section */
 		10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		329D81879CF186B50E3D88C3 /* LeaderboardService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardService.swift; sourceTree = "<group>"; };
-		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4E61339A94C4606A3CBEE8AF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		709D367D4E29A88B1729A141 /* CoreStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreStatusView.swift; sourceTree = "<group>"; };
 		7DD55569A14DD3A42D804BF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -96,7 +96,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					AC8C79E85C66EB939D4F0181 = {
-						DevelopmentTeam = RJX83ALG73;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -148,7 +147,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "plist=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$plist\" ]; then\n  echo \"Modifying Info.plist DT keys for App Store Connect submission...\"\n  /usr/bin/plutil -replace DTXcode -string \"1540\" \"$plist\"\n  /usr/bin/plutil -replace DTXcodeBuild -string \"15F31d\" \"$plist\"\n  /usr/bin/plutil -replace DTSDKBuild -string \"21F77\" \"$plist\"\n  /usr/bin/plutil -replace DTPlatformBuild -string \"21F77\" \"$plist\"\n  /usr/bin/plutil -replace DTPlatformVersion -string \"17.5\" \"$plist\"\n  /usr/bin/plutil -replace DTSDKName -string \"iphoneos17.5\" \"$plist\"\nfi\n";
+			shellScript = "plist=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ -f \"$plist\" ]; then\n  echo \"Modifying Info.plist DT keys for App Store Connect submission...\"\n  /usr/bin/plutil -replace DTXcode -string \"1540\" \"$plist\"\n  /usr/bin/plutil -replace DTXcodeBuild -string \"15F31d\" \"$plist\"\n  /usr/bin/plutil -replace DTSDKBuild -string \"21F77\" \"$plist\"\n  /usr/bin/plutil -replace DTPlatformBuild -string \"21F77\" \"$plist\"\n  /usr/bin/plutil -replace DTPlatformVersion -string \"17.5\" \"$plist\"\n  /usr/bin/plutil -replace DTSDKName -string \"iphoneos17.5\" \"$plist\"\nfi\ntouch \"${DERIVED_FILE_DIR}/trick_asc_completed.txt\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -179,16 +178,13 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = RJX83ALG73;
+				DEVELOPMENT_TEAM = C58ABB3474;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationPortraitUpsideDown,
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -264,16 +260,13 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = RJX83ALG73;
+				DEVELOPMENT_TEAM = C58ABB3474;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationPortraitUpsideDown,
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
