@@ -474,7 +474,7 @@ struct LeaderboardView: View {
                 }
             }
             .padding(24)
-            .frame(width: 340)
+            .frame(width: min(800, UIScreen.main.bounds.width * 0.85))
             .background(
                 RoundedRectangle(cornerRadius: 24)
                     .fill(Color(white: 0.1))
