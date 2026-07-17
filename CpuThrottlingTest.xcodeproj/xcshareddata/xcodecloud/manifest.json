@@ -1,0 +1,9 @@
+{
+  "id" : "85f02e7d-314e-4e83-b593-bcfd90652378",
+  "targets" : [
+    {
+      "id" : "df4e1f25-0f54-4705-b87b-6d23c4fbaa2e",
+      "name" : "CpuThrottlingTest"
+    }
+  ]
+}

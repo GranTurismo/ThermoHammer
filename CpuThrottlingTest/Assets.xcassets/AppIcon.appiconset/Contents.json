@@ -1,8 +1,25 @@
 {
   "images" : [
     {
-      "idiom" : "universal",
-      "platform" : "ios",
+      "idiom" : "iphone",
+      "size" : "60x60",
+      "scale" : "2x",
+      "filename" : "icon_120.png"
+    },
+    {
+      "idiom" : "ipad",
+      "size" : "76x76",
+      "scale" : "2x",
+      "filename" : "icon_152.png"
+    },
+    {
+      "idiom" : "ipad",
+      "size" : "83.5x83.5",
+      "scale" : "2x",
+      "filename" : "icon_167.png"
+    },
+    {
+      "idiom" : "ios-marketing",
       "size" : "1024x1024",
       "scale" : "1x",
       "filename" : "icon_1024.png"
