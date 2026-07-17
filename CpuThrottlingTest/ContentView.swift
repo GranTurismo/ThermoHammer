@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreTelephony
 
 struct SummaryDetails {
     let duration: TimeInterval
@@ -622,6 +623,68 @@ struct ContentView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
     
+    // Pre-check diagnostics helpers
+    private var isLowPowerModeEnabled: Bool {
+        ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+    
+    private var isCharging: Bool {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let state = UIDevice.current.batteryState
+        return state == .charging || state == .full
+    }
+    
+    private var isCellularRadioActive: Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        let networkInfo = CTTelephonyNetworkInfo()
+        if let technologies = networkInfo.serviceCurrentRadioAccessTechnology, !technologies.isEmpty {
+            return true
+        }
+        return false
+        #endif
+    }
+    
+    enum PreCheckStatus {
+        case optimal, warning, critical, info
+    }
+    
+    private func warningRow(icon: String, title: String, message: String, status: PreCheckStatus, statusColor: Color) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(statusColor)
+                .frame(width: 24, height: 24)
+                .background(statusColor.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundColor(.white)
+                
+                Text(message)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            
+            Image(systemName: status == .optimal ? "checkmark.circle.fill" : (status == .critical ? "xmark.octagon.fill" : (status == .info ? "info.circle.fill" : "exclamationmark.circle.fill")))
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(statusColor)
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.02))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.04), lineWidth: 1)
+        )
+    }
+    
     // --- Custom Warning Overlays ---
     
     private var startWarningOverlay: some View {
@@ -636,23 +699,97 @@ struct ContentView: View {
             
             VStack(spacing: 20) {
                 VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.orange)
-                        .shadow(color: .orange.opacity(0.3), radius: 8)
+                    Image(systemName: "checklist")
+                        .font(.system(size: 32))
+                        .foregroundColor(.blue)
+                        .shadow(color: .blue.opacity(0.3), radius: 8)
                     
-                    Text("FOREGROUND REQUIRED")
+                    Text("PRE-TEST DIAGNOSTICS")
                         .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .tracking(1)
+                        .tracking(1.5)
                         .foregroundColor(.white)
                 }
-                .padding(.top, 10)
+                .padding(.top, 5)
                 
-                Text("To ensure testing accuracy, you must keep the app in the foreground. If you minimize the app, switch to another app, lock your screen, or open the control center, the test will be cancelled immediately.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        // 1. Phone Case Warning (Always shown)
+                        warningRow(
+                            icon: "iphone.smartcover",
+                            title: "REMOVE PHONE CASE",
+                            message: "Highly recommended to remove your device case. Trapped heat severely skews throttling scores.",
+                            status: .warning,
+                            statusColor: .orange
+                        )
+                        
+                        // 2. Low Power Mode Check
+                        if isLowPowerModeEnabled {
+                            warningRow(
+                                icon: "battery.50",
+                                title: "LOW POWER MODE IS ON",
+                                message: "Please turn off Low Power Mode in Settings to get accurate unthrottled CPU performance.",
+                                status: .warning,
+                                statusColor: .orange
+                            )
+                        } else {
+                            warningRow(
+                                icon: "battery.100",
+                                title: "POWER STATE OPTIMAL",
+                                message: "Low Power Mode is disabled.",
+                                status: .optimal,
+                                statusColor: .green
+                            )
+                        }
+                        
+                        // 3. Charger Check
+                        if isCharging {
+                            warningRow(
+                                icon: "bolt.fill",
+                                title: "CHARGER CONNECTED!",
+                                message: "CRITICAL: Unplug your charger. Battery charging emits significant heat that forces thermal throttling.",
+                                status: .critical,
+                                statusColor: .red
+                            )
+                        } else {
+                            warningRow(
+                                icon: "bolt.slash.fill",
+                                title: "DISCONNECTED FROM CHARGER",
+                                message: "Device is running on battery.",
+                                status: .optimal,
+                                statusColor: .green
+                            )
+                        }
+                        
+                        // 4. Airplane Mode Check
+                        if isCellularRadioActive {
+                            warningRow(
+                                icon: "antenna.radiowaves.left.and.right",
+                                title: "CELLULAR NETWORK DETECTED",
+                                message: "Recommend turning on Airplane Mode. Cellular search generates extra background heat.",
+                                status: .warning,
+                                statusColor: .orange
+                            )
+                        } else {
+                            warningRow(
+                                icon: "airplane",
+                                title: "AIRPLANE MODE / OFFLINE",
+                                message: "Cellular radio is offline.",
+                                status: .optimal,
+                                statusColor: .green
+                            )
+                        }
+                        
+                        // 5. Foreground Warning
+                        warningRow(
+                            icon: "app.badge.fill",
+                            title: "KEEP APP IN FOREGROUND",
+                            message: "Minimizing, locking, or switching apps cancels the stress test automatically.",
+                            status: .info,
+                            statusColor: .blue
+                        )
+                    }
+                }
+                .frame(maxHeight: 280)
                 
                 Divider()
                     .background(Color.white.opacity(0.1))
@@ -725,7 +862,7 @@ struct ContentView: View {
                 .padding(.bottom, 5)
             }
             .padding(24)
-            .frame(width: 320)
+            .frame(width: min(450, UIScreen.main.bounds.width * 0.9))
             .background(
                 RoundedRectangle(cornerRadius: 24)
                     .fill(Color(white: 0.1).opacity(0.95))
