@@ -413,68 +413,72 @@ struct LeaderboardView: View {
                 Divider()
                     .background(Color.white.opacity(0.1))
                 
-                if isStampsLoading {
-                    VStack(spacing: 16) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                            .scaleEffect(1.2)
-                        Text("LOADING STAMP DATA...")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(height: 320)
-                    .frame(maxWidth: .infinity)
-                } else if let errorMsg = stampsErrorMessage {
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 32))
-                            .foregroundColor(.orange)
-                        Text("FAILED TO LOAD STAMPS")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                        Text(errorMsg)
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        
-                        Button(action: {
-                            stampsErrorMessage = nil
-                            isStampsLoading = true
-                            let entryId = entry.id
-                            Task {
-                                do {
-                                    let fetchedStamps = try await LeaderboardService.shared.fetchStamps(for: entryId)
-                                    await MainActor.run {
-                                        detailedStamps = fetchedStamps
-                                        isStampsLoading = false
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        if isStampsLoading {
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+                                    .scaleEffect(1.2)
+                                Text("LOADING STAMP DATA...")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(height: 320)
+                            .frame(maxWidth: .infinity)
+                        } else if let errorMsg = stampsErrorMessage {
+                            VStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.orange)
+                                Text("FAILED TO LOAD STAMPS")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Text(errorMsg)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                                
+                                Button(action: {
+                                    stampsErrorMessage = nil
+                                    isStampsLoading = true
+                                    let entryId = entry.id
+                                    Task {
+                                        do {
+                                            let fetchedStamps = try await LeaderboardService.shared.fetchStamps(for: entryId)
+                                            await MainActor.run {
+                                                detailedStamps = fetchedStamps
+                                                isStampsLoading = false
+                                            }
+                                        } catch {
+                                            await MainActor.run {
+                                                stampsErrorMessage = error.localizedDescription
+                                                isStampsLoading = false
+                                            }
+                                        }
                                     }
-                                } catch {
-                                    await MainActor.run {
-                                        stampsErrorMessage = error.localizedDescription
-                                        isStampsLoading = false
-                                    }
+                                }) {
+                                    Text("RETRY")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 6)
+                                        .background(Color.white)
+                                        .cornerRadius(6)
                                 }
                             }
-                        }) {
-                            Text("RETRY")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 6)
-                                .background(Color.white)
-                                .cornerRadius(6)
+                            .frame(height: 320)
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            // Stamps are loaded successfully!
+                            stampsDetailCard(entry: entry, stamps: detailedStamps, stabilityVal: stabilityVal)
                         }
                     }
-                    .frame(height: 320)
-                    .frame(maxWidth: .infinity)
-                } else {
-                    // Stamps are loaded successfully!
-                    stampsDetailCard(entry: entry, stamps: detailedStamps, stabilityVal: stabilityVal)
                 }
             }
             .padding(24)
-            .frame(width: min(800, UIScreen.main.bounds.width * 0.85))
+            .frame(width: UIScreen.main.bounds.width * 0.8, height: UIScreen.main.bounds.height * 0.8)
             .background(
                 RoundedRectangle(cornerRadius: 24)
                     .fill(Color(white: 0.1))
@@ -549,7 +553,7 @@ struct LeaderboardView: View {
                     .padding(.horizontal, 4)
                 
                 StabilityChart(points: chartPoints, events: chartEvents)
-                    .frame(height: 180)
+                    .frame(height: 280)
                     .padding(8)
                     .background(Color.black.opacity(0.2))
                     .cornerRadius(16)
