@@ -182,16 +182,18 @@ class StressEngine: ObservableObject {
             }
         }
         
-        // Start timers
-        // 1. Stats gatherer: updates every 250ms
-        statsTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        // Start timers in common runloop mode to prevent starvation during scroll gestures
+        let stats = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             self?.gatherStats()
         }
+        RunLoop.main.add(stats, forMode: .common)
+        self.statsTimer = stats
         
-        // 2. Stopwatch: ticks every 1 second
-        timeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let time = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.tickTimer()
         }
+        RunLoop.main.add(time, forMode: .common)
+        self.timeTimer = time
 
         // Prevent screen lock
         DispatchQueue.main.async {

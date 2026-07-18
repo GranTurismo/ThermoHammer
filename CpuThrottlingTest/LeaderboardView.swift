@@ -664,8 +664,16 @@ struct LeaderboardView: View {
                         uploadError = nil
                         Task {
                             do {
+                                var finalSessionId = pending.sessionId
+                                var finalEncryptionKey = pending.encryptionKey
+                                if finalSessionId == 0 {
+                                    let session = try await LeaderboardService.shared.createSession()
+                                    finalSessionId = session.id
+                                    finalEncryptionKey = session.encryptionKey
+                                }
+                                
                                 let hmacHash = ThermoHasher.computeHash(
-                                    encryptionKey: pending.encryptionKey,
+                                    encryptionKey: finalEncryptionKey,
                                     stamps: pending.stamps
                                 )
                                 let payload = HammerPayload(
@@ -675,7 +683,7 @@ struct LeaderboardView: View {
                                     deviceModel: pending.deviceModel,
                                     os: 1,
                                     osVersion: pending.osVersion,
-                                    sessionId: pending.sessionId,
+                                    sessionId: finalSessionId,
                                     hash: hmacHash
                                 )
                                 try await LeaderboardService.shared.submitScore(payload: payload)

@@ -31,6 +31,7 @@ struct ContentView: View {
     @State private var submitErrorMessage: String? = nil
     
     @State private var selectedTab = 0
+    @State private var currentPendingResultId: UUID? = nil
     
     var body: some View {
         ZStack {
@@ -138,6 +139,41 @@ struct ContentView: View {
                 
                 let minStability = engine.chartPoints.map { $0.score }.min() ?? engine.overallStability
                 let worstState = engine.thermalEvents.map { $0.state }.max(by: { $0.rawValue < $1.rawValue }) ?? .nominal
+                
+                // Automatically save to local history / pending results immediately!
+                let generatedId = UUID()
+                let pendingResult = PendingTestResult(
+                    id: generatedId,
+                    timestamp: Date().timeIntervalSince1970,
+                    durationSeconds: Int(engine.elapsedTime),
+                    testDurationType: {
+                        switch engine.testDuration {
+                        case .minutes5: return 0
+                        case .minutes15: return 1
+                        case .minutes30: return 2
+                        }
+                    }(),
+                    minStability: minStability,
+                    finalStability: engine.overallStability,
+                    worstThermalState: {
+                        switch worstState {
+                        case .nominal: return 0
+                        case .fair: return 1
+                        case .serious: return 2
+                        case .critical: return 3
+                        @unknown default: return 0
+                        }
+                    }(),
+                    stamps: engine.recordedStamps,
+                    deviceModel: LeaderboardService.shared.getDeviceModelName(),
+                    deviceManufacturer: "Apple",
+                    osVersion: UIDevice.current.systemVersion,
+                    sessionId: engine.sessionId ?? 0,
+                    encryptionKey: engine.encryptionKey ?? ""
+                )
+                PendingResultStore.shared.saveResult(pendingResult)
+                currentPendingResultId = generatedId
+                submitSuccessMessage = "SAVED TO PENDING RESULTS!"
                 
                 summaryDetails = SummaryDetails(
                     duration: engine.elapsedTime,
@@ -474,6 +510,9 @@ struct ContentView: View {
                                             try await LeaderboardService.shared.submitScore(payload: payload)
                                             
                                             await MainActor.run {
+                                                if let pendingId = currentPendingResultId {
+                                                    PendingResultStore.shared.deleteResult(id: pendingId)
+                                                }
                                                 isSubmittingScore = false
                                                 submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
                                             }
@@ -509,11 +548,11 @@ struct ContentView: View {
                                 HStack {
                                     Image(systemName: "antenna.radiowaves.left.and.right")
                                         .foregroundColor(.yellow)
-                                    Text("CONNECTION LOST")
+                                    Text("CONNECTION LOST (AUTO-SAVED)")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                                         .foregroundColor(.yellow)
                                 }
-                                Text("Please enable Wi-Fi or cellular data to submit your score. Alternatively, save this result to pending history to submit it later.")
+                                Text("Your result has been saved locally. You can submit it from the Leaderboard tab once online, or connect and try again now.")
                                     .font(.system(size: 9))
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
@@ -521,36 +560,6 @@ struct ContentView: View {
                                 
                                 HStack(spacing: 8) {
                                     Button(action: {
-                                        let pending = PendingTestResult(
-                                            id: UUID(),
-                                            timestamp: Date().timeIntervalSince1970,
-                                            durationSeconds: Int(details.duration),
-                                            testDurationType: {
-                                                switch engine.testDuration {
-                                                case .minutes5: return 0
-                                                case .minutes15: return 1
-                                                case .minutes30: return 2
-                                                }
-                                            }(),
-                                            minStability: details.minStability,
-                                            finalStability: details.finalStability,
-                                            worstThermalState: {
-                                                switch details.worstThermalState {
-                                                case .nominal: return 0
-                                                case .fair: return 1
-                                                case .serious: return 2
-                                                case .critical: return 3
-                                                @unknown default: return 0
-                                                }
-                                            }(),
-                                            stamps: engine.recordedStamps,
-                                            deviceModel: LeaderboardService.shared.getDeviceModelName(),
-                                            deviceManufacturer: "Apple",
-                                            osVersion: UIDevice.current.systemVersion,
-                                            sessionId: engine.sessionId!,
-                                            encryptionKey: engine.encryptionKey!
-                                        )
-                                        PendingResultStore.shared.saveResult(pending)
                                         submitSuccessMessage = "SAVED TO PENDING RESULTS!"
                                     }) {
                                         Text("SAVE PENDING")
@@ -590,6 +599,9 @@ struct ContentView: View {
                                                 )
                                                 try await LeaderboardService.shared.submitScore(payload: payload)
                                                 await MainActor.run {
+                                                    if let pendingId = currentPendingResultId {
+                                                        PendingResultStore.shared.deleteResult(id: pendingId)
+                                                    }
                                                     isSubmittingScore = false
                                                     submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
                                                 }
@@ -614,21 +626,21 @@ struct ContentView: View {
                         }
                     } else {
                         // Offline run from the start
-                        VStack(alignment: .center, spacing: 4) {
+                        VStack(alignment: .center, spacing: 6) {
                             HStack {
-                                Image(systemName: "wifi.slash")
-                                    .foregroundColor(.secondary)
-                                Text("OFFLINE DIAGNOSTIC RUN")
-                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.secondary)
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("OFFLINE RUN AUTO-SAVED")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.green)
                             }
-                            Text("This test was run offline. Enable cellular/Wi-Fi to submit scores in future runs.")
+                            Text("Your result has been saved locally. You can view and submit it from the Leaderboard tab once you're online.")
                                 .font(.system(size: 8))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 12)
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 8)
                         .frame(maxWidth: .infinity)
                         .background(Color.white.opacity(0.02))
                         .cornerRadius(10)
