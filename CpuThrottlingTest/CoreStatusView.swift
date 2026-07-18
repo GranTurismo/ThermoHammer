@@ -87,12 +87,9 @@ struct CoreMeter: View {
 struct CoreStatusView: View {
     let coreImpacts: [Double]
     
-    // Grid configuration: dynamic columns that fit nicely on iPhone portrait screen
+    // Grid configuration: adaptive columns to prevent overlapping on narrow screens
     private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
+        GridItem(.adaptive(minimum: 80), spacing: 10)
     ]
     
     var body: some View {

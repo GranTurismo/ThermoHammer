@@ -17,6 +17,12 @@ import com.example.thermohammer.ui.screens.MainScreen
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.layout.systemBarsPadding
 
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import android.view.WindowManager
+import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,6 +32,19 @@ class MainActivity : ComponentActivity() {
         val engineFactory = StressEngineFactory(this)
         val engine = ViewModelProvider(this, engineFactory)[StressEngine::class.java]
         lifecycle.addObserver(engine)
+
+        // Prevent screen sleep/lock during CPU stress diagnostic runs
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                engine.state.collect { state ->
+                    if (state.isRunning) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                }
+            }
+        }
 
         setContent {
             ThermoHammerTheme {

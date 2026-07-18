@@ -192,6 +192,11 @@ class StressEngine: ObservableObject {
         timeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.tickTimer()
         }
+
+        // Prevent screen lock
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
     }
     
     func stopTest() {
@@ -204,6 +209,11 @@ class StressEngine: ObservableObject {
         timeTimer?.invalidate()
         statsTimer = nil
         timeTimer = nil
+
+        // Re-enable screen lock
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
     }
     
     private func gatherStats() {
