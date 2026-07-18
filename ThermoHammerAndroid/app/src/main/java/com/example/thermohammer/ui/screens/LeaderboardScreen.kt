@@ -13,15 +13,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.thermohammer.data.PendingResultStore
+import com.example.thermohammer.data.PendingTestResult
 import com.example.thermohammer.network.ApiClient
 import com.example.thermohammer.network.DeviceHammerStamp
 import com.example.thermohammer.network.HammerDto
+import com.example.thermohammer.network.HammerPayload
+import com.example.thermohammer.network.ThermoHasher
 import com.example.thermohammer.ui.components.*
 import com.example.thermohammer.ui.overlays.*
 import kotlinx.coroutines.launch
@@ -30,6 +35,10 @@ data class RankedEntry(val entry: HammerDto, val rank: Int, val stability: Doubl
 
 @Composable
 fun LeaderboardScreen(isNetworkConnected: Boolean) {
+    val context = LocalContext.current
+    val store = remember { PendingResultStore(context) }
+    var pendingList by remember { mutableStateOf(store.getAllResults()) }
+
     var entries by remember { mutableStateOf<List<HammerDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -38,6 +47,11 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
     var detailedStamps by remember { mutableStateOf<List<DeviceHammerStamp>>(emptyList()) }
     var stampsLoading by remember { mutableStateOf(false) }
     var stampsError by remember { mutableStateOf<String?>(null) }
+
+    // Upload status for pending runs
+    var uploadingId by remember { mutableStateOf<String?>(null) }
+    var uploadError by remember { mutableStateOf<String?>(null) }
+
     val coroutineScope = rememberCoroutineScope()
 
     fun loadData() {
@@ -53,7 +67,10 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
         }
     }
 
-    LaunchedEffect(Unit) { loadData() }
+    LaunchedEffect(isNetworkConnected) {
+        loadData()
+        pendingList = store.getAllResults()
+    }
 
     val ranked: List<RankedEntry> = remember(entries) {
         entries.sortedByDescending { it.stabilityPercentage }.mapIndexed { i, e -> RankedEntry(e, i + 1, e.stabilityPercentage) }
@@ -83,50 +100,142 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                 }
             }
 
-            if (!isNetworkConnected) {
-                OfflineView()
-            } else if (isLoading) {
-                LoadingView()
-            } else if (errorMsg != null) {
-                ErrorView(errorMsg!!) { loadData() }
-            } else {
-                // Search field
-                Row(
-                    Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.04f))
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("⌕ ", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp)
-                    BasicTextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        singleLine = true,
-                        textStyle = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                        modifier = Modifier.fillMaxWidth(),
-                        decorationBox = { innerTextField ->
-                            if (searchText.isEmpty()) Text("Search model, vendor, or OS...", style = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = FontFamily.Monospace))
-                            innerTextField()
-                        }
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                // Pending Results Section
+                if (pendingList.isNotEmpty()) {
+                    item {
+                        Text(
+                            "PENDING OFFLINE RUNS (${pendingList.size})",
+                            style = TextStyle(color = Color(0xFFF2C94C), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                    items(pendingList) { pending ->
+                        PendingResultRow(
+                            pending = pending,
+                            isNetworkConnected = isNetworkConnected,
+                            isUploading = uploadingId == pending.id,
+                            uploadError = if (uploadingId == pending.id) uploadError else null,
+                            onSubmit = {
+                                uploadingId = pending.id
+                                uploadError = null
+                                coroutineScope.launch {
+                                    try {
+                                        val hash = ThermoHasher.computeHash(pending.encryptionKey, pending.stamps)
+                                        val payload = HammerPayload(
+                                            stamps = pending.stamps,
+                                            type = pending.testDurationType,
+                                            deviceManufacturer = pending.deviceManufacturer,
+                                            deviceModel = pending.deviceModel,
+                                            os = 2,
+                                            osVersion = pending.osVersion,
+                                            sessionId = pending.sessionId,
+                                            hash = hash
+                                        )
+                                        ApiClient.api.submitScore(payload)
+                                        store.deleteResult(pending.id)
+                                        pendingList = store.getAllResults()
+                                        uploadingId = null
+                                        loadData() // Refresh leaderboard with new scores
+                                    } catch (e: Exception) {
+                                        uploadError = e.message ?: "Submission failed"
+                                        uploadingId = null
+                                    }
+                                }
+                            },
+                            onDelete = {
+                                store.deleteResult(pending.id)
+                                pendingList = store.getAllResults()
+                            }
+                        )
+                    }
+                    item {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 12.dp))
+                    }
+                }
+
+                // Global Leaderboard Header / Search
+                item {
+                    Text(
+                        "ONLINE RANKINGS",
+                        style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
+                        modifier = Modifier.padding(bottom = 6.dp)
                     )
                 }
 
-                Spacer(Modifier.height(12.dp))
-
-                if (filtered.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("NO ENTRIES FOUND", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
+                if (!isNetworkConnected) {
+                    item {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White.copy(alpha = 0.02f))
+                                .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(16.dp))
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("⌀", fontSize = 36.sp, color = Color.White.copy(alpha = 0.3f))
+                                Text("Leaderboard is Offline", style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                                Text("Please enable cellular data or Wi-Fi to fetch global rankings.", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, textAlign = TextAlign.Center))
+                            }
+                        }
+                    }
+                } else if (isLoading) {
+                    item {
+                        Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Color(0xFF4A9EFF))
+                        }
+                    }
+                } else if (errorMsg != null) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("⚠", fontSize = 32.sp, color = Color(0xFFEB5757))
+                                Text("Could Not Fetch Leaderboard", style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                                Text(errorMsg!!, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center))
+                            }
+                        }
                     }
                 } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    // Search bar
+                    item {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.04f))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("⌕ ", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp)
+                            BasicTextField(
+                                value = searchText,
+                                onValueChange = { searchText = it },
+                                singleLine = true,
+                                textStyle = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                                modifier = Modifier.fillMaxWidth(),
+                                decorationBox = { innerTextField ->
+                                    if (searchText.isEmpty()) Text("Search model, vendor, or OS...", style = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = FontFamily.Monospace))
+                                    innerTextField()
+                                }
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+
+                    if (filtered.isEmpty()) {
+                        item {
+                            Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                                Text("NO ENTRIES FOUND", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
+                            }
+                        }
+                    } else {
                         items(filtered) { item ->
                             LeaderboardRow(item, onClick = {
                                 selectedEntry = item.entry
@@ -141,9 +250,9 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                 }
                             })
                         }
-                        item { Spacer(Modifier.height(24.dp)) }
                     }
                 }
+                item { Spacer(Modifier.height(24.dp)) }
             }
         }
 
@@ -165,6 +274,66 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun PendingResultRow(
+    pending: PendingTestResult,
+    isNetworkConnected: Boolean,
+    isUploading: Boolean,
+    uploadError: String?,
+    onSubmit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.03f))
+            .border(1.dp, Color(0xFFF2C94C).copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(pending.deviceModel, style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val typeName = when (pending.testDurationType) { 0 -> "5 MIN"; 1 -> "15 MIN"; else -> "30 MIN" }
+                Text(typeName, style = TextStyle(color = Color(0xFFF2C94C), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
+                Text("Score stability: %.0f%%".format(pending.finalStability), style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp))
+            }
+            if (uploadError != null) {
+                Spacer(Modifier.height(4.dp))
+                Text("Error: $uploadError", style = TextStyle(color = Color(0xFFEB5757), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Delete button
+            IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                Text("✕", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            // Upload button
+            if (isUploading) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = Color(0xFFF2C94C), strokeWidth = 2.dp)
+            } else {
+                Button(
+                    onClick = onSubmit,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isNetworkConnected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.08f)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text(
+                        text = if (isNetworkConnected) "SUBMIT" else "OFFLINE",
+                        style = TextStyle(color = if (isNetworkConnected) Color.Black else Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
         }
     }
 }
@@ -292,7 +461,6 @@ private fun DetailOverlay(
                     val chartPts = stamps.map { s -> com.example.thermohammer.engine.StabilityPoint(s.elapsedMs.toFloat() / 1000f, ((s.score.toDouble() / maxScore) * 100.0).toFloat()) }
 
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        // Stats
                         Column(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.03f)).padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -309,39 +477,6 @@ private fun DetailOverlay(
                         StabilityChart(points = chartPts, events = emptyList())
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable private fun OfflineView() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("⌀", fontSize = 50.sp, color = Color.White.copy(alpha = 0.3f))
-            Text("LEADERBOARD OFFLINE", style = TextStyle(color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-            Text("Please connect to the internet to fetch and view global stability rankings.", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, textAlign = TextAlign.Center), modifier = Modifier.padding(horizontal = 40.dp))
-        }
-    }
-}
-
-@Composable private fun LoadingView() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(Modifier.size(40.dp), color = Color(0xFF4A9EFF))
-            Spacer(Modifier.height(16.dp))
-            Text("FETCHING RANKINGS...", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
-        }
-    }
-}
-
-@Composable private fun ErrorView(msg: String, onRetry: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("⚠", fontSize = 40.sp, color = Color(0xFFEB5757).copy(alpha = 0.8f))
-            Text("COULD NOT LOAD LEADERBOARD", style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-            Text(msg, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, textAlign = TextAlign.Center), modifier = Modifier.padding(horizontal = 32.dp))
-            Button(onClick = onRetry, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.White)) {
-                Text("RETRY", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
             }
         }
     }

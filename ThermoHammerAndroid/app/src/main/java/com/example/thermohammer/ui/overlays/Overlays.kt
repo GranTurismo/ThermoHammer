@@ -232,10 +232,12 @@ fun SummaryOverlay(
     finalStability: Float,
     worstThermal: ThermalState,
     hasSession: Boolean,
+    isNetworkConnected: Boolean,
     isSubmitting: Boolean,
     submitSuccess: String?,
     submitError: String?,
     onSubmit: () -> Unit,
+    onSavePending: () -> Unit,
     onDismiss: () -> Unit
 ) {
     OverlayContainer(onDismiss = onDismiss) {
@@ -256,36 +258,76 @@ fun SummaryOverlay(
             Spacer(Modifier.height(16.dp))
             OverlayDivider()
             Spacer(Modifier.height(12.dp))
-            // Leaderboard section
+            
+            // Leaderboard & Pending section
             if (hasSession) {
-                when {
-                    submitSuccess != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                        Text("✓ ", color = Color(0xFF33CC66), fontWeight = FontWeight.Black)
-                        MonoLabel(submitSuccess, size = 11f, alpha = 1f)
+                if (isNetworkConnected) {
+                    when {
+                        submitSuccess != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                            Text("✓ ", color = Color(0xFF33CC66), fontWeight = FontWeight.Black)
+                            MonoLabel(submitSuccess, size = 11f, alpha = 1f)
+                        }
+                        submitError != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                            Text("✗ SUBMISSION FAILED", color = Color(0xFFEB5757), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
+                            Spacer(Modifier.height(4.dp))
+                            Text(submitError, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center))
+                        }
+                        isSubmitting -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(16.dp), color = Color(0xFF4A9EFF), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            MonoLabel("SUBMITTING SCORE...", size = 11f, alpha = 1f)
+                        }
+                        else -> Button(
+                            onClick = onSubmit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A9EFF))
+                        ) {
+                            Text("👑  SUBMIT SCORE TO LEADERBOARD", style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                        }
                     }
-                    submitError != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        Text("✗ SUBMISSION FAILED", color = Color(0xFFEB5757), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
-                        Spacer(Modifier.height(4.dp))
-                        Text(submitError, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center))
-                    }
-                    isSubmitting -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(16.dp), color = Color(0xFF4A9EFF), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        MonoLabel("SUBMITTING SCORE...", size = 11f, alpha = 1f)
-                    }
-                    else -> Button(
-                        onClick = onSubmit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A9EFF))
-                    ) {
-                        Text("👑  SUBMIT SCORE TO LEADERBOARD", style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                } else {
+                    // Connected to server originally (hasSession is true), but went offline during/after test
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text("📡 CONNECTION LOST", color = Color(0xFFF2C94C), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Please enable Wi-Fi or cellular data to submit your score. Alternatively, save this result to pending history to submit it later.",
+                            style = TextStyle(color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, textAlign = TextAlign.Center),
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) {
+                                Button(
+                                    onClick = onSavePending,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f))
+                                ) {
+                                    Text("SAVE PENDING", style = TextStyle(color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                                }
+                            }
+                            Box(Modifier.weight(1f)) {
+                                Button(
+                                    onClick = onSubmit,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A9EFF))
+                                ) {
+                                    Text("RETRY SUBMIT", style = TextStyle(color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                                }
+                            }
+                        }
                     }
                 }
             } else {
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.02f)).border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp)).padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
-                ) {
-                    MonoLabel("OFFLINE MODE — LEADERBOARD UNAVAILABLE", size = 8f)
+                // Offline test from start (no session initialized)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("🔒 OFFLINE DIAGNOSTIC RUN", color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "This test was run offline. Enable cellular/Wi-Fi to submit scores in future runs.",
+                        style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center)
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))

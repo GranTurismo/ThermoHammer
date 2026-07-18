@@ -8,17 +8,27 @@ android {
     namespace = "com.example.thermohammer"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.thermohammer"
+        applicationId = "com.granturismo.thermohammer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("/Users/gogitakupatadze/Downloads/GTech.keystore")
+            storePassword = "strelok222"
+            keyAlias = "gtech"
+            keyPassword = "strelok222"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

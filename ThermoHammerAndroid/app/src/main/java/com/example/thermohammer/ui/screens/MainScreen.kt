@@ -165,12 +165,14 @@ private fun DiagnosticsScreenWrapper(
             val stamps = state.recordedStamps
             val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
             val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
+            val context = LocalContext.current
             com.example.thermohammer.ui.overlays.SummaryOverlay(
                 duration = state.elapsedSeconds,
                 minStability = minStab,
                 finalStability = state.overallStability,
                 worstThermal = worstThermal,
                 hasSession = state.sessionId != null,
+                isNetworkConnected = isNetworkConnected,
                 isSubmitting = isSubmitting,
                 submitSuccess = submitSuccess,
                 submitError = submitError,
@@ -194,6 +196,32 @@ private fun DiagnosticsScreenWrapper(
                         } catch (e: Exception) {
                             isSubmitting = false; submitError = e.message ?: "Submission failed"
                         }
+                    }
+                },
+                onSavePending = {
+                    try {
+                        val durationType = when (state.testDuration) {
+                            TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
+                        }
+                        val pending = com.example.thermohammer.data.PendingTestResult(
+                            id = java.util.UUID.randomUUID().toString(),
+                            timestamp = System.currentTimeMillis(),
+                            durationSeconds = state.elapsedSeconds,
+                            testDurationType = durationType,
+                            minStability = minStab,
+                            finalStability = state.overallStability,
+                            worstThermalState = worstThermal.ordinal,
+                            stamps = stamps,
+                            deviceModel = engine.getDeviceModel(),
+                            deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
+                            osVersion = engine.getAndroidVersion(),
+                            sessionId = state.sessionId ?: 0,
+                            encryptionKey = state.encryptionKey ?: ""
+                        )
+                        com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
+                        submitSuccess = "SAVED TO PENDING RESULTS!"
+                    } catch (e: Exception) {
+                        submitError = "Failed to save pending result"
                     }
                 },
                 onDismiss = { showSummary = false }

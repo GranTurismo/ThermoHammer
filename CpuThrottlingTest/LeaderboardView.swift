@@ -20,6 +20,9 @@ struct LeaderboardView: View {
     @State private var stampsErrorMessage: String? = nil
     
     @StateObject private var networkMonitor = NetworkMonitor.shared
+    @ObservedObject private var pendingStore = PendingResultStore.shared
+    @State private var uploadingId: UUID? = nil
+    @State private var uploadError: String? = nil
     
     var rankedEntries: [EntryWithStability] {
         let mapped = entries.map { entry in
@@ -90,11 +93,21 @@ struct LeaderboardView: View {
                 .padding(.bottom, 12)
                 
                 if !networkMonitor.isConnected {
-                    offlineView
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            pendingSection
+                            offlineView
+                        }
+                    }
                 } else if isLoading {
                     loadingView
                 } else if let error = errorMessage {
-                    errorView(error)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            pendingSection
+                            errorView(error)
+                        }
+                    }
                 } else {
                     mainContentView
                 }
@@ -205,24 +218,33 @@ struct LeaderboardView: View {
             )
             .padding(.horizontal)
             
-            if filteredEntries.isEmpty {
-                VStack(spacing: 10) {
-                    Spacer()
-                    Text("NO ENTRIES FOUND")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 10) {
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 10) {
+                    pendingSection
+                    
+                    HStack {
+                        Text("ONLINE RANKINGS")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                    
+                    if filteredEntries.isEmpty {
+                        VStack(spacing: 10) {
+                            Text("NO ENTRIES FOUND")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .padding(.top, 40)
+                        }
+                    } else {
                         ForEach(filteredEntries) { entryWithStability in
                             leaderboardRow(entryWithStability)
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 24)
                 }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
         }
     }
@@ -563,6 +585,132 @@ struct LeaderboardView: View {
                     )
             }
         }
+    }
+    
+    @ViewBuilder
+    private var pendingSection: some View {
+        if !pendingStore.results.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("PENDING OFFLINE RUNS (\(pendingStore.results.count))")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+                
+                ForEach(pendingStore.results) { pending in
+                    pendingResultRow(pending)
+                }
+                
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 8)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func pendingResultRow(_ pending: PendingTestResult) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pending.deviceModel)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                HStack(spacing: 6) {
+                    Text(durationName(for: pending.testDurationType))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
+                    
+                    Circle()
+                        .frame(width: 3, height: 3)
+                        .foregroundColor(.white.opacity(0.15))
+                    
+                    Text(String(format: "Score stability: %.0f%%", pending.finalStability))
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+                
+                if uploadingId == pending.id, let error = uploadError {
+                    Text("Error: \(error)")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(.red)
+                }
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 8) {
+                // Delete button
+                Button(action: {
+                    pendingStore.deleteResult(id: pending.id)
+                }) {
+                    Text("✕")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(6)
+                }
+                
+                // Upload button
+                if uploadingId == pending.id {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.95, green: 0.7, blue: 0.1)))
+                        .scaleEffect(0.8)
+                } else {
+                    Button(action: {
+                        uploadingId = pending.id
+                        uploadError = nil
+                        Task {
+                            do {
+                                let hmacHash = ThermoHasher.computeHash(
+                                    encryptionKey: pending.encryptionKey,
+                                    stamps: pending.stamps
+                                )
+                                let payload = HammerPayload(
+                                    stamps: pending.stamps,
+                                    type: pending.testDurationType,
+                                    deviceManufacturer: pending.deviceManufacturer,
+                                    deviceModel: pending.deviceModel,
+                                    os: 1,
+                                    osVersion: pending.osVersion,
+                                    sessionId: pending.sessionId,
+                                    hash: hmacHash
+                                )
+                                try await LeaderboardService.shared.submitScore(payload: payload)
+                                await MainActor.run {
+                                    pendingStore.deleteResult(id: pending.id)
+                                    uploadingId = nil
+                                    Task { await loadData() }
+                                }
+                            } catch {
+                                await MainActor.run {
+                                    uploadError = error.localizedDescription
+                                    uploadingId = nil
+                                }
+                            }
+                        }
+                    }) {
+                        Text(networkMonitor.isConnected ? "SUBMIT" : "OFFLINE")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(networkMonitor.isConnected ? .black : .white.opacity(0.4))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(networkMonitor.isConnected ? Color(red: 0.95, green: 0.7, blue: 0.1) : Color.white.opacity(0.08))
+                            .cornerRadius(8)
+                    }
+                    .disabled(!networkMonitor.isConnected)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.25), lineWidth: 1)
+        )
     }
     
     private func detailRow(label: String, value: String, valColor: Color = .white) -> some View {
