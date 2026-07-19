@@ -284,7 +284,13 @@ internal fun StatsPanel(state: StressState) {
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard(title = "TEST DURATION", value = "%02d:%02d".format(state.elapsedSeconds / 60, state.elapsedSeconds % 60), modifier = Modifier.weight(1f))
+            val displaySeconds = if (state.isRunning) {
+                val totalSeconds = state.testDuration.seconds ?: 300
+                maxOf(0, totalSeconds - state.elapsedSeconds)
+            } else {
+                state.elapsedSeconds
+            }
+            StatCard(title = "TEST DURATION", value = "%02d:%02d".format(displaySeconds / 60, displaySeconds % 60), modifier = Modifier.weight(1f))
             StatCard(
                 title = "STABILITY SCORE",
                 value = "%.0f%%".format(state.overallStability),

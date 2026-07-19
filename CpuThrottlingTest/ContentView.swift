@@ -256,9 +256,16 @@ struct ContentView: View {
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundColor(.secondary)
                     
-                    Text(formatTime(engine.elapsedTime))
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
+                    if engine.isRunning, let limit = engine.testDuration.timeInterval {
+                        let remaining = max(0.0, limit - engine.elapsedTime)
+                        Text(formatTime(remaining))
+                            .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                    } else {
+                        Text(formatTime(engine.elapsedTime))
+                            .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                    }
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -441,187 +448,107 @@ struct ContentView: View {
                 
                 // --- Leaderboard Section ---
                 VStack(spacing: 8) {
-                    if engine.sessionId != nil, engine.encryptionKey != nil {
-                        if networkMonitor.isConnected {
-                            if let successMsg = submitSuccessMessage {
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green)
-                                    Text(successMsg)
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.green)
-                                }
-                                .padding(.vertical, 8)
-                            } else if let errorMsg = submitErrorMessage {
-                                VStack(alignment: .center, spacing: 4) {
-                                    HStack {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(.red)
-                                        Text("SUBMISSION FAILED")
-                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.red)
-                                    }
-                                    Text(errorMsg)
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .padding(.vertical, 8)
-                            } else if isSubmittingScore {
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                                    Text("SUBMITTING SCORE...")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.blue)
-                                }
-                                .padding(.vertical, 8)
-                            } else {
-                                Button(action: {
-                                    isSubmittingScore = true
-                                    submitSuccessMessage = nil
-                                    submitErrorMessage = nil
-                                    
-                                    Task {
-                                        do {
-                                            let hmacHash = ThermoHasher.computeHash(
-                                                encryptionKey: engine.encryptionKey!,
-                                                stamps: engine.recordedStamps
-                                            )
-                                            
-                                            let durationType: Int
-                                            switch engine.testDuration {
-                                            case .minutes5: durationType = 0
-                                            case .minutes15: durationType = 1
-                                            case .minutes30: durationType = 2
-                                            }
-                                            
-                                            let payload = HammerPayload(
-                                                stamps: engine.recordedStamps,
-                                                type: durationType,
-                                                deviceManufacturer: "Apple",
-                                                deviceModel: LeaderboardService.shared.getDeviceModelName(),
-                                                os: 1, // iOS
-                                                osVersion: UIDevice.current.systemVersion,
-                                                sessionId: engine.sessionId!,
-                                                hash: hmacHash
-                                            )
-                                            
-                                            try await LeaderboardService.shared.submitScore(payload: payload)
-                                            
-                                            await MainActor.run {
-                                                if let pendingId = currentPendingResultId {
-                                                    PendingResultStore.shared.deleteResult(id: pendingId)
-                                                }
-                                                isSubmittingScore = false
-                                                submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
-                                            }
-                                        } catch {
-                                            await MainActor.run {
-                                                isSubmittingScore = false
-                                                submitErrorMessage = error.localizedDescription
-                                            }
-                                        }
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "crown.fill")
-                                        Text("SUBMIT SCORE TO LEADERBOARD")
-                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    }
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        LinearGradient(
-                                            colors: [Color.blue, Color.purple],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .cornerRadius(10)
-                                }
+                    if networkMonitor.isConnected {
+                        if let successMsg = submitSuccessMessage {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text(successMsg)
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.green)
                             }
-                        } else {
-                            // Connection lost
-                            VStack(alignment: .center, spacing: 6) {
+                            .padding(.vertical, 8)
+                        } else if let errorMsg = submitErrorMessage {
+                            VStack(alignment: .center, spacing: 4) {
                                 HStack {
-                                    Image(systemName: "antenna.radiowaves.left.and.right")
-                                        .foregroundColor(.yellow)
-                                    Text("CONNECTION LOST (AUTO-SAVED)")
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                    Text("SUBMISSION FAILED")
                                         .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.yellow)
+                                        .foregroundColor(.red)
                                 }
-                                Text("Your result has been saved locally. You can submit it from the Leaderboard tab once online, or connect and try again now.")
+                                Text(errorMsg)
                                     .font(.system(size: 9))
                                     .foregroundColor(.secondary)
                                     .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 8)
+                            }
+                            .padding(.vertical, 8)
+                        } else if isSubmittingScore {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .blue))
+                                Text("SUBMITTING SCORE...")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.blue)
+                            }
+                            .padding(.vertical, 8)
+                        } else {
+                            Button(action: {
+                                isSubmittingScore = true
+                                submitSuccessMessage = nil
+                                submitErrorMessage = nil
                                 
-                                HStack(spacing: 8) {
-                                    Button(action: {
-                                        submitSuccessMessage = "SAVED TO PENDING RESULTS!"
-                                    }) {
-                                        Text("SAVE PENDING")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.white)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 8)
-                                            .background(Color.white.opacity(0.1))
-                                            .cornerRadius(10)
-                                    }
-                                    
-                                    Button(action: {
-                                        isSubmittingScore = true
-                                        submitSuccessMessage = nil
-                                        submitErrorMessage = nil
-                                        Task {
-                                            do {
-                                                let hmacHash = ThermoHasher.computeHash(
-                                                    encryptionKey: engine.encryptionKey!,
-                                                    stamps: engine.recordedStamps
-                                                )
-                                                let durationType: Int
-                                                switch engine.testDuration {
-                                                case .minutes5: durationType = 0
-                                                case .minutes15: durationType = 1
-                                                case .minutes30: durationType = 2
-                                                }
-                                                let payload = HammerPayload(
-                                                    stamps: engine.recordedStamps,
-                                                    type: durationType,
-                                                    deviceManufacturer: "Apple",
-                                                    deviceModel: LeaderboardService.shared.getDeviceModelName(),
-                                                    os: 1,
-                                                    osVersion: UIDevice.current.systemVersion,
-                                                    sessionId: engine.sessionId!,
-                                                    hash: hmacHash
-                                                )
-                                                try await LeaderboardService.shared.submitScore(payload: payload)
-                                                await MainActor.run {
-                                                    if let pendingId = currentPendingResultId {
-                                                        PendingResultStore.shared.deleteResult(id: pendingId)
-                                                    }
-                                                    isSubmittingScore = false
-                                                    submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
-                                                }
-                                            } catch {
-                                                await MainActor.run {
-                                                    isSubmittingScore = false
-                                                    submitErrorMessage = error.localizedDescription
-                                                }
-                                            }
+                                Task {
+                                    do {
+                                        // Request a session on-the-fly on submit click
+                                        let session = try await LeaderboardService.shared.createSession()
+                                        
+                                        let hmacHash = ThermoHasher.computeHash(
+                                            encryptionKey: session.encryptionKey,
+                                            stamps: engine.recordedStamps
+                                        )
+                                        
+                                        let durationType: Int
+                                        switch engine.testDuration {
+                                        case .minutes5: durationType = 0
+                                        case .minutes15: durationType = 1
+                                        case .minutes30: durationType = 2
                                         }
-                                    }) {
-                                        Text("RETRY SUBMIT")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .foregroundColor(.white)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 8)
-                                            .background(Color.blue)
-                                            .cornerRadius(10)
+                                        
+                                        let payload = HammerPayload(
+                                            stamps: engine.recordedStamps,
+                                            type: durationType,
+                                            deviceManufacturer: "Apple",
+                                            deviceModel: LeaderboardService.shared.getDeviceModelName(),
+                                            os: 1, // iOS
+                                            osVersion: UIDevice.current.systemVersion,
+                                            sessionId: session.id,
+                                            hash: hmacHash
+                                        )
+                                        
+                                        try await LeaderboardService.shared.submitScore(payload: payload)
+                                        
+                                        await MainActor.run {
+                                            if let pendingId = currentPendingResultId {
+                                                PendingResultStore.shared.deleteResult(id: pendingId)
+                                            }
+                                            isSubmittingScore = false
+                                            submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
+                                        }
+                                    } catch {
+                                        await MainActor.run {
+                                            isSubmittingScore = false
+                                            submitErrorMessage = error.localizedDescription
+                                        }
                                     }
                                 }
+                            }) {
+                                HStack {
+                                    Image(systemName: "crown.fill")
+                                    Text("SUBMIT SCORE TO LEADERBOARD")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color.blue, Color.purple],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(10)
                             }
                         }
                     } else {
@@ -941,41 +868,10 @@ struct ContentView: View {
                             showStartWarning = false
                         }
                         
-                        if networkMonitor.isConnected {
-                            // Online Mode: initialize session
-                            withAnimation(.spring()) {
-                                isInitializingServer = true
-                            }
-                            
-                            Task {
-                                do {
-                                    let session = try await LeaderboardService.shared.createSession()
-                                    await MainActor.run {
-                                        engine.sessionId = session.id
-                                        engine.encryptionKey = session.encryptionKey
-                                        withAnimation(.spring()) {
-                                            isInitializingServer = false
-                                        }
-                                        engine.startTest(duration: selectedDuration)
-                                    }
-                                } catch {
-                                    await MainActor.run {
-                                        withAnimation(.spring()) {
-                                            isInitializingServer = false
-                                        }
-                                        initErrorMessage = error.localizedDescription
-                                        withAnimation(.spring()) {
-                                            showInitError = true
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Offline Mode: start test immediately
-                            engine.sessionId = nil
-                            engine.encryptionKey = nil
-                            engine.startTest(duration: selectedDuration)
-                        }
+                        // Start test immediately without pre-test server session delays
+                        engine.sessionId = nil
+                        engine.encryptionKey = nil
+                        engine.startTest(duration: selectedDuration)
                     }) {
                         Text("PROCEED")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))

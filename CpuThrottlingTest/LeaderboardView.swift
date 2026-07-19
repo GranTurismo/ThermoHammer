@@ -23,6 +23,7 @@ struct LeaderboardView: View {
     @ObservedObject private var pendingStore = PendingResultStore.shared
     @State private var uploadingId: UUID? = nil
     @State private var uploadError: String? = nil
+    @State private var failedUploadId: UUID? = nil
     
     var rankedEntries: [EntryWithStability] {
         let mapped = entries.map { entry in
@@ -633,7 +634,7 @@ struct LeaderboardView: View {
                         .foregroundColor(.secondary)
                 }
                 
-                if uploadingId == pending.id, let error = uploadError {
+                if failedUploadId == pending.id, let error = uploadError {
                     Text("Error: \(error)")
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundColor(.red)
@@ -661,16 +662,14 @@ struct LeaderboardView: View {
                 } else {
                     Button(action: {
                         uploadingId = pending.id
+                        failedUploadId = nil
                         uploadError = nil
                         Task {
                             do {
-                                var finalSessionId = pending.sessionId
-                                var finalEncryptionKey = pending.encryptionKey
-                                if finalSessionId == 0 {
-                                    let session = try await LeaderboardService.shared.createSession()
-                                    finalSessionId = session.id
-                                    finalEncryptionKey = session.encryptionKey
-                                }
+                                // Request a fresh session on the server for pending uploads to avoid expired sessions
+                                let session = try await LeaderboardService.shared.createSession()
+                                let finalSessionId = session.id
+                                let finalEncryptionKey = session.encryptionKey
                                 
                                 let hmacHash = ThermoHasher.computeHash(
                                     encryptionKey: finalEncryptionKey,
@@ -695,6 +694,7 @@ struct LeaderboardView: View {
                             } catch {
                                 await MainActor.run {
                                     uploadError = error.localizedDescription
+                                    failedUploadId = pending.id
                                     uploadingId = nil
                                 }
                             }

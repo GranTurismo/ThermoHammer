@@ -98,14 +98,47 @@ private fun DiagnosticsScreenWrapper(
     var isSubmitting by remember { mutableStateOf(false) }
     var submitSuccess by remember { mutableStateOf<String?>(null) }
     var submitError by remember { mutableStateOf<String?>(null) }
+    var currentPendingResultId by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
 
     LaunchedEffect(state.isRunning) {
         if (!state.isRunning && state.elapsedSeconds > 0) {
             isSubmitting = false; submitSuccess = null; submitError = null
-            when {
-                state.wasCancelledByBackground -> showBackgroundAborted = true
-                !state.wasCompleted -> showManualCancelled = true
-                else -> showSummary = true
+            if (state.wasCompleted) {
+                // Automatically save run to pending results immediately!
+                try {
+                    val stamps = state.recordedStamps
+                    val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
+                    val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
+                    val durationType = when (state.testDuration) {
+                        TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
+                    }
+                    val pending = com.example.thermohammer.data.PendingTestResult(
+                        id = java.util.UUID.randomUUID().toString(),
+                        timestamp = System.currentTimeMillis(),
+                        durationSeconds = state.elapsedSeconds,
+                        testDurationType = durationType,
+                        minStability = minStab,
+                        finalStability = state.overallStability,
+                        worstThermalState = worstThermal.ordinal,
+                        stamps = stamps,
+                        deviceModel = engine.getDeviceModel(),
+                        deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
+                        osVersion = engine.getAndroidVersion(),
+                        sessionId = 0,
+                        encryptionKey = ""
+                    )
+                    com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
+                    currentPendingResultId = pending.id
+                } catch (e: Exception) {
+                    // Ignore background errors
+                }
+                showSummary = true
+            } else if (state.wasCancelledByBackground) {
+                showBackgroundAborted = true
+            } else {
+                showManualCancelled = true
             }
         }
     }
@@ -139,24 +172,8 @@ private fun DiagnosticsScreenWrapper(
                 onCancel = { showPreTest = false },
                 onProceed = {
                     showPreTest = false
-                    if (isNetworkConnected) {
-                        showServerInit = true
-                        coroutineScope.launch {
-                            try {
-                                val session = com.example.thermohammer.network.ApiClient.api.createSession()
-                                engine.setSession(session.id, session.encryptionKey)
-                                showServerInit = false
-                                engine.startTest(selectedDuration)
-                            } catch (e: Exception) {
-                                showServerInit = false
-                                serverErrorMsg = e.message ?: "Unknown error"
-                                showServerError = true
-                            }
-                        }
-                    } else {
-                        engine.clearSession()
-                        engine.startTest(selectedDuration)
-                    }
+                    engine.clearSession()
+                    engine.startTest(selectedDuration)
                 }
             )
         }
@@ -171,7 +188,7 @@ private fun DiagnosticsScreenWrapper(
                 minStability = minStab,
                 finalStability = state.overallStability,
                 worstThermal = worstThermal,
-                hasSession = state.sessionId != null,
+                hasSession = isNetworkConnected,
                 isNetworkConnected = isNetworkConnected,
                 isSubmitting = isSubmitting,
                 submitSuccess = submitSuccess,
@@ -183,15 +200,22 @@ private fun DiagnosticsScreenWrapper(
                             val durationType = when (state.testDuration) {
                                 TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
                             }
-                            val hash = com.example.thermohammer.network.ThermoHasher.computeHash(state.encryptionKey!!, stamps)
+                            // Create session on-the-fly upon submit tap
+                            val session = com.example.thermohammer.network.ApiClient.api.createSession()
+                            val hash = com.example.thermohammer.network.ThermoHasher.computeHash(session.encryptionKey, stamps)
                             val payload = com.example.thermohammer.network.HammerPayload(
                                 stamps = stamps, type = durationType,
                                 deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
                                 deviceModel = engine.getDeviceModel(), os = 2,
                                 osVersion = engine.getAndroidVersion(),
-                                sessionId = state.sessionId!!, hash = hash
+                                sessionId = session.id, hash = hash
                             )
                             com.example.thermohammer.network.ApiClient.api.submitScore(payload)
+                            
+                            // Clear from auto-saved pending results on successful submit
+                            currentPendingResultId?.let { pid ->
+                                com.example.thermohammer.data.PendingResultStore(context).deleteResult(pid)
+                            }
                             isSubmitting = false; submitSuccess = "SUBMITTED TO LEADERBOARD!"
                         } catch (e: Exception) {
                             isSubmitting = false; submitError = e.message ?: "Submission failed"
@@ -199,30 +223,7 @@ private fun DiagnosticsScreenWrapper(
                     }
                 },
                 onSavePending = {
-                    try {
-                        val durationType = when (state.testDuration) {
-                            TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
-                        }
-                        val pending = com.example.thermohammer.data.PendingTestResult(
-                            id = java.util.UUID.randomUUID().toString(),
-                            timestamp = System.currentTimeMillis(),
-                            durationSeconds = state.elapsedSeconds,
-                            testDurationType = durationType,
-                            minStability = minStab,
-                            finalStability = state.overallStability,
-                            worstThermalState = worstThermal.ordinal,
-                            stamps = stamps,
-                            deviceModel = engine.getDeviceModel(),
-                            deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
-                            osVersion = engine.getAndroidVersion(),
-                            sessionId = state.sessionId ?: 0,
-                            encryptionKey = state.encryptionKey ?: ""
-                        )
-                        com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
-                        submitSuccess = "SAVED TO PENDING RESULTS!"
-                    } catch (e: Exception) {
-                        submitError = "Failed to save pending result"
-                    }
+                    submitSuccess = "SAVED TO PENDING RESULTS!"
                 },
                 onDismiss = { showSummary = false }
             )
