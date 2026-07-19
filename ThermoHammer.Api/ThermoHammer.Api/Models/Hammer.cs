@@ -50,7 +50,8 @@ public enum HammerType
 
 public enum OsPlatform
 {
-    Android, iOS
+    iOS = 1,
+    Android = 2
 }
 
 public class HammerStamp
@@ -76,9 +77,10 @@ public static class HammerExtensions
     {
         double maxScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Max(s => s.Score) : 0;
         double stability = 100;
-        
+
         if (request.Stamps != null && request.Stamps.Count > 0 && maxScore > 0)
         {
+            Console.WriteLine($"Platform is {request.Os}");
             if (request.Os == OsPlatform.Android) // Android
             {
                 int secondHalfStart = request.Stamps.Count / 2;

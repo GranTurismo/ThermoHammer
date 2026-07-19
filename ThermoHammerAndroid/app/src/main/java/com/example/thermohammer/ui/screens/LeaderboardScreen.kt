@@ -160,7 +160,9 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                 uploadError = null
                                 coroutineScope.launch {
                                     try {
-                                        val hash = ThermoHasher.computeHash(pending.encryptionKey, pending.stamps)
+                                        // Request a fresh session on the server for pending uploads to avoid expired/null sessions
+                                        val session = ApiClient.api.createSession()
+                                        val hash = ThermoHasher.computeHash(session.encryptionKey, pending.stamps)
                                         val payload = HammerPayload(
                                             stamps = pending.stamps,
                                             type = pending.testDurationType,
@@ -168,7 +170,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                             deviceModel = pending.deviceModel,
                                             os = 2,
                                             osVersion = pending.osVersion,
-                                            sessionId = pending.sessionId,
+                                            sessionId = session.id,
                                             hash = hash
                                         )
                                         ApiClient.api.submitScore(payload)
@@ -554,14 +556,7 @@ private fun DetailOverlay(
                     val scores = stamps.map { it.score.toDouble() }
                     val maxScore = scores.maxOrNull() ?: 1.0
                     val minScore = scores.minOrNull() ?: 0.0
-                    val stability = if (entry.os == 2) {
-                        val secondHalfStart = stamps.size / 2
-                        val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
-                        val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
-                        if (maxScore > 0) (avgSecondHalf / maxScore) * 100.0 else entry.stabilityPercentage
-                    } else {
-                        if (maxScore > 0) (minScore / maxScore) * 100.0 else entry.stabilityPercentage
-                    }
+                    val stability = entry.stabilityPercentage
                     val chartPts = stamps.map { s -> com.example.thermohammer.engine.StabilityPoint(s.elapsedMs.toFloat() / 1000f, ((s.score.toDouble() / maxScore) * 100.0).toFloat()) }
 
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {

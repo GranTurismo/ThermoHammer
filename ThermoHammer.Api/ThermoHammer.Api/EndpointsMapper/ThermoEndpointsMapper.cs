@@ -57,6 +57,13 @@ public static class ThermoEndpointsMapper
         app.MapGet("/stamps/{id:int}", async (int id, ThermoDbContext db) =>
         {
             var hammer = await db.Hammers.Include(h => h.Stamps).FirstOrDefaultAsync(h => h.Id == id);
+
+            var newStamps = hammer.Stamps.ToList();
+
+            var a = newStamps.TakeLast(newStamps.Count / 2)
+            .Average(o => o.Score);
+            Console.WriteLine((a / newStamps.Max(o => o.Score)) * 100);
+
             if (hammer is null)
                 return Results.NotFound("Hammer not found");
             return Results.Ok(hammer.Stamps);
