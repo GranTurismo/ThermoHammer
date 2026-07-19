@@ -17,7 +17,11 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("/Users/gogitakupatadze/Downloads/GTech.keystore")
+            storeFile = if (System.getProperty("os.name").lowercase().contains("windows")) {
+                file("C:/Users/Kupa/Downloads/GTech.keystore")
+            } else {
+                file("/Users/gogitakupatadze/Downloads/GTech.keystore")
+            }
             storePassword = "strelok222"
             keyAlias = "gtech"
             keyPassword = "strelok222"
