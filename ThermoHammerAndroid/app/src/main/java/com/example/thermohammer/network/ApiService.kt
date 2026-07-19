@@ -14,7 +14,7 @@ import retrofit2.http.Path
 
 data class DeviceHammerStamp(
     @SerializedName("elapsedMs") val elapsedMs: Int,
-    @SerializedName("score") val score: Int,
+    @SerializedName("score") val score: Long,
     @SerializedName("thermalState") val thermalState: Int // 0=Nominal 1=Fair 2=Serious 3=Critical
 )
 

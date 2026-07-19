@@ -295,7 +295,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
         statsSampleCount++
         val elapsedMs = statsSampleCount * 250
-        val scoreVal = (totalSpeed * 4).toInt()
+        val scoreVal = (totalSpeed * 4).toLong()
 
         val thermalVal = when (_state.value.currentThermalState) {
             ThermalState.NOMINAL  -> 0

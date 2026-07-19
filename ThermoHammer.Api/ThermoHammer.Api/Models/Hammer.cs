@@ -59,7 +59,7 @@ public class HammerStamp
     public int Id { get; set; }
     public int HammerId { get; set; }
     public int ElapsedMs { get; set; } //milliseconds passed since start
-    public int Score { get; set; } // IPS - instructions per second
+    public long Score { get; set; } // IPS - instructions per second
     public ThermalState ThermalState { get; set; }
 }
 
@@ -80,7 +80,6 @@ public static class HammerExtensions
 
         if (request.Stamps != null && request.Stamps.Count > 0 && maxScore > 0)
         {
-            Console.WriteLine($"Platform is {request.Os}");
             if (request.Os == OsPlatform.Android) // Android
             {
                 int secondHalfStart = request.Stamps.Count / 2;
