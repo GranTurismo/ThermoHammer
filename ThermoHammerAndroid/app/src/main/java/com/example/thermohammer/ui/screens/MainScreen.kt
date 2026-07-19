@@ -124,6 +124,12 @@ private fun DiagnosticsScreenWrapper(
                 // Automatically save run to pending results immediately!
                 try {
                     val stamps = state.recordedStamps
+                    val maxScore = stamps.maxOfOrNull { it.score.toDouble() } ?: 1.0
+                    val secondHalfStart = stamps.size / 2
+                    val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
+                    val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
+                    val finalStab = if (maxScore > 0) ((avgSecondHalf / maxScore) * 100.0).toFloat() else 100f
+                    
                     val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
                     val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
                     val durationType = when (state.testDuration) {
@@ -135,7 +141,7 @@ private fun DiagnosticsScreenWrapper(
                         durationSeconds = state.elapsedSeconds,
                         testDurationType = durationType,
                         minStability = minStab,
-                        finalStability = state.overallStability,
+                        finalStability = finalStab,
                         worstThermalState = worstThermal.ordinal,
                         stamps = stamps,
                         deviceModel = engine.getDeviceModel(),
@@ -204,13 +210,19 @@ private fun DiagnosticsScreenWrapper(
 
         if (showSummary) {
             val stamps = state.recordedStamps
+            val maxScore = stamps.maxOfOrNull { it.score.toDouble() } ?: 1.0
+            val secondHalfStart = stamps.size / 2
+            val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
+            val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
+            val finalStab = if (maxScore > 0) ((avgSecondHalf / maxScore) * 100.0).toFloat() else 100f
+
             val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
             val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
             val context = LocalContext.current
             com.example.thermohammer.ui.overlays.SummaryOverlay(
                 duration = state.elapsedSeconds,
                 minStability = minStab,
-                finalStability = state.overallStability,
+                finalStability = finalStab,
                 worstThermal = worstThermal,
                 hasSession = isNetworkConnected,
                 isNetworkConnected = isNetworkConnected,

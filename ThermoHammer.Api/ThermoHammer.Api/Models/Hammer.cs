@@ -75,8 +75,23 @@ public static class HammerExtensions
     public static Hammer ToDao(this HammerRequest request)
     {
         double maxScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Max(s => s.Score) : 0;
-        double minScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Min(s => s.Score) : 0;
-        double stability = maxScore > 0 ? ((minScore / maxScore) * 100) : 100;
+        double stability = 100;
+        
+        if (request.Stamps != null && request.Stamps.Count > 0 && maxScore > 0)
+        {
+            if (request.Os == OsPlatform.Android) // Android
+            {
+                int secondHalfStart = request.Stamps.Count / 2;
+                var secondHalfStamps = request.Stamps.Skip(secondHalfStart).ToList();
+                double averageSecondHalf = secondHalfStamps.Count > 0 ? secondHalfStamps.Average(s => s.Score) : 0;
+                stability = (averageSecondHalf / maxScore) * 100;
+            }
+            else // iOS (keep old logic)
+            {
+                double minScore = request.Stamps.Min(s => s.Score);
+                stability = (minScore / maxScore) * 100;
+            }
+        }
 
         return new Hammer
         {

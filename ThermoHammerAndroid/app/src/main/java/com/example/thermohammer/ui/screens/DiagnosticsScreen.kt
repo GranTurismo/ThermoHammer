@@ -105,12 +105,18 @@ fun DiagnosticsScreen(
 
         if (showSummary) {
             val stamps = state.recordedStamps
+            val maxScore = stamps.maxOfOrNull { it.score.toDouble() } ?: 1.0
+            val secondHalfStart = stamps.size / 2
+            val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
+            val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
+            val finalStab = if (maxScore > 0) ((avgSecondHalf / maxScore) * 100.0).toFloat() else 100f
+
             val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
             val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: ThermalState.NOMINAL
             SummaryOverlay(
                 duration = state.elapsedSeconds,
                 minStability = minStab,
-                finalStability = state.overallStability,
+                finalStability = finalStab,
                 worstThermal = worstThermal,
                 hasSession = state.sessionId != null,
                 isNetworkConnected = isNetworkConnected,
@@ -148,6 +154,12 @@ fun DiagnosticsScreen(
                 },
                 onSavePending = {
                     try {
+                        val maxScore = stamps.maxOfOrNull { it.score.toDouble() } ?: 1.0
+                        val secondHalfStart = stamps.size / 2
+                        val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
+                        val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
+                        val finalStab = if (maxScore > 0) ((avgSecondHalf / maxScore) * 100.0).toFloat() else 100f
+
                         val durationType = when (state.testDuration) {
                             TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
                         }
@@ -157,7 +169,7 @@ fun DiagnosticsScreen(
                             durationSeconds = state.elapsedSeconds,
                             testDurationType = durationType,
                             minStability = minStab,
-                            finalStability = state.overallStability,
+                            finalStability = finalStab,
                             worstThermalState = worstThermal.ordinal,
                             stamps = stamps,
                             deviceModel = engine.getDeviceModel(),

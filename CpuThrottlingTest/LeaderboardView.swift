@@ -633,8 +633,17 @@ struct LeaderboardView: View {
     private func stampsDetailCard(entry: HammerDto, stamps: [DeviceHammerStamp], stabilityVal: Double) -> some View {
         let scores = stamps.map { Double($0.score) }
         let maxScore = scores.max() ?? 1.0
-        let minScore = scores.min() ?? 0.0
-        let calculatedStability = maxScore > 0 ? (minScore / maxScore) * 100.0 : stabilityVal
+        
+        let calculatedStability: Double
+        if entry.os == 2 { // Android (Use new second half average logic)
+            let secondHalfStart = stamps.count / 2
+            let secondHalfStamps = stamps.suffix(stamps.count - secondHalfStart)
+            let avgSecondHalf = secondHalfStamps.isEmpty ? 0.0 : secondHalfStamps.map { Double($0.score) }.reduce(0, +) / Double(secondHalfStamps.count)
+            calculatedStability = maxScore > 0 ? (avgSecondHalf / maxScore) * 100.0 : stabilityVal
+        } else { // iOS (Keep old min/max logic)
+            let minScore = scores.min() ?? 0.0
+            calculatedStability = maxScore > 0 ? (minScore / maxScore) * 100.0 : stabilityVal
+        }
         
         let chartPoints = getChartPoints(from: stamps, maxScore: maxScore)
         let chartEvents = getThermalEvents(from: stamps)
