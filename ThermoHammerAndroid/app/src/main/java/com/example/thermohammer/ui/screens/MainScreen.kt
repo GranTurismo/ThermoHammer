@@ -65,7 +65,13 @@ fun MainScreen() {
             // Main content
             Box(Modifier.weight(1f)) {
                 when (selectedTab) {
-                    0 -> DiagnosticsScreenWrapper(engine, isNetworkConnected.value, selectedDuration, onDurationChange = { selectedDuration = it })
+                    0 -> DiagnosticsScreenWrapper(
+                        engine = engine,
+                        isNetworkConnected = isNetworkConnected.value,
+                        selectedDuration = selectedDuration,
+                        onDurationChange = { selectedDuration = it },
+                        onNavigateToLeaderboard = { selectedTab = 1 }
+                    )
                     1 -> LeaderboardScreen(isNetworkConnected.value)
                 }
             }
@@ -82,7 +88,8 @@ private fun DiagnosticsScreenWrapper(
     engine: StressEngine,
     isNetworkConnected: Boolean,
     selectedDuration: TestDuration,
-    onDurationChange: (TestDuration) -> Unit
+    onDurationChange: (TestDuration) -> Unit,
+    onNavigateToLeaderboard: () -> Unit
 ) {
     val state by engine.state.collectAsState()
     var showPreTest by remember { mutableStateOf(false) }
@@ -99,8 +106,15 @@ private fun DiagnosticsScreenWrapper(
     var submitSuccess by remember { mutableStateOf<String?>(null) }
     var submitError by remember { mutableStateOf<String?>(null) }
     var currentPendingResultId by remember { mutableStateOf<String?>(null) }
+    var showConnectionRequest by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val store = remember { com.example.thermohammer.data.PendingResultStore(context) }
+    var pendingCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(showSummary, state.isRunning) {
+        pendingCount = store.getAllResults().size
+    }
 
     LaunchedEffect(state.isRunning) {
         if (!state.isRunning && state.elapsedSeconds > 0) {
@@ -134,7 +148,12 @@ private fun DiagnosticsScreenWrapper(
                 } catch (e: Exception) {
                     // Ignore background errors
                 }
-                showSummary = true
+                
+                if (isNetworkConnected) {
+                    showSummary = true
+                } else {
+                    showConnectionRequest = true
+                }
             } else if (state.wasCancelledByBackground) {
                 showBackgroundAborted = true
             } else {
@@ -153,6 +172,9 @@ private fun DiagnosticsScreenWrapper(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             AppHeader(state, isNetworkConnected)
+            if (pendingCount > 0 && !state.isRunning) {
+                PendingRunsBanner(pendingCount, onNavigateToLeaderboard)
+            }
             StatsPanel(state)
             if (!state.isRunning) {
                 DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
@@ -228,6 +250,20 @@ private fun DiagnosticsScreenWrapper(
                 onDismiss = { showSummary = false }
             )
         }
+        if (showConnectionRequest) {
+            com.example.thermohammer.ui.overlays.ConnectionRequestOverlay(
+                onTurnedOn = {
+                    showConnectionRequest = false
+                    submitSuccess = null
+                    submitError = null
+                    showSummary = true
+                },
+                onSubmitLater = {
+                    showConnectionRequest = false
+                    showSummary = true
+                }
+            )
+        }
         if (showBackgroundAborted) com.example.thermohammer.ui.overlays.BackgroundAbortedOverlay { showBackgroundAborted = false }
         if (showManualCancelled) com.example.thermohammer.ui.overlays.ManualCancelledOverlay { showManualCancelled = false }
         if (showServerInit) com.example.thermohammer.ui.overlays.ServerInitOverlay()
@@ -277,4 +313,47 @@ private fun checkNetwork(context: Context): Boolean {
     val network = cm.activeNetwork ?: return false
     val caps = cm.getNetworkCapabilities(network) ?: return false
     return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}
+
+@Composable
+fun PendingRunsBanner(count: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF141414).copy(alpha = 0.6f))
+            .border(1.dp, Color(0xFFF2C94C).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("⚠️", fontSize = 16.sp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "UNSUBMITTED RESULTS DETECTED",
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "You have $count locally saved test run${if (count > 1) "s" else ""}. Tap here to submit to the leaderboard.",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 8.sp
+                )
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            "➔", 
+            color = Color.White.copy(alpha = 0.3f), 
+            fontSize = 12.sp, 
+            fontWeight = FontWeight.Bold
+        )
+    }
 }

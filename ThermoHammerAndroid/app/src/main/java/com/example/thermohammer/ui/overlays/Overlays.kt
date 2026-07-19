@@ -432,3 +432,30 @@ fun ServerErrorOverlay(errorMessage: String, onCancel: () -> Unit, onRunOffline:
         }
     }
 }
+
+// ── Connection Request Overlay ──────────────────────────────────────────────────
+
+@Composable
+fun ConnectionRequestOverlay(onTurnedOn: () -> Unit, onSubmitLater: () -> Unit) {
+    OverlayContainer {
+        OverlayCard {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text("📡", fontSize = 40.sp, color = Color(0xFF4A9EFF))
+                Spacer(Modifier.height(6.dp))
+                MonoTitle("DIAGNOSTICS COMPLETE")
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Please enable Wi-Fi or cellular data now to submit your score to the global leaderboard.",
+                style = TextStyle(color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp, textAlign = TextAlign.Center, lineHeight = 18.sp)
+            )
+            Spacer(Modifier.height(16.dp))
+            OverlayDivider()
+            Spacer(Modifier.height(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrimaryButton("I TURNED IT ON", onTurnedOn)
+                SecondaryButton("SUBMIT LATER", onSubmitLater)
+            }
+        }
+    }
+}

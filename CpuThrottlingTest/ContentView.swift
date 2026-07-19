@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var showStartWarning = false
     @State private var showBackgroundCancelledWarning = false
     @State private var showManualCancelledWarning = false
+    @State private var showConnectionRequest = false
     
     // Network & Leaderboards
     @StateObject private var networkMonitor = NetworkMonitor.shared
@@ -32,6 +33,7 @@ struct ContentView: View {
     
     @State private var selectedTab = 0
     @State private var currentPendingResultId: UUID? = nil
+    @ObservedObject private var pendingStore = PendingResultStore.shared
     
     var body: some View {
         ZStack {
@@ -50,6 +52,11 @@ struct ContentView: View {
                             
                             // --- App Header ---
                             headerSection
+                            
+                            // --- Unsubmitted Runs Warning Banner ---
+                            if !pendingStore.results.isEmpty && !engine.isRunning {
+                                pendingRunsBanner
+                            }
                             
                             // --- Top Stats Dashboard ---
                             statsPanelSection
@@ -102,6 +109,11 @@ struct ContentView: View {
             // --- Manual Cancelled Warning Overlay ---
             if showManualCancelledWarning {
                 manualCancelledOverlay
+            }
+            
+            // --- Connection Request Overlay ---
+            if showConnectionRequest {
+                connectionRequestOverlay
             }
             
             // --- Server Session Init Overlay ---
@@ -181,8 +193,14 @@ struct ContentView: View {
                     finalStability: engine.overallStability,
                     worstThermalState: worstState
                 )
-                withAnimation(.spring()) {
-                    showSummary = true
+                if networkMonitor.isConnected {
+                    withAnimation(.spring()) {
+                        showSummary = true
+                    }
+                } else {
+                    withAnimation(.spring()) {
+                        showConnectionRequest = true
+                    }
                 }
             }
         }
@@ -1186,6 +1204,127 @@ struct ContentView: View {
                 .background(Color.white.opacity(0.1)),
             alignment: .top
         )
+    }
+    private var connectionRequestOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.8)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    Image(systemName: "wifi")
+                        .font(.system(size: 40))
+                        .foregroundColor(.blue)
+                        .shadow(color: .blue.opacity(0.3), radius: 8)
+                    
+                    Text("DIAGNOSTICS COMPLETE")
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .tracking(1)
+                        .foregroundColor(.white)
+                }
+                .padding(.top, 10)
+                
+                Text("Please enable Wi-Fi or cellular data now to submit your score to the global leaderboard.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                
+                Divider()
+                    .background(Color.white.opacity(0.1))
+                
+                VStack(spacing: 8) {
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            showConnectionRequest = false
+                        }
+                        submitSuccessMessage = nil
+                        submitErrorMessage = nil
+                        withAnimation(.spring()) {
+                            showSummary = true
+                        }
+                    }) {
+                        Text("I TURNED IT ON")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                    }
+                    
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            showConnectionRequest = false
+                        }
+                        withAnimation(.spring()) {
+                            showSummary = true
+                        }
+                    }) {
+                        Text("SUBMIT LATER")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.6))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(.bottom, 5)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color(white: 0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
+            .frame(width: 320)
+            .shadow(color: .black.opacity(0.4), radius: 20)
+        }
+    }
+    private var pendingRunsBanner: some View {
+        Button(action: {
+            withAnimation(.spring()) {
+                selectedTab = 1
+            }
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("UNSUBMITTED RESULTS DETECTED")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    
+                    Text("You have \(pendingStore.results.count) locally saved test run\(pendingStore.results.count > 1 ? "s" : ""). Tap here to submit to the leaderboard.")
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.3))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(white: 0.08).opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.3), lineWidth: 1)
+                    )
+            )
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }
 
