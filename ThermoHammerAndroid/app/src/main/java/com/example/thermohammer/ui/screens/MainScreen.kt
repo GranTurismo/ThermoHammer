@@ -113,6 +113,14 @@ private fun DiagnosticsScreenWrapper(
     val store = remember { com.example.thermohammer.data.PendingResultStore(context) }
     var pendingCount by remember { mutableIntStateOf(0) }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            if (state.wasCompleted || state.wasCancelledByBackground || state.elapsedSeconds > 0) {
+                engine.resetTestResult()
+            }
+        }
+    }
+
     LaunchedEffect(showSummary, state.isRunning) {
         pendingCount = store.getAllResults().size
     }
@@ -261,7 +269,7 @@ private fun DiagnosticsScreenWrapper(
                 onSavePending = {
                     submitSuccess = "SAVED TO PENDING RESULTS!"
                 },
-                onDismiss = { showSummary = false }
+                onDismiss = { showSummary = false; engine.resetTestResult() }
             )
         }
         if (showConnectionRequest) {
@@ -278,8 +286,8 @@ private fun DiagnosticsScreenWrapper(
                 }
             )
         }
-        if (showBackgroundAborted) com.example.thermohammer.ui.overlays.BackgroundAbortedOverlay { showBackgroundAborted = false }
-        if (showManualCancelled) com.example.thermohammer.ui.overlays.ManualCancelledOverlay { showManualCancelled = false }
+        if (showBackgroundAborted) com.example.thermohammer.ui.overlays.BackgroundAbortedOverlay { showBackgroundAborted = false; engine.resetTestResult() }
+        if (showManualCancelled) com.example.thermohammer.ui.overlays.ManualCancelledOverlay { showManualCancelled = false; engine.resetTestResult() }
         if (showServerInit) com.example.thermohammer.ui.overlays.ServerInitOverlay()
         if (showServerError) com.example.thermohammer.ui.overlays.ServerErrorOverlay(
             errorMessage = serverErrorMsg,

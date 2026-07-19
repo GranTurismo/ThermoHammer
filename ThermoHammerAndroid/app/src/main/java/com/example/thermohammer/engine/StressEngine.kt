@@ -259,6 +259,21 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         _state.update { it.copy(sessionId = null, encryptionKey = null) }
     }
 
+    fun resetTestResult() {
+        _state.update {
+            it.copy(
+                elapsedSeconds = 0,
+                wasCompleted = false,
+                wasCancelledByBackground = false,
+                overallStability = 100f,
+                chartPoints = emptyList(),
+                recordedStamps = emptyList(),
+                coreImpacts = emptyList(),
+                thermalEvents = emptyList()
+            )
+        }
+    }
+
     fun setThermalState(ts: ThermalState) {
         _state.update { it.copy(currentThermalState = ts) }
         if (_state.value.isRunning) {
