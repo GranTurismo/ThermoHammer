@@ -212,6 +212,7 @@ private fun ScrollableContent(
         StabilityChart(points = state.chartPoints, events = state.thermalEvents)
         // Core meters
         if (state.coreImpacts.isNotEmpty()) CoreStatusView(state.coreImpacts)
+        ThermalMonitoringPanel(state)
         Spacer(Modifier.height(16.dp))
     }
 }

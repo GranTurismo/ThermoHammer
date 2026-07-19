@@ -25,6 +25,12 @@ struct LeaderboardView: View {
     @State private var uploadError: String? = nil
     @State private var failedUploadId: UUID? = nil
     
+    // Client-side Filters
+    @State private var showOnlyMyDevice = false
+    @State private var showOnlyMyOSVersion = false
+    @State private var selectedPlatformFilter: Int? = nil // nil = All, 1 = iOS, 2 = Android
+    @State private var selectedDurationFilter: Int? = nil // nil = All, 0 = 5 Min, 1 = 15 Min, 2 = 30 Min
+    
     var rankedEntries: [EntryWithStability] {
         let mapped = entries.map { entry in
             EntryWithStability(
@@ -49,14 +55,37 @@ struct LeaderboardView: View {
     
     var filteredEntries: [EntryWithStability] {
         let ranked = rankedEntries
-        if searchText.isEmpty {
-            return ranked
-        } else {
-            return ranked.filter { entry in
+        let myDeviceModel = LeaderboardService.shared.getDeviceModelName()
+        let myOSVersion = UIDevice.current.systemVersion
+        
+        return ranked.filter { entry in
+            let matchesSearch = searchText.isEmpty ||
                 entry.entry.deviceModel.localizedCaseInsensitiveContains(searchText) ||
                 entry.entry.deviceManufacturer.localizedCaseInsensitiveContains(searchText) ||
                 entry.entry.osVersion.localizedCaseInsensitiveContains(searchText)
+            
+            let matchesDevice = !showOnlyMyDevice ||
+                entry.entry.deviceModel.localizedCaseInsensitiveCompare(myDeviceModel) == .orderedSame
+            
+            let matchesOS = !showOnlyMyOSVersion ||
+                entry.entry.osVersion.localizedCaseInsensitiveContains(myOSVersion)
+            
+            let matchesPlatform: Bool
+            switch selectedPlatformFilter {
+            case 1: matchesPlatform = entry.entry.os == 1
+            case 2: matchesPlatform = entry.entry.os == 2
+            default: matchesPlatform = true
             }
+            
+            let matchesDuration: Bool
+            switch selectedDurationFilter {
+            case 0: matchesDuration = entry.entry.type == 0
+            case 1: matchesDuration = entry.entry.type == 1
+            case 2: matchesDuration = entry.entry.type == 2
+            default: matchesDuration = true
+            }
+            
+            return matchesSearch && matchesDevice && matchesOS && matchesPlatform && matchesDuration
         }
     }
     
@@ -218,6 +247,64 @@ struct LeaderboardView: View {
                     .stroke(Color.white.opacity(0.08), lineWidth: 1)
             )
             .padding(.horizontal)
+            
+            // Client-Side Filters Scroll Row
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    let myDeviceModel = LeaderboardService.shared.getDeviceModelName()
+                    let myOSVersion = UIDevice.current.systemVersion
+                    
+                    customFilterChip(selected: showOnlyMyDevice, label: "Device: \(myDeviceModel)") {
+                        showOnlyMyDevice.toggle()
+                    }
+                    
+                    customFilterChip(selected: showOnlyMyOSVersion, label: "OS: v\(myOSVersion)") {
+                        showOnlyMyOSVersion.toggle()
+                    }
+                    
+                    customFilterChip(
+                        selected: selectedPlatformFilter != nil,
+                        label: {
+                            switch selectedPlatformFilter {
+                            case 1: return "Platform: iOS"
+                            case 2: return "Platform: Android"
+                            default: return "Platform: All"
+                            }
+                        }()
+                    ) {
+                        selectedPlatformFilter = {
+                            switch selectedPlatformFilter {
+                            case .none: return 1
+                            case 1: return 2
+                            default: return nil
+                            }
+                        }()
+                    }
+                    
+                    customFilterChip(
+                        selected: selectedDurationFilter != nil,
+                        label: {
+                            switch selectedDurationFilter {
+                            case 0: return "Duration: 5 Min"
+                            case 1: return "Duration: 15 Min"
+                            case 2: return "Duration: 30 Min"
+                            default: return "Duration: All"
+                            }
+                        }()
+                    ) {
+                        selectedDurationFilter = {
+                            switch selectedDurationFilter {
+                            case .none: return 0
+                            case 0: return 1
+                            case 1: return 2
+                            default: return nil
+                            }
+                        }()
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.bottom, 4)
             
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 10) {
@@ -756,5 +843,22 @@ struct LeaderboardView: View {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: val)) ?? "\(val)"
+    }
+    private func customFilterChip(selected: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundColor(selected ? Color(red: 0.95, green: 0.7, blue: 0.1) : .white.opacity(0.6))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(selected ? Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.2) : Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(selected ? Color(red: 0.95, green: 0.7, blue: 0.1) : Color.white.opacity(0.08), lineWidth: 1)
+                )
+        }
     }
 }

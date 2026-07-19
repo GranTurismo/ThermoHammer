@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -344,9 +345,34 @@ fun SummaryOverlay(
 fun BackgroundAbortedOverlay(onDismiss: () -> Unit) {
     OverlayContainer(onDismiss = onDismiss) {
         OverlayCard {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("✗", fontSize = 40.sp, color = Color(0xFFEB5757))
-                Spacer(Modifier.height(6.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEB5757).copy(alpha = 0.15f))
+                        .border(2.dp, Color(0xFFEB5757), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(16.dp)) {
+                        val strokeWidth = 3.dp.toPx()
+                        drawLine(
+                            color = Color(0xFFEB5757),
+                            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                            end = androidx.compose.ui.geometry.Offset(size.width, size.height),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color(0xFFEB5757),
+                            start = androidx.compose.ui.geometry.Offset(0f, size.height),
+                            end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
                 MonoTitle("TEST ABORTED")
             }
             Spacer(Modifier.height(16.dp))
@@ -368,9 +394,23 @@ fun BackgroundAbortedOverlay(onDismiss: () -> Unit) {
 fun ManualCancelledOverlay(onDismiss: () -> Unit) {
     OverlayContainer(onDismiss = onDismiss) {
         OverlayCard {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("⬛", fontSize = 36.sp, color = Color(0xFFF2994A))
-                Spacer(Modifier.height(6.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF2994A).copy(alpha = 0.15f))
+                        .border(2.dp, Color(0xFFF2994A), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0xFFF2994A))
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
                 MonoTitle("TEST CANCELLED")
             }
             Spacer(Modifier.height(16.dp))
@@ -412,9 +452,35 @@ fun ServerInitOverlay() {
 fun ServerErrorOverlay(errorMessage: String, onCancel: () -> Unit, onRunOffline: () -> Unit) {
     OverlayContainer {
         OverlayCard {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("⚠", fontSize = 40.sp, color = Color(0xFFF2C94C))
-                Spacer(Modifier.height(6.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF2C94C).copy(alpha = 0.15f))
+                        .border(2.dp, Color(0xFFF2C94C), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            Modifier
+                                .width(3.dp)
+                                .height(12.dp)
+                                .background(Color(0xFFF2C94C), RoundedCornerShape(1.5.dp))
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Box(
+                            Modifier
+                                .size(3.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF2C94C))
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
                 MonoTitle("SESSION FAILED")
             }
             Spacer(Modifier.height(16.dp))
@@ -440,8 +506,36 @@ fun ConnectionRequestOverlay(onTurnedOn: () -> Unit, onSubmitLater: () -> Unit) 
     OverlayContainer {
         OverlayCard {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text("📡", fontSize = 40.sp, color = Color(0xFF4A9EFF))
-                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF4A9EFF).copy(alpha = 0.15f))
+                        .border(2.dp, Color(0xFF4A9EFF), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .border(2.dp, Color(0xFF4A9EFF), CircleShape)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .border(2.dp, Color(0xFF4A9EFF), CircleShape)
+                                .align(Alignment.Center)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(4.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF4A9EFF))
+                                    .align(Alignment.Center)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
                 MonoTitle("DIAGNOSTICS COMPLETE")
             }
             Spacer(Modifier.height(16.dp))

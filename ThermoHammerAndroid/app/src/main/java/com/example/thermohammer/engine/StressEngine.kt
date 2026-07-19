@@ -60,7 +60,10 @@ data class StressState(
     val testDuration: TestDuration = TestDuration.MINUTES_5,
     val sessionId: Int? = null,
     val encryptionKey: String? = null,
-    val recordedStamps: List<DeviceHammerStamp> = emptyList()
+    val recordedStamps: List<DeviceHammerStamp> = emptyList(),
+    val batteryTemp: Float = 0f,
+    val cpuTemp: Float = 0f,
+    val thermalSensors: List<Pair<String, Float>> = emptyList()
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -71,6 +74,86 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     val state: StateFlow<StressState> = _state.asStateFlow()
 
     val coreCount: Int = Runtime.getRuntime().availableProcessors()
+
+    init {
+        viewModelScope.launch {
+            while (isActive) {
+                updateLiveTemperatures()
+                delay(1000)
+            }
+        }
+    }
+
+    private fun updateLiveTemperatures() {
+        val battTemp = getBatteryTemperature()
+        val zones = getSystemThermalZones()
+        
+        // Find CPU temp: Look for zones containing "cpu"
+        val cpuZones = zones.filter { it.name.contains("cpu", ignoreCase = true) }
+        val cpuTemp = if (cpuZones.isNotEmpty()) {
+            cpuZones.map { it.temp }.maxOrNull() ?: 0f
+        } else {
+            zones.firstOrNull { it.name.contains("soc", ignoreCase = true) || it.name.contains("tsens", ignoreCase = true) }?.temp ?: 0f
+        }
+        
+        val sensorPairs = zones.map { Pair(it.name, it.temp) }
+        
+        _state.update {
+            it.copy(
+                batteryTemp = battTemp,
+                cpuTemp = cpuTemp,
+                thermalSensors = sensorPairs
+            )
+        }
+    }
+
+    private fun getBatteryTemperature(): Float {
+        return try {
+            val intent = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (intent != null) {
+                val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+                temp.toFloat() / 10f
+            } else 0f
+        } catch (e: Exception) {
+            0f
+        }
+    }
+
+    private data class TempZone(val name: String, val temp: Float)
+
+    private fun getSystemThermalZones(): List<TempZone> {
+        val zones = mutableListOf<TempZone>()
+        try {
+            val dir = java.io.File("/sys/class/thermal")
+            if (dir.exists() && dir.isDirectory) {
+                val files = dir.listFiles()
+                if (files != null) {
+                    for (file in files) {
+                        if (file.isDirectory && file.name.startsWith("thermal_zone")) {
+                            val typeFile = java.io.File(file, "type")
+                            val tempFile = java.io.File(file, "temp")
+                            if (typeFile.exists() && tempFile.exists()) {
+                                try {
+                                    val type = typeFile.readText().trim()
+                                    val tempStr = tempFile.readText().trim()
+                                    val tempRaw = tempStr.toFloatOrNull() ?: continue
+                                    val temp = if (tempRaw > 1000f || tempRaw < -1000f) tempRaw / 1000f else tempRaw
+                                    if (temp in -40f..150f) {
+                                        zones.add(TempZone(type, temp))
+                                    }
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // fallback
+        }
+        return zones
+    }
 
     // Worker thread controls
     private val threadAlive = AtomicBoolean(false)

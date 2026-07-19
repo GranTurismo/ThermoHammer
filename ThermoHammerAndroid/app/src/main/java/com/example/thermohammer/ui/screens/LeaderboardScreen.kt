@@ -48,9 +48,20 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
     var stampsLoading by remember { mutableStateOf(false) }
     var stampsError by remember { mutableStateOf<String?>(null) }
 
+    // Client-side Filters
+    var showOnlyMyDevice by remember { mutableStateOf(false) }
+    var showOnlyMyOSVersion by remember { mutableStateOf(false) }
+    var selectedPlatformFilter by remember { mutableStateOf<Int?>(null) } // null = All, 1 = iOS, 2 = Android
+    var selectedDurationFilter by remember { mutableStateOf<Int?>(null) } // null = All, 0 = 5m, 1 = 15m, 2 = 30m
+
+    // Current device attributes for filtering
+    val myDeviceModel = android.os.Build.MODEL
+    val myOSVersion = android.os.Build.VERSION.RELEASE
+
     // Upload status for pending runs
     var uploadingId by remember { mutableStateOf<String?>(null) }
     var uploadError by remember { mutableStateOf<String?>(null) }
+    var failedUploadId by remember { mutableStateOf<String?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -75,12 +86,36 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
     val ranked: List<RankedEntry> = remember(entries) {
         entries.sortedByDescending { it.stabilityPercentage }.mapIndexed { i, e -> RankedEntry(e, i + 1, e.stabilityPercentage) }
     }
-    val filtered = remember(ranked, searchText) {
-        if (searchText.isEmpty()) ranked
-        else ranked.filter { r ->
-            r.entry.deviceModel.contains(searchText, ignoreCase = true) ||
-            r.entry.deviceManufacturer.contains(searchText, ignoreCase = true) ||
-            r.entry.osVersion.contains(searchText, ignoreCase = true)
+    val filtered = remember(
+        ranked, searchText, showOnlyMyDevice, showOnlyMyOSVersion, 
+        selectedPlatformFilter, selectedDurationFilter
+    ) {
+        ranked.filter { r ->
+            val matchesSearch = if (searchText.isEmpty()) true
+            else r.entry.deviceModel.contains(searchText, ignoreCase = true) ||
+                 r.entry.deviceManufacturer.contains(searchText, ignoreCase = true) ||
+                 r.entry.osVersion.contains(searchText, ignoreCase = true)
+            
+            val matchesDevice = if (!showOnlyMyDevice) true
+            else r.entry.deviceModel.equals(myDeviceModel, ignoreCase = true)
+            
+            val matchesOS = if (!showOnlyMyOSVersion) true
+            else r.entry.osVersion.contains(myOSVersion, ignoreCase = true)
+            
+            val matchesPlatform = when (selectedPlatformFilter) {
+                1 -> r.entry.os == 1
+                2 -> r.entry.os == 2
+                else -> true
+            }
+            
+            val matchesDuration = when (selectedDurationFilter) {
+                0 -> r.entry.type == 0
+                1 -> r.entry.type == 1
+                2 -> r.entry.type == 2
+                else -> true
+            }
+            
+            matchesSearch && matchesDevice && matchesOS && matchesPlatform && matchesDuration
         }
     }
 
@@ -226,7 +261,69 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                 }
                             )
                         }
-                        Spacer(Modifier.height(10.dp))
+                    }
+
+                    // Client-Side Filters Row
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // My Device Filter Chip
+                            CustomFilterChip(
+                                selected = showOnlyMyDevice,
+                                label = "Device: $myDeviceModel",
+                                onClick = { showOnlyMyDevice = !showOnlyMyDevice }
+                            )
+
+                            // My OS Version Filter Chip
+                            CustomFilterChip(
+                                selected = showOnlyMyOSVersion,
+                                label = "OS: v$myOSVersion",
+                                onClick = { showOnlyMyOSVersion = !showOnlyMyOSVersion }
+                            )
+
+                            // Platform Filter Selector (Cycles)
+                            CustomFilterChip(
+                                selected = selectedPlatformFilter != null,
+                                label = when (selectedPlatformFilter) {
+                                    1 -> "Platform: iOS"
+                                    2 -> "Platform: Android"
+                                    else -> "Platform: All"
+                                },
+                                onClick = {
+                                    selectedPlatformFilter = when (selectedPlatformFilter) {
+                                        null -> 1
+                                        1 -> 2
+                                        else -> null
+                                    }
+                                }
+                            )
+
+                            // Duration Filter Selector (Cycles)
+                            CustomFilterChip(
+                                selected = selectedDurationFilter != null,
+                                label = when (selectedDurationFilter) {
+                                    0 -> "Duration: 5 Min"
+                                    1 -> "Duration: 15 Min"
+                                    2 -> "Duration: 30 Min"
+                                    else -> "Duration: All"
+                                },
+                                onClick = {
+                                    selectedDurationFilter = when (selectedDurationFilter) {
+                                        null -> 0
+                                        0 -> 1
+                                        1 -> 2
+                                        else -> null
+                                    }
+                                }
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
                     }
 
                     if (filtered.isEmpty()) {
@@ -479,5 +576,31 @@ private fun DetailOverlay(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CustomFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) Color(0xFFF2C94C).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.04f))
+            .border(
+                width = 1.dp,
+                color = if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = label,
+            style = TextStyle(
+                color = if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.6f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+        )
     }
 }

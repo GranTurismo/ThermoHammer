@@ -26,6 +26,7 @@ import com.example.thermohammer.engine.StressEngineFactory
 import com.example.thermohammer.engine.TestDuration
 import com.example.thermohammer.ui.components.CoreStatusView
 import com.example.thermohammer.ui.components.StabilityChart
+import com.example.thermohammer.ui.components.ThermalMonitoringPanel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -182,6 +183,7 @@ private fun DiagnosticsScreenWrapper(
             ControlButton(state, onStart = { showPreTest = true }, onStop = { engine.stopTest() })
             StabilityChart(points = state.chartPoints, events = state.thermalEvents)
             if (state.coreImpacts.isNotEmpty()) CoreStatusView(state.coreImpacts)
+            ThermalMonitoringPanel(state)
             Spacer(Modifier.height(16.dp))
         }
 
