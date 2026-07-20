@@ -633,6 +633,7 @@ struct LeaderboardView: View {
     private func stampsDetailCard(entry: HammerDto, stamps: [DeviceHammerStamp], stabilityVal: Double) -> some View {
         let scores = stamps.map { Double($0.score) }
         let maxScore = scores.max() ?? 1.0
+        let minScore = scores.min() ?? 0.0
         
         let calculatedStability = stabilityVal
         
