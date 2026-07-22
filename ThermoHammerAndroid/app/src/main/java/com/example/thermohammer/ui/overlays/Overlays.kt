@@ -232,6 +232,10 @@ fun SummaryOverlay(
     minStability: Float,
     finalStability: Float,
     worstThermal: ThermalState,
+    initialBatteryLevel: Int = 0,
+    finalBatteryLevel: Int = 0,
+    initialBatteryTemp: Float = 0f,
+    finalBatteryTemp: Float = 0f,
     hasSession: Boolean,
     isNetworkConnected: Boolean,
     isSubmitting: Boolean,
@@ -256,6 +260,35 @@ fun SummaryOverlay(
             SummaryRow("MIN STABILITY", "%.0f%%".format(minStability), stabilityColor(minStability))
             SummaryRow("FINAL STABILITY", "%.0f%%".format(finalStability), stabilityColor(finalStability))
             SummaryRow("WORST THERMAL", thermalName(worstThermal), thermalColor(worstThermal))
+
+            val tempDiff = finalBatteryTemp - initialBatteryTemp
+            val tempColor = when {
+                tempDiff >= 5.0f -> Color(0xFFEB5757)
+                tempDiff >= 2.0f -> Color(0xFFF2994A)
+                else -> Color(0xFF33CC66)
+            }
+            val tempDiffStr = if (initialBatteryTemp > 0f && finalBatteryTemp > 0f) {
+                "%+.1f°C (%.1f°C → %.1f°C)".format(tempDiff, initialBatteryTemp, finalBatteryTemp)
+            } else "--"
+            SummaryRow("BATTERY TEMP RISE", tempDiffStr, tempColor)
+
+            val levelDrop = initialBatteryLevel - finalBatteryLevel
+            val dropColor = when {
+                levelDrop >= 5 -> Color(0xFFEB5757)
+                levelDrop >= 2 -> Color(0xFFF2994A)
+                else -> Color(0xFF33CC66)
+            }
+            val dropStr = if (initialBatteryLevel > 0 && finalBatteryLevel > 0) {
+                if (levelDrop > 0) {
+                    "-%d%% (%d%% → %d%%)".format(levelDrop, initialBatteryLevel, finalBatteryLevel)
+                } else if (levelDrop < 0) {
+                    "+%d%% (%d%% → %d%%)".format(-levelDrop, initialBatteryLevel, finalBatteryLevel)
+                } else {
+                    "0%% (%d%% → %d%%)".format(initialBatteryLevel, finalBatteryLevel)
+                }
+            } else "--"
+            SummaryRow("BATTERY DRAIN", dropStr, dropColor)
+
             Spacer(Modifier.height(16.dp))
             OverlayDivider()
             Spacer(Modifier.height(12.dp))

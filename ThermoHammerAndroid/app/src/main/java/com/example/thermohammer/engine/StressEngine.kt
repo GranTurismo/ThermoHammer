@@ -63,7 +63,12 @@ data class StressState(
     val recordedStamps: List<DeviceHammerStamp> = emptyList(),
     val batteryTemp: Float = 0f,
     val cpuTemp: Float = 0f,
-    val thermalSensors: List<Pair<String, Float>> = emptyList()
+    val thermalSensors: List<Pair<String, Float>> = emptyList(),
+    val initialBatteryLevel: Int = 0,
+    val initialBatteryTemp: Float = 0f,
+    val finalBatteryLevel: Int = 0,
+    val finalBatteryTemp: Float = 0f,
+    val currentBatteryLevel: Int = 0
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -86,6 +91,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     private fun updateLiveTemperatures() {
         val battTemp = getBatteryTemperature()
+        val battPct = getBatteryPercentage()
         val zones = getSystemThermalZones()
         
         // Find CPU temp: Look for zones containing "cpu"
@@ -101,6 +107,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         _state.update {
             it.copy(
                 batteryTemp = battTemp,
+                currentBatteryLevel = battPct,
                 cpuTemp = cpuTemp,
                 thermalSensors = sensorPairs
             )
@@ -116,6 +123,21 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             } else 0f
         } catch (e: Exception) {
             0f
+        }
+    }
+
+    private fun getBatteryPercentage(): Int {
+        return try {
+            val intent = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (intent != null) {
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                if (level >= 0 && scale > 0) {
+                    ((level.toFloat() / scale.toFloat()) * 100f).toInt()
+                } else 0
+            } else 0
+        } catch (e: Exception) {
+            0
         }
     }
 
@@ -182,6 +204,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         if (_state.value.isRunning) return
 
         val initialCores = List(coreCount) { 100f }
+        val startLevel = getBatteryPercentage()
+        val startTemp = getBatteryTemperature()
+
         _state.update {
             it.copy(
                 isRunning = true,
@@ -193,7 +218,13 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 wasCancelledByBackground = false,
                 wasCompleted = false,
                 testDuration = duration,
-                recordedStamps = emptyList()
+                recordedStamps = emptyList(),
+                initialBatteryLevel = startLevel,
+                initialBatteryTemp = startTemp,
+                finalBatteryLevel = startLevel,
+                finalBatteryTemp = startTemp,
+                currentBatteryLevel = startLevel,
+                batteryTemp = startTemp
             )
         }
 
@@ -245,10 +276,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     fun stopTest() {
         if (!_state.value.isRunning) return
+        val endLevel = getBatteryPercentage()
+        val endTemp = getBatteryTemperature()
         threadAlive.set(false)
         statsJob?.cancel(); statsJob = null
         timerJob?.cancel(); timerJob = null
-        _state.update { it.copy(isRunning = false) }
+        _state.update {
+            it.copy(
+                isRunning = false,
+                finalBatteryLevel = endLevel,
+                finalBatteryTemp = endTemp
+            )
+        }
     }
 
     fun setSession(id: Int, key: String) {
@@ -269,7 +308,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 chartPoints = emptyList(),
                 recordedStamps = emptyList(),
                 coreImpacts = emptyList(),
-                thermalEvents = emptyList()
+                thermalEvents = emptyList(),
+                initialBatteryLevel = 0,
+                initialBatteryTemp = 0f,
+                finalBatteryLevel = 0,
+                finalBatteryTemp = 0f
             )
         }
     }
@@ -338,11 +381,15 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val limitReached = current.testDuration.seconds?.let { newElapsed >= it } == true
 
         if (limitReached) {
+            val endLevel = getBatteryPercentage()
+            val endTemp = getBatteryTemperature()
             _state.update {
                 it.copy(
                     elapsedSeconds = newElapsed,
                     chartPoints = newPoints,
-                    wasCompleted = true
+                    wasCompleted = true,
+                    finalBatteryLevel = endLevel,
+                    finalBatteryTemp = endTemp
                 )
             }
             stopTest()

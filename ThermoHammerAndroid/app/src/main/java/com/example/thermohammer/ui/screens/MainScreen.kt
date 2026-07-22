@@ -226,12 +226,15 @@ private fun DiagnosticsScreenWrapper(
 
             val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
             val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
-            val context = LocalContext.current
             com.example.thermohammer.ui.overlays.SummaryOverlay(
                 duration = state.elapsedSeconds,
                 minStability = minStab,
                 finalStability = finalStab,
                 worstThermal = worstThermal,
+                initialBatteryLevel = state.initialBatteryLevel,
+                finalBatteryLevel = state.finalBatteryLevel,
+                initialBatteryTemp = state.initialBatteryTemp,
+                finalBatteryTemp = state.finalBatteryTemp,
                 hasSession = isNetworkConnected,
                 isNetworkConnected = isNetworkConnected,
                 isSubmitting = isSubmitting,
