@@ -35,7 +35,7 @@ public class Hammer
 
 public class HammerRequest : HammerRequestBase
 {
-    public required StressThreadingType TestThreadingType { get; set; } = StressThreadingType.Multi;
+    public StressThreadingType TestThreadingType { get; set; } = StressThreadingType.Multi;
 }
 
 public enum HammerType
