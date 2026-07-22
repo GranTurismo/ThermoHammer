@@ -17,7 +17,7 @@ public class ThermoEncryptor
         return encryptionKey;
     }
 
-    public bool IsValid(string encryptionKey, HammerRequest hammer)
+    public bool IsValid(string encryptionKey, HammerRequestBase hammer)
     {
         if (hammer == null || hammer.Stamps == null || string.IsNullOrEmpty(encryptionKey) || string.IsNullOrEmpty(hammer.Hash))
             return false;

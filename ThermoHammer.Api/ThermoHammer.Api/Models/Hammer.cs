@@ -33,17 +33,9 @@ public class Hammer
     public double StabilityPercentage { get; set; }
 }
 
-public class HammerRequest
+public class HammerRequest : HammerRequestBase
 {
-    public required List<HammerStamp> Stamps { get; set; }
-    public HammerType Type { get; set; }
-    public required string DeviceManufacturer { get; set; }
-    public required string DeviceModel { get; set; }
-    public OsPlatform Os { get; set; }
     public required StressThreadingType TestThreadingType { get; set; } = StressThreadingType.Multi;
-    public required string OsVersion { get; set; }
-    public int SessionId { get; set; }
-    public required string Hash { get; set; }
 }
 
 public enum HammerType
@@ -84,7 +76,7 @@ public enum ThermalState
 
 public static class HammerExtensions
 {
-    public static Hammer ToDao(this HammerRequest request)
+    public static Hammer ToDao(this HammerRequestBase request)
     {
         double maxScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Max(s => s.Score) : 0;
         double stability = 100;
@@ -97,6 +89,11 @@ public static class HammerExtensions
             stability = (averageSecondHalf / maxScore) * 100;
         }
 
+        var threadType = StressThreadingType.Multi;
+
+        if (request is HammerRequest hammerRequest)
+            threadType = hammerRequest.TestThreadingType;
+
         return new Hammer
         {
             Stamps = request.Stamps!,
@@ -108,7 +105,7 @@ public static class HammerExtensions
             SessionId = request.SessionId,
             Hash = request.Hash,
             StabilityPercentage = stability,
-            TestThreadingType = request.TestThreadingType
+            TestThreadingType = threadType
         };
     }
 
@@ -126,4 +123,16 @@ public static class HammerExtensions
             TestThreadingType = hammer.TestThreadingType
         };
     }
+}
+
+public class HammerRequestBase
+{
+    public required List<HammerStamp> Stamps { get; set; }
+    public HammerType Type { get; set; }
+    public required string DeviceManufacturer { get; set; }
+    public required string DeviceModel { get; set; }
+    public OsPlatform Os { get; set; }
+    public required string OsVersion { get; set; }
+    public int SessionId { get; set; }
+    public required string Hash { get; set; }
 }
