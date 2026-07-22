@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ThermoHammer.Api.EndpointsMapper;
 using ThermoHammer.Api.Models;
+using ThermoHammer.Api.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<ThermoEncryptor>();
+builder.Services.AddHttpClient<DeviceModelResolver>();
 builder.Services.AddDbContext<ThermoDbContext>(o =>
 o.UseSqlServer(
     builder.Configuration.GetConnectionString("DefaultConnection")

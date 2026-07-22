@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using ThermoHammer.Api.Models;
+using ThermoHammer.Api.Tools;
 
 namespace ThermoHammer.Api.EndpointsMapper;
 
@@ -25,26 +26,7 @@ public static class ThermoEndpointsMapper
             return Results.Ok(ts);
         });
 
-        // app.MapPost("/hammer", async (HammerRequestBase hammerRequest, ThermoDbContext db, ThermoEncryptor encryptor) =>
-        // {
-        //     var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == hammerRequest.SessionId);
-        //     if (session is null)
-        //         return Results.NotFound("Session not found");
-
-        //     bool isValid = encryptor.IsValid(session.EncryptionKey, hammerRequest);
-
-        //     if (!isValid)
-        //         return Results.BadRequest("Invalid data");
-
-        //     session.State = SessionState.Closed;
-
-        //     await db.Hammers.AddAsync(hammerRequest.ToDao());
-        //     await db.SaveChangesAsync();
-
-        //     return Results.Ok("Data saved successfully");
-        // });
-
-        app.MapPost("/hammer", async (HammerRequest hammerRequest, ThermoDbContext db, ThermoEncryptor encryptor) =>
+        app.MapPost("/hammer", async (HammerRequest hammerRequest, ThermoDbContext db, ThermoEncryptor encryptor, DeviceModelResolver modelResolver) =>
         {
             var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == hammerRequest.SessionId);
             if (session is null)
@@ -56,6 +38,8 @@ public static class ThermoEndpointsMapper
                 return Results.BadRequest("Invalid data");
 
             session.State = SessionState.Closed;
+
+            hammerRequest.DeviceModel = await modelResolver.ResolveModelAsync(hammerRequest.Os, hammerRequest.DeviceModel);
 
             await db.Hammers.AddAsync(hammerRequest.ToDao());
             await db.SaveChangesAsync();
