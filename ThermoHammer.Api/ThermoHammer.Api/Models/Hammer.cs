@@ -80,18 +80,10 @@ public static class HammerExtensions
 
         if (request.Stamps != null && request.Stamps.Count > 0 && maxScore > 0)
         {
-            if (request.Os == OsPlatform.Android) // Android
-            {
-                int secondHalfStart = request.Stamps.Count / 2;
-                var secondHalfStamps = request.Stamps.Skip(secondHalfStart).ToList();
-                double averageSecondHalf = secondHalfStamps.Count > 0 ? secondHalfStamps.Average(s => s.Score) : 0;
-                stability = (averageSecondHalf / maxScore) * 100;
-            }
-            else // iOS (keep old logic)
-            {
-                double minScore = request.Stamps.Min(s => s.Score);
-                stability = (minScore / maxScore) * 100;
-            }
+            int secondHalfStart = request.Stamps.Count / 2;
+            var secondHalfStamps = request.Stamps.Skip(secondHalfStart).ToList();
+            double averageSecondHalf = secondHalfStamps.Count > 0 ? secondHalfStamps.Average(s => s.Score) : 0;
+            stability = (averageSecondHalf / maxScore) * 100;
         }
 
         return new Hammer
