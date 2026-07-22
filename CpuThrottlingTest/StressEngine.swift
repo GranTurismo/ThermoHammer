@@ -25,6 +25,18 @@ enum TestDuration: Hashable {
     }
 }
 
+enum StressThreadingType: Int, Codable, Hashable, CaseIterable {
+    case single = 0
+    case multi = 1
+    
+    var displayName: String {
+        switch self {
+        case .single: return "1 Thread"
+        case .multi: return "Multi Thread"
+        }
+    }
+}
+
 class SafeCounter {
     private var lock = os_unfair_lock_s()
     private var value: UInt64 = 0
@@ -61,6 +73,7 @@ class StressEngine: ObservableObject {
     @Published var currentThermalState: ProcessInfo.ThermalState = .nominal
     @Published var wasCancelledDueToBackground = false
     @Published var wasCompleted = false
+    @Published var testThreadingType: StressThreadingType = .multi
     
     var recordedStamps: [DeviceHammerStamp] = []
     private var statsSampleCount = 0
@@ -123,7 +136,7 @@ class StressEngine: ObservableObject {
             }
     }
     
-    func startTest(duration: TestDuration) {
+    func startTest(duration: TestDuration, threadingType: StressThreadingType = .multi) {
         guard !isRunning else { return }
         
         wasCancelledDueToBackground = false
@@ -131,9 +144,18 @@ class StressEngine: ObservableObject {
         recordedStamps = []
         statsSampleCount = 0
         testDuration = duration
+        testThreadingType = threadingType
         elapsedTime = 0
         overallStability = 100.0
-        coreImpacts = Array(repeating: 100.0, count: coreCount)
+        
+        let activeThreadCount = (threadingType == .single) ? 1 : coreCount
+        if threadingType == .single {
+            var impacts = Array(repeating: 0.0, count: coreCount)
+            impacts[0] = 100.0
+            coreImpacts = impacts
+        } else {
+            coreImpacts = Array(repeating: 100.0, count: coreCount)
+        }
         chartPoints = [StabilityPoint(time: 0, score: 100.0)]
         thermalEvents = []
         
@@ -152,7 +174,7 @@ class StressEngine: ObservableObject {
         threadKeepAlive = true
         
         // Spawn stress threads
-        for coreIndex in 0..<coreCount {
+        for coreIndex in 0..<activeThreadCount {
             let counter = counters[coreIndex]
             
             Thread.detachNewThread { [weak self] in

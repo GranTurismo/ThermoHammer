@@ -13,6 +13,7 @@ struct DeviceHammerStamp: Codable {
 struct HammerPayload: Codable {
     let stamps: [DeviceHammerStamp]
     let type: Int // 0 = 5 min, 1 = 15 min, 2 = 30 min (matching HammerType enum)
+    let testThreadingType: Int // 0 = Single, 1 = Multi
     let deviceManufacturer: String
     let deviceModel: String
     let os: Int // 1 = iOS (matching OsPlatform enum)
@@ -237,4 +238,5 @@ struct HammerDto: Codable, Identifiable {
     let os: Int
     let osVersion: String
     let stabilityPercentage: Double
+    let testThreadingType: Int?
 }

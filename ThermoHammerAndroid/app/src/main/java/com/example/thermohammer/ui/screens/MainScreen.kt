@@ -54,8 +54,9 @@ fun MainScreen() {
     }
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    // Local duration state
+    // Local duration & threading state
     var selectedDuration by remember { mutableStateOf(TestDuration.MINUTES_5) }
+    var selectedThreadingType by remember { mutableStateOf(com.example.thermohammer.engine.StressThreadingType.MULTI) }
 
     Box(
         modifier = Modifier
@@ -70,7 +71,9 @@ fun MainScreen() {
                         engine = engine,
                         isNetworkConnected = isNetworkConnected.value,
                         selectedDuration = selectedDuration,
+                        selectedThreadingType = selectedThreadingType,
                         onDurationChange = { selectedDuration = it },
+                        onThreadingChange = { selectedThreadingType = it },
                         onNavigateToLeaderboard = { selectedTab = 1 }
                     )
                     1 -> LeaderboardScreen(isNetworkConnected.value)
@@ -89,7 +92,9 @@ private fun DiagnosticsScreenWrapper(
     engine: StressEngine,
     isNetworkConnected: Boolean,
     selectedDuration: TestDuration,
+    selectedThreadingType: com.example.thermohammer.engine.StressThreadingType,
     onDurationChange: (TestDuration) -> Unit,
+    onThreadingChange: (com.example.thermohammer.engine.StressThreadingType) -> Unit,
     onNavigateToLeaderboard: () -> Unit
 ) {
     val state by engine.state.collectAsState()
@@ -148,6 +153,7 @@ private fun DiagnosticsScreenWrapper(
                         timestamp = System.currentTimeMillis(),
                         durationSeconds = state.elapsedSeconds,
                         testDurationType = durationType,
+                        testThreadingType = state.testThreadingType.value,
                         minStability = minStab,
                         finalStability = finalStab,
                         worstThermalState = worstThermal.ordinal,
@@ -193,6 +199,7 @@ private fun DiagnosticsScreenWrapper(
             StatsPanel(state)
             if (!state.isRunning) {
                 DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
+                ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
             }
             ControlButton(state, onStart = { showPreTest = true }, onStop = { engine.stopTest() })
             StabilityChart(points = state.chartPoints, events = state.thermalEvents)
@@ -211,7 +218,7 @@ private fun DiagnosticsScreenWrapper(
                 onProceed = {
                     showPreTest = false
                     engine.clearSession()
-                    engine.startTest(selectedDuration)
+                    engine.startTest(selectedDuration, selectedThreadingType)
                 }
             )
         }
@@ -252,6 +259,7 @@ private fun DiagnosticsScreenWrapper(
                             val hash = com.example.thermohammer.network.ThermoHasher.computeHash(session.encryptionKey, stamps)
                             val payload = com.example.thermohammer.network.HammerPayload(
                                 stamps = stamps, type = durationType,
+                                testThreadingType = state.testThreadingType.value,
                                 deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
                                 deviceModel = engine.getDeviceModel(), os = 2,
                                 osVersion = engine.getAndroidVersion(),

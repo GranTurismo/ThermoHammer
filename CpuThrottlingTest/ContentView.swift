@@ -11,6 +11,7 @@ struct SummaryDetails {
 struct ContentView: View {
     @StateObject private var engine = StressEngine.shared
     @State private var selectedDuration: TestDuration = .minutes5
+    @State private var selectedThreadingType: StressThreadingType = .multi
     
     // Summary popup states
     @State private var showSummary = false
@@ -165,6 +166,7 @@ struct ContentView: View {
                         case .minutes30: return 2
                         }
                     }(),
+                    testThreadingType: engine.testThreadingType.rawValue,
                     minStability: minStability,
                     finalStability: engine.overallStability,
                     worstThermalState: {
@@ -347,30 +349,61 @@ struct ContentView: View {
     
     // Options Picker Section
     private var optionsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TARGET DURATION")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("TARGET DURATION")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
+                
+                HStack(spacing: 8) {
+                    ForEach([TestDuration.minutes5, .minutes15, .minutes30], id: \.self) { duration in
+                        Button(action: {
+                            selectedDuration = duration
+                        }) {
+                            Text(duration.displayName)
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(selectedDuration == duration ? .black : .white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(selectedDuration == duration ? Color.white : Color.white.opacity(0.05))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(selectedDuration == duration ? 0.0 : 0.08), lineWidth: 1)
+                                )
+                        }
+                    }
+                }
+            }
             
-            HStack(spacing: 8) {
-                ForEach([TestDuration.minutes5, .minutes15, .minutes30], id: \.self) { duration in
-                    Button(action: {
-                        selectedDuration = duration
-                    }) {
-                        Text(duration.displayName)
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(selectedDuration == duration ? .black : .white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(selectedDuration == duration ? Color.white : Color.white.opacity(0.05))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(selectedDuration == duration ? 0.0 : 0.08), lineWidth: 1)
-                            )
+            VStack(alignment: .leading, spacing: 8) {
+                Text("THREADING MODE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 4)
+                
+                HStack(spacing: 8) {
+                    ForEach(StressThreadingType.allCases, id: \.self) { type in
+                        Button(action: {
+                            selectedThreadingType = type
+                        }) {
+                            Text(type.displayName)
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(selectedThreadingType == type ? .black : .white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(selectedThreadingType == type ? Color.white : Color.white.opacity(0.05))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(selectedThreadingType == type ? 0.0 : 0.08), lineWidth: 1)
+                                )
+                        }
                     }
                 }
             }
@@ -526,6 +559,7 @@ struct ContentView: View {
                                         let payload = HammerPayload(
                                             stamps: engine.recordedStamps,
                                             type: durationType,
+                                            testThreadingType: engine.testThreadingType.rawValue,
                                             deviceManufacturer: "Apple",
                                             deviceModel: LeaderboardService.shared.getDeviceModelName(),
                                             os: 1, // iOS
@@ -889,7 +923,7 @@ struct ContentView: View {
                         // Start test immediately without pre-test server session delays
                         engine.sessionId = nil
                         engine.encryptionKey = nil
-                        engine.startTest(duration: selectedDuration)
+                        engine.startTest(duration: selectedDuration, threadingType: selectedThreadingType)
                     }) {
                         Text("PROCEED")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))

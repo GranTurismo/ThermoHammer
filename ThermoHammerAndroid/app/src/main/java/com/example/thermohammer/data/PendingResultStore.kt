@@ -11,6 +11,7 @@ data class PendingTestResult(
     val timestamp: Long,
     val durationSeconds: Int,
     val testDurationType: Int, // 0=5min, 1=15min, 2=30min
+    val testThreadingType: Int = 1, // 0=Single, 1=Multi
     val minStability: Float,
     val finalStability: Float,
     val worstThermalState: Int, // 0=Nominal, 1=Fair, 2=Serious, 3=Critical

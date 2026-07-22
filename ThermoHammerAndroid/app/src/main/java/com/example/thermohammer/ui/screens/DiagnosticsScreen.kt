@@ -140,6 +140,7 @@ fun DiagnosticsScreen(
                             val payload = HammerPayload(
                                 stamps = stamps,
                                 type = durationType,
+                                testThreadingType = state.testThreadingType.value,
                                 deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
                                 deviceModel = engine.getDeviceModel(),
                                 os = 2, // Android
@@ -172,6 +173,7 @@ fun DiagnosticsScreen(
                             timestamp = System.currentTimeMillis(),
                             durationSeconds = state.elapsedSeconds,
                             testDurationType = durationType,
+                            testThreadingType = state.testThreadingType.value,
                             minStability = minStab,
                             finalStability = finalStab,
                             worstThermalState = worstThermal.ordinal,
@@ -400,6 +402,52 @@ fun DurationPicker(
                 ) {
                     Text(
                         duration.displayName,
+                        style = TextStyle(
+                            color = if (isSelected) Color.Black else Color.White,
+                            fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ThreadingPicker(
+    selected: StressThreadingType,
+    onSelect: (StressThreadingType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            "THREADING MODE",
+            style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White.copy(alpha = 0.02f))
+                .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(18.dp))
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(StressThreadingType.MULTI, StressThreadingType.SINGLE).forEach { type ->
+                val isSelected = selected == type
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.05f))
+                        .border(1.dp, if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                        .clickable { onSelect(type) }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        type.displayName,
                         style = TextStyle(
                             color = if (isSelected) Color.Black else Color.White,
                             fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold

@@ -430,6 +430,14 @@ struct LeaderboardView: View {
                         Text(durationName(for: item.entry.type))
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(item.entry.type == 0 ? .green : (item.entry.type == 1 ? .blue : .purple))
+                        
+                        Circle()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: 3, height: 3)
+                        
+                        Text((item.entry.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor((item.entry.testThreadingType ?? 1) == 0 ? .orange : .secondary)
                     }
                 }
                 
@@ -766,6 +774,7 @@ struct LeaderboardView: View {
                                 let payload = HammerPayload(
                                     stamps: pending.stamps,
                                     type: pending.testDurationType,
+                                    testThreadingType: pending.testThreadingType ?? 1,
                                     deviceManufacturer: pending.deviceManufacturer,
                                     deviceModel: pending.deviceModel,
                                     os: 1,

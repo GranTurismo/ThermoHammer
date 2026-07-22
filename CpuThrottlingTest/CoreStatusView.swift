@@ -4,11 +4,15 @@ struct CoreMeter: View {
     let index: Int
     let impact: Double // 0.0 to 100.0 (current speed percentage)
     
+    private var isIdle: Bool {
+        impact <= 0.5
+    }
+    
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
                 // Outer glow for low-performance cores
-                if impact < 95 {
+                if !isIdle && impact < 95 {
                     Circle()
                         .stroke(ringColor(for: impact).opacity(0.15), lineWidth: 12)
                         .blur(radius: 4)
@@ -20,14 +24,16 @@ struct CoreMeter: View {
                     .stroke(Color.white.opacity(0.05), lineWidth: 6)
                 
                 // Active ring arc
-                Circle()
-                    .trim(from: 0.0, to: CGFloat(max(0.05, impact / 100.0))) // Keep at least a tiny notch visible
-                    .stroke(
-                        ringGradient(for: impact),
-                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.5), value: impact)
+                if !isIdle {
+                    Circle()
+                        .trim(from: 0.0, to: CGFloat(max(0.05, impact / 100.0)))
+                        .stroke(
+                            ringGradient(for: impact),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeInOut(duration: 0.5), value: impact)
+                }
                 
                 // Core status text
                 VStack(spacing: 1) {
@@ -35,7 +41,11 @@ struct CoreMeter: View {
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundColor(.secondary)
                     
-                    if impact >= 99.5 {
+                    if isIdle {
+                        Text("IDLE")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    } else if impact >= 99.5 {
                         Text("100%")
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
@@ -65,7 +75,9 @@ struct CoreMeter: View {
     }
     
     private func ringColor(for val: Double) -> Color {
-        if val >= 95 {
+        if val <= 0.5 {
+            return Color.white.opacity(0.15)
+        } else if val >= 95 {
             return Color(red: 0.2, green: 0.8, blue: 0.4) // Vibrant Green
         } else if val >= 80 {
             return Color(red: 0.95, green: 0.7, blue: 0.1) // Amber

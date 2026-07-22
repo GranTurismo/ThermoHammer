@@ -5,6 +5,7 @@ struct PendingTestResult: Codable, Identifiable {
     let timestamp: Double
     let durationSeconds: Int
     let testDurationType: Int // 0 = 5 min, 1 = 15 min, 2 = 30 min
+    let testThreadingType: Int? // 0 = Single, 1 = Multi
     let minStability: Double
     let finalStability: Double
     let worstThermalState: Int // 0 = Nominal, 1 = Fair, 2 = Serious, 3 = Critical

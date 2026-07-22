@@ -31,6 +31,11 @@ enum class TestDuration(val displayName: String, val seconds: Int?) {
     MINUTES_30("30 Min", 30 * 60)
 }
 
+enum class StressThreadingType(val displayName: String, val value: Int) {
+    SINGLE("1 Thread", 0),
+    MULTI("Multi Thread", 1)
+}
+
 enum class ThermalState { NOMINAL, FAIR, SERIOUS, CRITICAL }
 
 data class StabilityPoint(val time: Float, val score: Float)
@@ -58,6 +63,7 @@ data class StressState(
     val wasCancelledByBackground: Boolean = false,
     val wasCompleted: Boolean = false,
     val testDuration: TestDuration = TestDuration.MINUTES_5,
+    val testThreadingType: StressThreadingType = StressThreadingType.MULTI,
     val sessionId: Int? = null,
     val encryptionKey: String? = null,
     val recordedStamps: List<DeviceHammerStamp> = emptyList(),
@@ -200,10 +206,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    fun startTest(duration: TestDuration) {
+    fun startTest(duration: TestDuration, threadingType: StressThreadingType = StressThreadingType.MULTI) {
         if (_state.value.isRunning) return
 
-        val initialCores = List(coreCount) { 100f }
+        val activeThreadCount = if (threadingType == StressThreadingType.SINGLE) 1 else coreCount
+        val initialCores = List(coreCount) { idx -> if (threadingType == StressThreadingType.SINGLE && idx > 0) 0f else 100f }
         val startLevel = getBatteryPercentage()
         val startTemp = getBatteryTemperature()
 
@@ -218,6 +225,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 wasCancelledByBackground = false,
                 wasCompleted = false,
                 testDuration = duration,
+                testThreadingType = threadingType,
                 recordedStamps = emptyList(),
                 initialBatteryLevel = startLevel,
                 initialBatteryTemp = startTemp,
@@ -240,7 +248,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         statsSampleCount = 0
 
         threadAlive.set(true)
-        workerThreads = (0 until coreCount).map { idx ->
+        workerThreads = (0 until activeThreadCount).map { idx ->
             Thread {
                 var a = -6148914691236517206L // 0xAAAAAAAAAAAAAAAA as signed Long
                 var b = 6148914691236517205L  // 0x5555555555555555 as signed Long

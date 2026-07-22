@@ -24,6 +24,7 @@ data class HammerPayload(
     @SerializedName("deviceManufacturer") val deviceManufacturer: String,
     @SerializedName("deviceModel") val deviceModel: String,
     @SerializedName("os") val os: Int, // 2 = Android
+    @SerializedName("testThreadingType") val testThreadingType: Int = 1, // 0 = Single, 1 = Multi
     @SerializedName("osVersion") val osVersion: String,
     @SerializedName("sessionId") val sessionId: Int,
     @SerializedName("hash") val hash: String
@@ -42,7 +43,8 @@ data class HammerDto(
     @SerializedName("deviceModel") val deviceModel: String,
     @SerializedName("os") val os: Int,
     @SerializedName("osVersion") val osVersion: String,
-    @SerializedName("stabilityPercentage") val stabilityPercentage: Double
+    @SerializedName("stabilityPercentage") val stabilityPercentage: Double,
+    @SerializedName("testThreadingType") val testThreadingType: Int? = 1
 )
 
 // ── Retrofit Interface ─────────────────────────────────────────────────────────

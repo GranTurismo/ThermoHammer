@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.ComponentModel;
 
 namespace ThermoHammer.Api.Models;
 
@@ -11,6 +12,8 @@ public class HammerDto
     public required OsPlatform Os { get; set; }
     public required string OsVersion { get; set; }
     public required double StabilityPercentage { get; set; }
+    public required StressThreadingType TestThreadingType { get; set; }
+
 }
 
 public class Hammer
@@ -22,6 +25,7 @@ public class Hammer
     public required string DeviceModel { get; set; }
     public required OsPlatform Os { get; set; }
     public required string OsVersion { get; set; }
+    public required StressThreadingType TestThreadingType { get; set; }
     [JsonIgnore]
     public ThermoSession Session { get; set; }
     public int SessionId { get; set; }
@@ -36,6 +40,7 @@ public class HammerRequest
     public required string DeviceManufacturer { get; set; }
     public required string DeviceModel { get; set; }
     public OsPlatform Os { get; set; }
+    public required StressThreadingType TestThreadingType { get; set; } = StressThreadingType.Multi;
     public required string OsVersion { get; set; }
     public int SessionId { get; set; }
     public required string Hash { get; set; }
@@ -46,6 +51,12 @@ public enum HammerType
     FiveMinutes,
     FifteenMinutes,
     ThirtyMinutes
+}
+
+public enum StressThreadingType
+{
+    Single,
+    Multi
 }
 
 public enum OsPlatform
@@ -96,7 +107,8 @@ public static class HammerExtensions
             OsVersion = request.OsVersion,
             SessionId = request.SessionId,
             Hash = request.Hash,
-            StabilityPercentage = stability
+            StabilityPercentage = stability,
+            TestThreadingType = request.TestThreadingType
         };
     }
 
@@ -110,7 +122,8 @@ public static class HammerExtensions
             DeviceModel = hammer.DeviceModel,
             Os = hammer.Os,
             OsVersion = hammer.OsVersion,
-            StabilityPercentage = hammer.StabilityPercentage
+            StabilityPercentage = hammer.StabilityPercentage,
+            TestThreadingType = hammer.TestThreadingType
         };
     }
 }

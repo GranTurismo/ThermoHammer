@@ -166,6 +166,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                         val payload = HammerPayload(
                                             stamps = pending.stamps,
                                             type = pending.testDurationType,
+                                            testThreadingType = pending.testThreadingType,
                                             deviceManufacturer = pending.deviceManufacturer,
                                             deviceModel = pending.deviceModel,
                                             os = 2,
@@ -488,6 +489,10 @@ private fun LeaderboardRow(item: RankedEntry, onClick: () -> Unit) {
                 Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
                 val durColor = when (entry.type) { 0 -> Color(0xFF33CC66); 1 -> Color(0xFF4A9EFF); else -> Color(0xFFAB5BFF) }
                 Text(when (entry.type) { 0 -> "5 MIN"; 1 -> "15 MIN"; else -> "30 MIN" }, style = TextStyle(color = durColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
+                val threadText = if ((entry.testThreadingType ?: 1) == 0) "1 THREAD" else "MULTI"
+                val threadColor = if ((entry.testThreadingType ?: 1) == 0) Color(0xFFFF9500) else Color.White.copy(alpha = 0.4f)
+                Text(threadText, style = TextStyle(color = threadColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
             }
         }
 

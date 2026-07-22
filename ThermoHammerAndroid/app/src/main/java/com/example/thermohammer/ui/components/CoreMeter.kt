@@ -36,7 +36,10 @@ fun CoreMeter(
         label = "core_impact_$index"
     )
 
+    val isIdle = animatedImpact <= 0.5f
+
     val ringColor = when {
+        isIdle                -> Color.White.copy(alpha = 0.15f)
         animatedImpact >= 95f -> Color(0xFF33CC66)
         animatedImpact >= 80f -> Color(0xFFF2C94C)
         else                  -> Color(0xFFE85520)
@@ -69,20 +72,22 @@ fun CoreMeter(
                 )
 
                 // Active arc
-                val sweep = maxOf(0.05f, animatedImpact / 100f) * 360f
-                val gradient = Brush.sweepGradient(
-                    colors = listOf(ringColor, ringColor.copy(alpha = 0.6f)),
-                    center = center
-                )
-                drawArc(
-                    brush = gradient,
-                    startAngle = -90f,
-                    sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = Size(radius * 2, radius * 2),
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                )
+                if (!isIdle) {
+                    val sweep = maxOf(0.05f, animatedImpact / 100f) * 360f
+                    val gradient = Brush.sweepGradient(
+                        colors = listOf(ringColor, ringColor.copy(alpha = 0.6f)),
+                        center = center
+                    )
+                    drawArc(
+                        brush = gradient,
+                        startAngle = -90f,
+                        sweepAngle = sweep,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = Size(radius * 2, radius * 2),
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    )
+                }
             }
 
             // Center text
@@ -96,7 +101,17 @@ fun CoreMeter(
                         fontWeight = FontWeight.Bold
                     )
                 )
-                if (animatedImpact >= 99.5f) {
+                if (isIdle) {
+                    Text(
+                        text = "IDLE",
+                        style = TextStyle(
+                            color = Color.White.copy(alpha = 0.35f),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                } else if (animatedImpact >= 99.5f) {
                     Text(
                         text = "100%",
                         style = TextStyle(
