@@ -5,6 +5,7 @@ WORKDIR /src
 # Copy solution and project files first to cache restore layers
 COPY ["ThermoHammer.Api.sln", "./"]
 COPY ["ThermoHammer.Api/ThermoHammer.Api.csproj", "ThermoHammer.Api/"]
+COPY ["ThermoHammer.Api.Tests/ThermoHammer.Api.Tests.csproj", "ThermoHammer.Api.Tests/"]
 
 # Restore dependencies
 RUN dotnet restore
