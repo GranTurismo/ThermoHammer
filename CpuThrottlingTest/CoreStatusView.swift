@@ -96,8 +96,79 @@ struct CoreMeter: View {
     }
 }
 
+struct GpuMeter: View {
+    let impact: Double // 0.0 to 100.0
+    
+    private var isIdle: Bool {
+        impact <= 0.5
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                if !isIdle {
+                    Circle()
+                        .stroke(Color.purple.opacity(0.15), lineWidth: 12)
+                        .blur(radius: 4)
+                        .animation(.easeInOut(duration: 0.5), value: impact)
+                }
+                
+                Circle()
+                    .stroke(Color.white.opacity(0.05), lineWidth: 6)
+                
+                if !isIdle {
+                    Circle()
+                        .trim(from: 0.0, to: CGFloat(max(0.05, impact / 100.0)))
+                        .stroke(
+                            LinearGradient(colors: [Color.purple, Color.pink], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeInOut(duration: 0.5), value: impact)
+                }
+                
+                VStack(spacing: 1) {
+                    Text("GPU CORE")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color.purple.opacity(0.9))
+                    
+                    if isIdle {
+                        Text("IDLE")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    } else if impact >= 99.5 {
+                        Text("100%")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                    } else {
+                        let loss = Int(round(100.0 - impact))
+                        Text("-\(loss)%")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color.purple)
+                        Text("IMPACT")
+                            .font(.system(size: 7, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .frame(width: 72, height: 72)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.purple.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.purple.opacity(0.25), lineWidth: 1)
+                )
+        )
+    }
+}
+
 struct CoreStatusView: View {
     let coreImpacts: [Double]
+    var gpuImpact: Double? = 0.0
     
     // Grid configuration: adaptive columns to prevent overlapping on narrow screens
     private let columns = [
@@ -110,7 +181,7 @@ struct CoreStatusView: View {
                 Image(systemName: "cpu")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
-                Text("PER-CORE RELATIVE IMPACT")
+                Text("HARDWARE RELATIVE IMPACT")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -118,6 +189,9 @@ struct CoreStatusView: View {
             .padding(.horizontal, 4)
             
             LazyVGrid(columns: columns, spacing: 10) {
+                if let gpu = gpuImpact {
+                    GpuMeter(impact: gpu)
+                }
                 ForEach(0..<coreImpacts.count, id: \.self) { index in
                     CoreMeter(index: index + 1, impact: coreImpacts[index])
                 }
@@ -139,7 +213,7 @@ struct CoreStatusView_Previews: PreviewProvider {
     static var previews: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            CoreStatusView(coreImpacts: [100.0, 95.0, 85.0, 70.0, 100.0, 100.0])
+            CoreStatusView(coreImpacts: [100.0, 95.0, 85.0, 70.0, 100.0, 100.0], gpuImpact: 100.0)
                 .padding()
         }
     }

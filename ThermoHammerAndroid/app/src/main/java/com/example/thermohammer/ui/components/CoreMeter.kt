@@ -147,7 +147,115 @@ fun CoreMeter(
 }
 
 @Composable
-fun CoreStatusView(coreImpacts: List<Float>, modifier: Modifier = Modifier) {
+fun GpuMeter(
+    impact: Float,
+    modifier: Modifier = Modifier
+) {
+    val animatedImpact by animateFloatAsState(
+        targetValue = impact,
+        animationSpec = tween(durationMillis = 500, easing = EaseInOut),
+        label = "gpu_impact"
+    )
+
+    val isIdle = animatedImpact <= 0.5f
+    val purpleColor = Color(0xFFAB5BFF)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFFAB5BFF).copy(alpha = 0.05f))
+            .border(1.dp, Color(0xFFAB5BFF).copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+            .padding(vertical = 10.dp, horizontal = 6.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(72.dp)) {
+            Canvas(modifier = Modifier.size(72.dp)) {
+                val strokeWidth = 6.dp.toPx()
+                val radius = (min(size.width, size.height) - strokeWidth) / 2f
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val topLeft = Offset(center.x - radius, center.y - radius)
+
+                drawArc(
+                    color = Color.White.copy(alpha = 0.06f),
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = Size(radius * 2, radius * 2),
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                )
+
+                if (!isIdle) {
+                    val sweep = maxOf(0.05f, animatedImpact / 100f) * 360f
+                    drawArc(
+                        color = purpleColor,
+                        startAngle = -90f,
+                        sweepAngle = sweep,
+                        useCenter = false,
+                        topLeft = topLeft,
+                        size = Size(radius * 2, radius * 2),
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "GPU CORE",
+                    style = TextStyle(
+                        color = Color(0xFFAB5BFF),
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                if (isIdle) {
+                    Text(
+                        text = "IDLE",
+                        style = TextStyle(
+                            color = Color.White.copy(alpha = 0.35f),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                } else if (animatedImpact >= 99.5f) {
+                    Text(
+                        text = "100%",
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                } else {
+                    val loss = (100f - animatedImpact).toInt()
+                    Text(
+                        text = "-$loss%",
+                        style = TextStyle(
+                            color = purpleColor,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Text(
+                        text = "IMPACT",
+                        style = TextStyle(
+                            color = Color.White.copy(alpha = 0.35f),
+                            fontSize = 7.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CoreStatusView(coreImpacts: List<Float>, gpuImpact: Float = 0f, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -158,7 +266,7 @@ fun CoreStatusView(coreImpacts: List<Float>, modifier: Modifier = Modifier) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "⬡  PER-CORE RELATIVE IMPACT",
+                text = "⬡  HARDWARE RELATIVE IMPACT",
                 style = TextStyle(
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 11.sp,
@@ -176,6 +284,9 @@ fun CoreStatusView(coreImpacts: List<Float>, modifier: Modifier = Modifier) {
                 .fillMaxWidth()
                 .heightIn(max = 400.dp)
         ) {
+            item {
+                GpuMeter(impact = gpuImpact)
+            }
             items(coreImpacts.size) { i ->
                 CoreMeter(index = i + 1, impact = coreImpacts[i])
             }

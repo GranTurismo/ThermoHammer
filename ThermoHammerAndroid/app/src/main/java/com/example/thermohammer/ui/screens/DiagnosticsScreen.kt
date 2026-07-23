@@ -443,16 +443,47 @@ fun ThreadingPicker(
                         .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.05f))
                         .border(1.dp, if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
                         .clickable { onSelect(type) }
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        type.displayName,
-                        style = TextStyle(
-                            color = if (isSelected) Color.Black else Color.White,
-                            fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (type == StressThreadingType.MULTI) {
+                            Text(
+                                text = "RECOMMENDED",
+                                style = TextStyle(
+                                    color = if (isSelected) Color(0xFF1E602B) else Color(0xFF33CC66),
+                                    fontSize = 7.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black
+                                ),
+                                modifier = Modifier
+                                    .padding(bottom = 3.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isSelected) Color.Black.copy(alpha = 0.12f) else Color(0xFF33CC66).copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "RECOMMENDED",
+                                style = TextStyle(
+                                    color = Color.Transparent,
+                                    fontSize = 7.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black
+                                ),
+                                modifier = Modifier
+                                    .padding(bottom = 3.dp)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Text(
+                            type.displayName,
+                            style = TextStyle(
+                                color = if (isSelected) Color.Black else Color.White,
+                                fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
+                    }
                 }
             }
         }

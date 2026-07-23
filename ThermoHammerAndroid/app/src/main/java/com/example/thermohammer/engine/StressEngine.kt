@@ -74,7 +74,8 @@ data class StressState(
     val initialBatteryTemp: Float = 0f,
     val finalBatteryLevel: Int = 0,
     val finalBatteryTemp: Float = 0f,
-    val currentBatteryLevel: Int = 0
+    val currentBatteryLevel: Int = 0,
+    val gpuImpact: Float = 0f
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -191,9 +192,98 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private var overallBaseline: Double = 1.0
     private var statsSampleCount = 0
 
+    private val gpuCounter = AtomicLong(0L)
+    private var prevGpuCounter: Long = 0L
+    private var gpuBaseline: Double = 1.0
+
     private var statsJob: Job? = null
     private var timerJob: Job? = null
     private var workerThreads: List<Thread> = emptyList()
+    private var gpuThread: Thread? = null
+
+    private fun startGpuWorker() {
+        gpuThread = Thread {
+            try {
+                val eglDisplay = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
+                val version = IntArray(2)
+                android.opengl.EGL14.eglInitialize(eglDisplay, version, 0, version, 1)
+
+                val configAttribs = intArrayOf(
+                    android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
+                    android.opengl.EGL14.EGL_SURFACE_TYPE, android.opengl.EGL14.EGL_PBUFFER_BIT,
+                    android.opengl.EGL14.EGL_NONE
+                )
+                val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
+                val numConfigs = IntArray(1)
+                android.opengl.EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0)
+
+                val pbufferAttribs = intArrayOf(
+                    android.opengl.EGL14.EGL_WIDTH, 512,
+                    android.opengl.EGL14.EGL_HEIGHT, 512,
+                    android.opengl.EGL14.EGL_NONE
+                )
+                val eglSurface = android.opengl.EGL14.eglCreatePbufferSurface(eglDisplay, configs[0], pbufferAttribs, 0)
+                val contextAttribs = intArrayOf(android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, android.opengl.EGL14.EGL_NONE)
+                val eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, configs[0], android.opengl.EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
+
+                android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)
+
+                val vsCode = "attribute vec4 vPosition; void main() { gl_Position = vPosition; }"
+                val fsCode = """
+                    precision highp float;
+                    void main() {
+                        vec4 a = vec4(gl_FragCoord.xy, 1.0, 2.0);
+                        vec4 b = vec4(1.0001, 1.0002, 1.0003, 1.0004);
+                        for (int i = 0; i < 20000; i++) {
+                            a = a * b + vec4(0.0001);
+                            b = b * a + vec4(0.0002);
+                        }
+                        gl_FragColor = a;
+                    }
+                """.trimIndent()
+
+                val vs = android.opengl.GLES20.glCreateShader(android.opengl.GLES20.GL_VERTEX_SHADER)
+                android.opengl.GLES20.glShaderSource(vs, vsCode)
+                android.opengl.GLES20.glCompileShader(vs)
+
+                val fs = android.opengl.GLES20.glCreateShader(android.opengl.GLES20.GL_FRAGMENT_SHADER)
+                android.opengl.GLES20.glShaderSource(fs, fsCode)
+                android.opengl.GLES20.glCompileShader(fs)
+
+                val program = android.opengl.GLES20.glCreateProgram()
+                android.opengl.GLES20.glAttachShader(program, vs)
+                android.opengl.GLES20.glAttachShader(program, fs)
+                android.opengl.GLES20.glLinkProgram(program)
+                android.opengl.GLES20.glUseProgram(program)
+
+                while (threadAlive.get()) {
+                    android.opengl.GLES20.glViewport(0, 0, 512, 512)
+                    android.opengl.GLES20.glClear(android.opengl.GLES20.GL_COLOR_BUFFER_BIT)
+                    android.opengl.GLES20.glDrawArrays(android.opengl.GLES20.GL_TRIANGLES, 0, 3)
+                    android.opengl.EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+                    gpuCounter.addAndGet(1L)
+                }
+
+                android.opengl.EGL14.eglMakeCurrent(eglDisplay, android.opengl.EGL14.EGL_NO_SURFACE, android.opengl.EGL14.EGL_NO_SURFACE, android.opengl.EGL14.EGL_NO_CONTEXT)
+                android.opengl.EGL14.eglDestroySurface(eglDisplay, eglSurface)
+                android.opengl.EGL14.eglDestroyContext(eglDisplay, eglContext)
+                android.opengl.EGL14.eglTerminate(eglDisplay)
+            } catch (e: Exception) {
+                var a = 1.0f
+                var b = 2.0f
+                while (threadAlive.get()) {
+                    var i = 0
+                    while (i < 50_000) {
+                        a = a * b + 0.0001f
+                        b = b * a + 0.0002f
+                        i++
+                    }
+                    gpuCounter.addAndGet(1L)
+                }
+                if (a + b == 0f) println("noop gpu: $a")
+            }
+        }.also { it.priority = Thread.MAX_PRIORITY; it.start() }
+    }
 
     // ── Lifecycle (background cancel) ────────────────────────────────────────
 
@@ -245,27 +335,55 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             coreBaselines[i] = 1.0
         }
         overallBaseline = 1.0
+        gpuCounter.set(0L)
+        prevGpuCounter = 0L
+        gpuBaseline = 1.0
         statsSampleCount = 0
 
         threadAlive.set(true)
         workerThreads = (0 until activeThreadCount).map { idx ->
             Thread {
-                var a = -6148914691236517206L // 0xAAAAAAAAAAAAAAAA as signed Long
-                var b = 6148914691236517205L  // 0x5555555555555555 as signed Long
+                var v1 = -6148914691236517206L // 0xAAAAAAAAAAAAAAAA as signed Long
+                var v2 = 6148914691236517205L  // 0x5555555555555555 as signed Long
+                var v3 = 3689348814741910323L  // 0x3333333333333333 as signed Long
+                var v4 = 8608480567731124087L  // 0x7777777777777777 as signed Long
+
+                var f1 = 1.0000001
+                var f2 = 2.0000002
+                var f3 = 3.0000003
+                var f4 = 4.0000004
+
+                val l1Cache = LongArray(4096) { it.toLong() }
+                var cacheIdx = 0
+
                 while (threadAlive.get()) {
-                    repeat(50_000) {
-                        a = a xor b
-                        b++
-                        a *= 3
-                        b = b xor a
-                        a += 7
+                    var i = 0
+                    while (i < 50_000) {
+                        v1 = (v1 xor (v2 + 7L)) * 3L
+                        f1 = f1 * 1.0000001 + 0.0000001
+
+                        v2 = (v2 xor (v3 + 13L)) * 5L
+                        f2 = f2 * 1.0000002 + 0.0000002
+
+                        v3 = (v3 xor (v4 + 17L)) * 7L
+                        f3 = f3 * 1.0000003 + 0.0000003
+
+                        v4 = (v4 xor (v1 + 19L)) * 11L
+                        f4 = f4 * 1.0000004 + 0.0000004
+
+                        l1Cache[cacheIdx] = l1Cache[cacheIdx] xor v1
+                        cacheIdx = (cacheIdx + 1) and 4095
+
+                        i++
                     }
                     counters[idx].addAndGet(50_000)
                 }
                 // Prevent optimizer from eliminating dead code
-                if (a + b == 0L) println("noop: $a")
+                if (v1 + v2 + v3 + v4 + f1.toLong() == 0L) println("noop: $v1 $f1")
             }.also { it.priority = Thread.MAX_PRIORITY; it.start() }
         }
+
+        startGpuWorker()
 
         statsJob = viewModelScope.launch {
             while (isActive) {
@@ -371,9 +489,16 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val stamp = DeviceHammerStamp(elapsedMs, scoreVal, thermalVal)
 
+        val gpuTotal = gpuCounter.get()
+        val gpuDelta = (gpuTotal - prevGpuCounter).toDouble()
+        prevGpuCounter = gpuTotal
+        if (gpuDelta > gpuBaseline) gpuBaseline = gpuDelta
+        val actualGpuImpact = if (gpuBaseline > 0) ((gpuDelta / gpuBaseline) * 100.0).coerceIn(0.0, 100.0).toFloat() else 100f
+
         _state.update {
             it.copy(
                 coreImpacts = newImpacts,
+                gpuImpact = if (it.isRunning) actualGpuImpact else 0f,
                 overallStability = newStability,
                 recordedStamps = it.recordedStamps + stamp
             )

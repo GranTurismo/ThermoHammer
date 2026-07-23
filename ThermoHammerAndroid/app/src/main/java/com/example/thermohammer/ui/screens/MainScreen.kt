@@ -203,7 +203,7 @@ private fun DiagnosticsScreenWrapper(
             }
             ControlButton(state, onStart = { showPreTest = true }, onStop = { engine.stopTest() })
             StabilityChart(points = state.chartPoints, events = state.thermalEvents)
-            if (state.coreImpacts.isNotEmpty()) CoreStatusView(state.coreImpacts)
+            if (state.coreImpacts.isNotEmpty()) CoreStatusView(state.coreImpacts, gpuImpact = state.gpuImpact)
             ThermalMonitoringPanel(state)
             Spacer(Modifier.height(16.dp))
         }

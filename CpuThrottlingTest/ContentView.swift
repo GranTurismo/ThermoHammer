@@ -75,7 +75,7 @@ struct ContentView: View {
                                 .padding(.horizontal, 4)
                             
                             // --- Core Status Meters ---
-                            CoreStatusView(coreImpacts: engine.coreImpacts)
+                            CoreStatusView(coreImpacts: engine.coreImpacts, gpuImpact: engine.gpuImpact)
                                 .padding(.horizontal, 4)
                             
                             Spacer(minLength: 30)
@@ -386,23 +386,42 @@ struct ContentView: View {
                     .padding(.horizontal, 4)
                 
                 HStack(spacing: 8) {
-                    ForEach(StressThreadingType.allCases, id: \.self) { type in
+                    ForEach([StressThreadingType.multi, StressThreadingType.single], id: \.self) { type in
                         Button(action: {
                             selectedThreadingType = type
                         }) {
-                            Text(type.displayName)
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(selectedThreadingType == type ? .black : .white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(selectedThreadingType == type ? Color.white : Color.white.opacity(0.05))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.white.opacity(selectedThreadingType == type ? 0.0 : 0.08), lineWidth: 1)
-                                )
+                            VStack(spacing: 3) {
+                                if type == .multi {
+                                    Text("RECOMMENDED")
+                                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                                        .foregroundColor(selectedThreadingType == type ? Color(red: 0.1, green: 0.5, blue: 0.2) : Color(red: 0.2, green: 0.8, blue: 0.4))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            Capsule()
+                                                .fill(selectedThreadingType == type ? Color.black.opacity(0.12) : Color(red: 0.2, green: 0.8, blue: 0.4).opacity(0.15))
+                                        )
+                                } else {
+                                    Text("RECOMMENDED")
+                                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .opacity(0)
+                                }
+                                Text(type.displayName)
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .foregroundColor(selectedThreadingType == type ? .black : .white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(selectedThreadingType == type ? Color.white : Color.white.opacity(0.05))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(selectedThreadingType == type ? 0.0 : 0.08), lineWidth: 1)
+                            )
                         }
                     }
                 }
