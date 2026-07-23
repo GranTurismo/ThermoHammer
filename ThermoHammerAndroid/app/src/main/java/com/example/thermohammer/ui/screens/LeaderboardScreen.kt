@@ -480,7 +480,12 @@ private fun LeaderboardRow(item: RankedEntry, onClick: () -> Unit) {
 
         // Device info
         Column(Modifier.weight(1f)) {
-            Text(entry.deviceModel, style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
+            val fullModelName = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) {
+                entry.deviceModel
+            } else {
+                "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
+            }
+            Text(fullModelName, style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(entry.deviceManufacturer, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace))
@@ -526,7 +531,12 @@ private fun DetailOverlay(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(entry.deviceModel, style = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    val fullModelName = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) {
+                        entry.deviceModel
+                    } else {
+                        "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
+                    }
+                    Text(fullModelName, style = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
                     Text("${entry.deviceManufacturer} • ${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace))
                 }
                 Box(

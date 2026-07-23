@@ -40,16 +40,24 @@ public class DeviceModelResolver
             using var jsonDoc = await JsonDocument.ParseAsync(stream);
             if (jsonDoc.RootElement.ValueKind == JsonValueKind.Object)
             {
+                string? manufacturer = null;
+                string? modelValue = null;
+
                 foreach (var prop in jsonDoc.RootElement.EnumerateObject())
                 {
-                    if (string.Equals(prop.Name, "model", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(prop.Name, "manufacturer", StringComparison.OrdinalIgnoreCase))
                     {
-                        string? modelValue = prop.Value.GetString();
-                        if (!string.IsNullOrWhiteSpace(modelValue))
-                        {
-                            return modelValue;
-                        }
+                        manufacturer = prop.Value.GetString();
                     }
+                    else if (string.Equals(prop.Name, "model", StringComparison.OrdinalIgnoreCase))
+                    {
+                        modelValue = prop.Value.GetString();
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(modelValue))
+                {
+                    return CleanModel(modelValue, manufacturer);
                 }
             }
         }
@@ -60,4 +68,17 @@ public class DeviceModelResolver
 
         return deviceModel;
     }
+
+    public static string CleanModel(string model, string? manufacturer)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return model;
+
+        if (!string.IsNullOrWhiteSpace(manufacturer) && model.StartsWith(manufacturer, StringComparison.OrdinalIgnoreCase))
+        {
+            return model[manufacturer.Length..].TrimStart();
+        }
+
+        return model.Trim();
+    }
 }
+

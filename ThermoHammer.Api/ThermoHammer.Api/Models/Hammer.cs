@@ -111,12 +111,19 @@ public static class HammerExtensions
 
     public static HammerDto ToDto(this Hammer hammer)
     {
+        string fullDeviceModel = hammer.DeviceModel;
+        if (!string.IsNullOrWhiteSpace(hammer.DeviceManufacturer) &&
+            !hammer.DeviceModel.StartsWith(hammer.DeviceManufacturer, StringComparison.OrdinalIgnoreCase))
+        {
+            fullDeviceModel = $"{hammer.DeviceManufacturer} {hammer.DeviceModel}".Trim();
+        }
+
         return new HammerDto
         {
             Id = hammer.Id,
             Type = hammer.Type,
             DeviceManufacturer = hammer.DeviceManufacturer,
-            DeviceModel = hammer.DeviceModel,
+            DeviceModel = fullDeviceModel,
             Os = hammer.Os,
             OsVersion = hammer.OsVersion,
             StabilityPercentage = hammer.StabilityPercentage,
