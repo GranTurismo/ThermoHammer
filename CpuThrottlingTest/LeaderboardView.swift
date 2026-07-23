@@ -405,7 +405,8 @@ struct LeaderboardView: View {
                 
                 // Device Info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.entry.deviceModel)
+                    let fullModelName = item.entry.deviceModel.localizedCaseInsensitiveContains(item.entry.deviceManufacturer) ? item.entry.deviceModel : "\(item.entry.deviceManufacturer) \(item.entry.deviceModel)".trimmingCharacters(in: .whitespaces)
+                    Text(fullModelName)
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .lineLimit(1)
@@ -503,7 +504,8 @@ struct LeaderboardView: View {
                 // Header details
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.deviceModel)
+                        let fullModelName = entry.deviceModel.localizedCaseInsensitiveContains(entry.deviceManufacturer) ? entry.deviceModel : "\(entry.deviceManufacturer) \(entry.deviceModel)".trimmingCharacters(in: .whitespaces)
+                        Text(fullModelName)
                             .font(.system(size: 16, weight: .black, design: .monospaced))
                             .foregroundColor(.white)
                         

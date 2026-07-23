@@ -34,13 +34,13 @@ public class HammerEndpointTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Theory]
-    [InlineData("Xiaomi", "25031111C", "17 Pro max", "Xiaomi 17 Pro max")]
-    [InlineData("Xiaomi", "2210132C", "13 Pro", "Xiaomi 13 Pro")]
-    [InlineData("Xiaomi", "24031PN0DC", "14 Ultra", "Xiaomi 14 Ultra")]
-    [InlineData("Samsung", "SM-S918B", "Galaxy S23 Ultra", "Samsung Galaxy S23 Ultra")]
-    [InlineData("Samsung", "SM-S928B", "Galaxy S24 Ultra", "Samsung Galaxy S24 Ultra")]
-    public async Task PostHammer_WithMultipleDeviceModels_StripsManufacturerInDb_AndShowsFullNameInDto(
-        string manufacturer, string inputModelNumber, string expectedDbModel, string expectedDtoFullModel)
+    [InlineData("Xiaomi", "25031111C", "17 Pro max")]
+    [InlineData("Xiaomi", "2210132C", "13 Pro")]
+    [InlineData("Xiaomi", "24031PN0DC", "14 Ultra")]
+    [InlineData("Samsung", "SM-S918B", "Galaxy S23 Ultra")]
+    [InlineData("Samsung", "SM-S928B", "Galaxy S24 Ultra")]
+    public async Task PostHammer_WithMultipleDeviceModels_StripsManufacturerInDb_AndReturnsSeparatedInDto(
+        string manufacturer, string inputModelNumber, string expectedCleanModel)
     {
         // Arrange
         using var scope = _factory.Services.CreateScope();
@@ -100,18 +100,19 @@ public class HammerEndpointTests : IClassFixture<WebApplicationFactory<Program>>
         // Assert Response
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        // 3. Verify record in DB does NOT include manufacturer in DeviceModel property
+        // 3. Verify record in DB has manufacturer stripped from DeviceModel
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ThermoDbContext>();
         var savedHammer = await verifyDb.Hammers.FirstOrDefaultAsync(h => h.SessionId == createdSessionId);
 
         Assert.NotNull(savedHammer);
-        Assert.Equal(expectedDbModel, savedHammer.DeviceModel);
+        Assert.Equal(expectedCleanModel, savedHammer.DeviceModel);
         Assert.Equal(manufacturer, savedHammer.DeviceManufacturer);
 
-        // 4. Verify ToDto() / App representation DOES include manufacturer in DeviceModel
+        // 4. Verify ToDto() / API response returns separated properties
         var dto = savedHammer.ToDto();
-        Assert.Equal(expectedDtoFullModel, dto.DeviceModel);
+        Assert.Equal(manufacturer, dto.DeviceManufacturer);
+        Assert.Equal(expectedCleanModel, dto.DeviceModel);
     }
 }
 
