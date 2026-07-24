@@ -157,7 +157,7 @@ fun PreTestOverlay(
 ) {
     OverlayContainer {
         OverlayCard(width = 340) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("☑", fontSize = 32.sp, color = Color(0xFF4A9EFF))
                 Spacer(Modifier.height(6.dp))
                 MonoTitle("PRE-TEST DIAGNOSTICS", size = 13f)
@@ -247,7 +247,7 @@ fun SummaryOverlay(
 ) {
     OverlayContainer(onDismiss = onDismiss) {
         OverlayCard {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text("✓", fontSize = 40.sp, color = Color(0xFF33CC66))
                 Spacer(Modifier.height(6.dp))
                 MonoTitle("DIAGNOSTIC COMPLETE")
