@@ -64,5 +64,23 @@ public static class ThermoEndpointsMapper
                 return Results.NotFound("Hammer not found");
             return Results.Ok(hammer.Stamps);
         });
+
+        app.MapGet("modelfix", async (ThermoDbContext db, DeviceModelResolver modelResolver) =>
+        {
+            var models = db.Hammers;
+
+            foreach (var item in models)
+            {
+                var fixedModel = await modelResolver.ResolveModelAsync(item.Os, item.DeviceModel);
+                if (fixedModel != item.DeviceModel)
+                {
+                    item.DeviceModel = fixedModel;
+                    db.Hammers.Update(item);
+                }
+            }
+
+            await db.SaveChangesAsync();
+            return Results.Ok("Models updated successfully");
+        });
     }
 }

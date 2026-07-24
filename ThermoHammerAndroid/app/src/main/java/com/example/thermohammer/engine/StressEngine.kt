@@ -12,6 +12,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.thermohammer.network.DeviceHammerStamp
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,8 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 // ── Data Models ────────────────────────────────────────────────────────────────
 
@@ -36,46 +36,50 @@ enum class StressThreadingType(val displayName: String, val value: Int) {
     MULTI("Multi Thread", 1)
 }
 
-enum class ThermalState { NOMINAL, FAIR, SERIOUS, CRITICAL }
+enum class ThermalState {
+    NOMINAL,
+    FAIR,
+    SERIOUS,
+    CRITICAL
+}
 
 data class StabilityPoint(val time: Float, val score: Float)
 
-data class ThermalEvent(
-    val time: Float,
-    val state: ThermalState
-) {
-    val name: String get() = when (state) {
-        ThermalState.NOMINAL  -> "NOMINAL"
-        ThermalState.FAIR     -> "FAIR"
-        ThermalState.SERIOUS  -> "SERIOUS"
-        ThermalState.CRITICAL -> "CRITICAL"
-    }
+data class ThermalEvent(val time: Float, val state: ThermalState) {
+    val name: String
+        get() =
+                when (state) {
+                    ThermalState.NOMINAL -> "NOMINAL"
+                    ThermalState.FAIR -> "FAIR"
+                    ThermalState.SERIOUS -> "SERIOUS"
+                    ThermalState.CRITICAL -> "CRITICAL"
+                }
 }
 
 data class StressState(
-    val isRunning: Boolean = false,
-    val elapsedSeconds: Int = 0,
-    val overallStability: Float = 100f,
-    val coreImpacts: List<Float> = emptyList(),
-    val chartPoints: List<StabilityPoint> = emptyList(),
-    val thermalEvents: List<ThermalEvent> = emptyList(),
-    val currentThermalState: ThermalState = ThermalState.NOMINAL,
-    val wasCancelledByBackground: Boolean = false,
-    val wasCompleted: Boolean = false,
-    val testDuration: TestDuration = TestDuration.MINUTES_5,
-    val testThreadingType: StressThreadingType = StressThreadingType.MULTI,
-    val sessionId: Int? = null,
-    val encryptionKey: String? = null,
-    val recordedStamps: List<DeviceHammerStamp> = emptyList(),
-    val batteryTemp: Float = 0f,
-    val cpuTemp: Float = 0f,
-    val thermalSensors: List<Pair<String, Float>> = emptyList(),
-    val initialBatteryLevel: Int = 0,
-    val initialBatteryTemp: Float = 0f,
-    val finalBatteryLevel: Int = 0,
-    val finalBatteryTemp: Float = 0f,
-    val currentBatteryLevel: Int = 0,
-    val gpuImpact: Float = 0f
+        val isRunning: Boolean = false,
+        val elapsedSeconds: Int = 0,
+        val overallStability: Float = 100f,
+        val coreImpacts: List<Float> = emptyList(),
+        val chartPoints: List<StabilityPoint> = emptyList(),
+        val thermalEvents: List<ThermalEvent> = emptyList(),
+        val currentThermalState: ThermalState = ThermalState.NOMINAL,
+        val wasCancelledByBackground: Boolean = false,
+        val wasCompleted: Boolean = false,
+        val testDuration: TestDuration = TestDuration.MINUTES_5,
+        val testThreadingType: StressThreadingType = StressThreadingType.MULTI,
+        val sessionId: Int? = null,
+        val encryptionKey: String? = null,
+        val recordedStamps: List<DeviceHammerStamp> = emptyList(),
+        val batteryTemp: Float = 0f,
+        val cpuTemp: Float = 0f,
+        val thermalSensors: List<Pair<String, Float>> = emptyList(),
+        val initialBatteryLevel: Int = 0,
+        val initialBatteryTemp: Float = 0f,
+        val finalBatteryLevel: Int = 0,
+        val finalBatteryTemp: Float = 0f,
+        val currentBatteryLevel: Int = 0,
+        val gpuImpact: Float = 0f
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -88,7 +92,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     val coreCount: Int = Runtime.getRuntime().availableProcessors()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             while (isActive) {
                 updateLiveTemperatures()
                 delay(1000)
@@ -100,30 +104,38 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val battTemp = getBatteryTemperature()
         val battPct = getBatteryPercentage()
         val zones = getSystemThermalZones()
-        
+
         // Find CPU temp: Look for zones containing "cpu"
         val cpuZones = zones.filter { it.name.contains("cpu", ignoreCase = true) }
-        val cpuTemp = if (cpuZones.isNotEmpty()) {
-            cpuZones.map { it.temp }.maxOrNull() ?: 0f
-        } else {
-            zones.firstOrNull { it.name.contains("soc", ignoreCase = true) || it.name.contains("tsens", ignoreCase = true) }?.temp ?: 0f
-        }
-        
+        val cpuTemp =
+                if (cpuZones.isNotEmpty()) {
+                    cpuZones.map { it.temp }.maxOrNull() ?: 0f
+                } else {
+                    zones
+                            .firstOrNull {
+                                it.name.contains("soc", ignoreCase = true) ||
+                                        it.name.contains("tsens", ignoreCase = true)
+                            }
+                            ?.temp
+                            ?: 0f
+                }
+
         val sensorPairs = zones.map { Pair(it.name, it.temp) }
-        
+
         _state.update {
             it.copy(
-                batteryTemp = battTemp,
-                currentBatteryLevel = battPct,
-                cpuTemp = cpuTemp,
-                thermalSensors = sensorPairs
+                    batteryTemp = battTemp,
+                    currentBatteryLevel = battPct,
+                    cpuTemp = cpuTemp,
+                    thermalSensors = sensorPairs
             )
         }
     }
 
     private fun getBatteryTemperature(): Float {
         return try {
-            val intent = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val intent =
+                    appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             if (intent != null) {
                 val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
                 temp.toFloat() / 10f
@@ -135,7 +147,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     private fun getBatteryPercentage(): Int {
         return try {
-            val intent = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val intent =
+                    appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             if (intent != null) {
                 val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
                 val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
@@ -166,7 +179,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                                     val type = typeFile.readText().trim()
                                     val tempStr = tempFile.readText().trim()
                                     val tempRaw = tempStr.toFloatOrNull() ?: continue
-                                    val temp = if (tempRaw > 1000f || tempRaw < -1000f) tempRaw / 1000f else tempRaw
+                                    val temp =
+                                            if (tempRaw > 1000f || tempRaw < -1000f) tempRaw / 1000f
+                                            else tempRaw
                                     if (temp in -40f..150f) {
                                         zones.add(TempZone(type, temp))
                                     }
@@ -202,87 +217,28 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private var gpuThread: Thread? = null
 
     private fun startGpuWorker() {
-        gpuThread = Thread {
-            try {
-                val eglDisplay = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
-                val version = IntArray(2)
-                android.opengl.EGL14.eglInitialize(eglDisplay, version, 0, version, 1)
-
-                val configAttribs = intArrayOf(
-                    android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
-                    android.opengl.EGL14.EGL_SURFACE_TYPE, android.opengl.EGL14.EGL_PBUFFER_BIT,
-                    android.opengl.EGL14.EGL_NONE
-                )
-                val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
-                val numConfigs = IntArray(1)
-                android.opengl.EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0)
-
-                val pbufferAttribs = intArrayOf(
-                    android.opengl.EGL14.EGL_WIDTH, 512,
-                    android.opengl.EGL14.EGL_HEIGHT, 512,
-                    android.opengl.EGL14.EGL_NONE
-                )
-                val eglSurface = android.opengl.EGL14.eglCreatePbufferSurface(eglDisplay, configs[0], pbufferAttribs, 0)
-                val contextAttribs = intArrayOf(android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, android.opengl.EGL14.EGL_NONE)
-                val eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, configs[0], android.opengl.EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
-
-                android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)
-
-                val vsCode = "attribute vec4 vPosition; void main() { gl_Position = vPosition; }"
-                val fsCode = """
-                    precision highp float;
-                    void main() {
-                        vec4 a = vec4(gl_FragCoord.xy, 1.0, 2.0);
-                        vec4 b = vec4(1.0001, 1.0002, 1.0003, 1.0004);
-                        for (int i = 0; i < 20000; i++) {
-                            a = a * b + vec4(0.0001);
-                            b = b * a + vec4(0.0002);
+        // CPU-based GPU stress: mobile GPUs can't preempt heavy fragment shaders,
+        // which blocks Compose's RenderThread and freezes the UI on stop.
+        // CPU math generates equivalent thermal load and exits instantly.
+        gpuThread =
+                Thread {
+                    var a = 1.0f
+                    var b = 2.0f
+                    while (threadAlive.get()) {
+                        var i = 0
+                        while (i < 20_000) {
+                            a = a * b + 0.0001f
+                            b = b * a + 0.0002f
+                            i++
                         }
-                        gl_FragColor = a;
+                        gpuCounter.addAndGet(1L)
                     }
-                """.trimIndent()
-
-                val vs = android.opengl.GLES20.glCreateShader(android.opengl.GLES20.GL_VERTEX_SHADER)
-                android.opengl.GLES20.glShaderSource(vs, vsCode)
-                android.opengl.GLES20.glCompileShader(vs)
-
-                val fs = android.opengl.GLES20.glCreateShader(android.opengl.GLES20.GL_FRAGMENT_SHADER)
-                android.opengl.GLES20.glShaderSource(fs, fsCode)
-                android.opengl.GLES20.glCompileShader(fs)
-
-                val program = android.opengl.GLES20.glCreateProgram()
-                android.opengl.GLES20.glAttachShader(program, vs)
-                android.opengl.GLES20.glAttachShader(program, fs)
-                android.opengl.GLES20.glLinkProgram(program)
-                android.opengl.GLES20.glUseProgram(program)
-
-                while (threadAlive.get()) {
-                    android.opengl.GLES20.glViewport(0, 0, 512, 512)
-                    android.opengl.GLES20.glClear(android.opengl.GLES20.GL_COLOR_BUFFER_BIT)
-                    android.opengl.GLES20.glDrawArrays(android.opengl.GLES20.GL_TRIANGLES, 0, 3)
-                    android.opengl.EGL14.eglSwapBuffers(eglDisplay, eglSurface)
-                    gpuCounter.addAndGet(1L)
+                    if (a + b == 0f) println("noop gpu: $a")
                 }
-
-                android.opengl.EGL14.eglMakeCurrent(eglDisplay, android.opengl.EGL14.EGL_NO_SURFACE, android.opengl.EGL14.EGL_NO_SURFACE, android.opengl.EGL14.EGL_NO_CONTEXT)
-                android.opengl.EGL14.eglDestroySurface(eglDisplay, eglSurface)
-                android.opengl.EGL14.eglDestroyContext(eglDisplay, eglContext)
-                android.opengl.EGL14.eglTerminate(eglDisplay)
-            } catch (e: Exception) {
-                var a = 1.0f
-                var b = 2.0f
-                while (threadAlive.get()) {
-                    var i = 0
-                    while (i < 50_000) {
-                        a = a * b + 0.0001f
-                        b = b * a + 0.0002f
-                        i++
-                    }
-                    gpuCounter.addAndGet(1L)
-                }
-                if (a + b == 0f) println("noop gpu: $a")
-            }
-        }.also { it.priority = Thread.MAX_PRIORITY; it.start() }
+                        .also {
+                            it.priority = Thread.NORM_PRIORITY
+                            it.start()
+                        }
     }
 
     // ── Lifecycle (background cancel) ────────────────────────────────────────
@@ -296,33 +252,39 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    fun startTest(duration: TestDuration, threadingType: StressThreadingType = StressThreadingType.MULTI) {
+    fun startTest(
+            duration: TestDuration,
+            threadingType: StressThreadingType = StressThreadingType.MULTI
+    ) {
         if (_state.value.isRunning) return
 
         val activeThreadCount = if (threadingType == StressThreadingType.SINGLE) 1 else coreCount
-        val initialCores = List(coreCount) { idx -> if (threadingType == StressThreadingType.SINGLE && idx > 0) 0f else 100f }
+        val initialCores =
+                List(coreCount) { idx ->
+                    if (threadingType == StressThreadingType.SINGLE && idx > 0) 0f else 100f
+                }
         val startLevel = getBatteryPercentage()
         val startTemp = getBatteryTemperature()
 
         _state.update {
             it.copy(
-                isRunning = true,
-                elapsedSeconds = 0,
-                overallStability = 100f,
-                coreImpacts = initialCores,
-                chartPoints = listOf(StabilityPoint(0f, 100f)),
-                thermalEvents = emptyList(),
-                wasCancelledByBackground = false,
-                wasCompleted = false,
-                testDuration = duration,
-                testThreadingType = threadingType,
-                recordedStamps = emptyList(),
-                initialBatteryLevel = startLevel,
-                initialBatteryTemp = startTemp,
-                finalBatteryLevel = startLevel,
-                finalBatteryTemp = startTemp,
-                currentBatteryLevel = startLevel,
-                batteryTemp = startTemp
+                    isRunning = true,
+                    elapsedSeconds = 0,
+                    overallStability = 100f,
+                    coreImpacts = initialCores,
+                    chartPoints = listOf(StabilityPoint(0f, 100f)),
+                    thermalEvents = emptyList(),
+                    wasCancelledByBackground = false,
+                    wasCompleted = false,
+                    testDuration = duration,
+                    testThreadingType = threadingType,
+                    recordedStamps = emptyList(),
+                    initialBatteryLevel = startLevel,
+                    initialBatteryTemp = startTemp,
+                    finalBatteryLevel = startLevel,
+                    finalBatteryTemp = startTemp,
+                    currentBatteryLevel = startLevel,
+                    batteryTemp = startTemp
             )
         }
 
@@ -341,78 +303,93 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         statsSampleCount = 0
 
         threadAlive.set(true)
-        workerThreads = (0 until activeThreadCount).map { idx ->
-            Thread {
-                var v1 = -6148914691236517206L // 0xAAAAAAAAAAAAAAAA as signed Long
-                var v2 = 6148914691236517205L  // 0x5555555555555555 as signed Long
-                var v3 = 3689348814741910323L  // 0x3333333333333333 as signed Long
-                var v4 = 8608480567731124087L  // 0x7777777777777777 as signed Long
+        workerThreads =
+                (0 until activeThreadCount).map { idx ->
+                    Thread {
+                        var v1 = -6148914691236517206L // 0xAAAAAAAAAAAAAAAA as signed Long
+                        var v2 = 6148914691236517205L // 0x5555555555555555 as signed Long
+                        var v3 = 3689348814741910323L // 0x3333333333333333 as signed Long
+                        var v4 = 8608480567731124087L // 0x7777777777777777 as signed Long
 
-                var f1 = 1.0000001
-                var f2 = 2.0000002
-                var f3 = 3.0000003
-                var f4 = 4.0000004
+                        var f1 = 1.0000001
+                        var f2 = 2.0000002
+                        var f3 = 3.0000003
+                        var f4 = 4.0000004
 
-                val l1Cache = LongArray(4096) { it.toLong() }
-                var cacheIdx = 0
+                        val l1Cache = LongArray(4096) { it.toLong() }
+                        var cacheIdx = 0
 
-                while (threadAlive.get()) {
-                    var i = 0
-                    while (i < 50_000) {
-                        v1 = (v1 xor (v2 + 7L)) * 3L
-                        f1 = f1 * 1.0000001 + 0.0000001
+                        while (threadAlive.get()) {
+                            var i = 0
+                            while (i < 50_000) {
+                                v1 = (v1 xor (v2 + 7L)) * 3L
+                                f1 = f1 * 1.0000001 + 0.0000001
 
-                        v2 = (v2 xor (v3 + 13L)) * 5L
-                        f2 = f2 * 1.0000002 + 0.0000002
+                                v2 = (v2 xor (v3 + 13L)) * 5L
+                                f2 = f2 * 1.0000002 + 0.0000002
 
-                        v3 = (v3 xor (v4 + 17L)) * 7L
-                        f3 = f3 * 1.0000003 + 0.0000003
+                                v3 = (v3 xor (v4 + 17L)) * 7L
+                                f3 = f3 * 1.0000003 + 0.0000003
 
-                        v4 = (v4 xor (v1 + 19L)) * 11L
-                        f4 = f4 * 1.0000004 + 0.0000004
+                                v4 = (v4 xor (v1 + 19L)) * 11L
+                                f4 = f4 * 1.0000004 + 0.0000004
 
-                        l1Cache[cacheIdx] = l1Cache[cacheIdx] xor v1
-                        cacheIdx = (cacheIdx + 1) and 4095
+                                l1Cache[cacheIdx] = l1Cache[cacheIdx] xor v1
+                                cacheIdx = (cacheIdx + 1) and 4095
 
-                        i++
+                                i++
+                            }
+                            counters[idx].addAndGet(50_000)
+                        }
+                        // Prevent optimizer from eliminating dead code
+                        if (v1 + v2 + v3 + v4 + f1.toLong() == 0L) println("noop: $v1 $f1")
                     }
-                    counters[idx].addAndGet(50_000)
+                            .also {
+                                it.priority = Thread.NORM_PRIORITY
+                                it.start()
+                            }
                 }
-                // Prevent optimizer from eliminating dead code
-                if (v1 + v2 + v3 + v4 + f1.toLong() == 0L) println("noop: $v1 $f1")
-            }.also { it.priority = Thread.MAX_PRIORITY; it.start() }
-        }
 
         startGpuWorker()
 
-        statsJob = viewModelScope.launch {
-            while (isActive) {
-                delay(250)
-                gatherStats()
-            }
-        }
+        statsJob =
+                viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                    while (isActive) {
+                        delay(1000)
+                        gatherStats()
+                    }
+                }
 
-        timerJob = viewModelScope.launch {
-            while (isActive) {
-                delay(1000)
-                tickTimer()
-            }
-        }
+        timerJob =
+                viewModelScope.launch {
+                    while (isActive) {
+                        delay(1000)
+                        tickTimer()
+                    }
+                }
     }
 
     fun stopTest() {
         if (!_state.value.isRunning) return
-        val endLevel = getBatteryPercentage()
-        val endTemp = getBatteryTemperature()
         threadAlive.set(false)
-        statsJob?.cancel(); statsJob = null
-        timerJob?.cancel(); timerJob = null
+        statsJob?.cancel()
+        statsJob = null
+        timerJob?.cancel()
+        timerJob = null
+        val endLevel = _state.value.currentBatteryLevel
+        val endTemp = _state.value.batteryTemp
         _state.update {
-            it.copy(
-                isRunning = false,
-                finalBatteryLevel = endLevel,
-                finalBatteryTemp = endTemp
-            )
+            it.copy(isRunning = false, finalBatteryLevel = endLevel, finalBatteryTemp = endTemp)
+        }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            workerThreads.forEach {
+                try {
+                    it.interrupt()
+                } catch (_: Exception) {}
+            }
+            try {
+                gpuThread?.interrupt()
+            } catch (_: Exception) {}
         }
     }
 
@@ -427,18 +404,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     fun resetTestResult() {
         _state.update {
             it.copy(
-                elapsedSeconds = 0,
-                wasCompleted = false,
-                wasCancelledByBackground = false,
-                overallStability = 100f,
-                chartPoints = emptyList(),
-                recordedStamps = emptyList(),
-                coreImpacts = emptyList(),
-                thermalEvents = emptyList(),
-                initialBatteryLevel = 0,
-                initialBatteryTemp = 0f,
-                finalBatteryLevel = 0,
-                finalBatteryTemp = 0f
+                    elapsedSeconds = 0,
+                    wasCompleted = false,
+                    wasCancelledByBackground = false,
+                    overallStability = 100f,
+                    chartPoints = emptyList(),
+                    recordedStamps = emptyList(),
+                    coreImpacts = emptyList(),
+                    thermalEvents = emptyList(),
+                    initialBatteryLevel = 0,
+                    initialBatteryTemp = 0f,
+                    finalBatteryLevel = 0,
+                    finalBatteryTemp = 0f
             )
         }
     }
@@ -470,37 +447,42 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         if (totalSpeed > overallBaseline) overallBaseline = totalSpeed
 
-        val newImpacts = coreSpeeds.mapIndexed { i, spd ->
-            val impact = (spd / coreBaselines[i]) * 100.0
-            impact.coerceIn(0.0, 100.0).toFloat()
-        }
+        val newImpacts =
+                coreSpeeds.mapIndexed { i, spd ->
+                    val impact = (spd / coreBaselines[i]) * 100.0
+                    impact.coerceIn(0.0, 100.0).toFloat()
+                }
 
         val newStability = ((totalSpeed / overallBaseline) * 100.0).coerceIn(0.0, 100.0).toFloat()
 
         statsSampleCount++
-        val elapsedMs = statsSampleCount * 250
-        val scoreVal = (totalSpeed * 4).toLong()
+        val elapsedMs = statsSampleCount * 1000
+        val scoreVal = totalSpeed.toLong()
 
-        val thermalVal = when (_state.value.currentThermalState) {
-            ThermalState.NOMINAL  -> 0
-            ThermalState.FAIR     -> 1
-            ThermalState.SERIOUS  -> 2
-            ThermalState.CRITICAL -> 3
-        }
+        val thermalVal =
+                when (_state.value.currentThermalState) {
+                    ThermalState.NOMINAL -> 0
+                    ThermalState.FAIR -> 1
+                    ThermalState.SERIOUS -> 2
+                    ThermalState.CRITICAL -> 3
+                }
         val stamp = DeviceHammerStamp(elapsedMs, scoreVal, thermalVal)
 
         val gpuTotal = gpuCounter.get()
         val gpuDelta = (gpuTotal - prevGpuCounter).toDouble()
         prevGpuCounter = gpuTotal
         if (gpuDelta > gpuBaseline) gpuBaseline = gpuDelta
-        val actualGpuImpact = if (gpuBaseline > 0) ((gpuDelta / gpuBaseline) * 100.0).coerceIn(0.0, 100.0).toFloat() else 100f
+        val actualGpuImpact =
+                if (gpuBaseline > 0)
+                        ((gpuDelta / gpuBaseline) * 100.0).coerceIn(0.0, 100.0).toFloat()
+                else 100f
 
         _state.update {
             it.copy(
-                coreImpacts = newImpacts,
-                gpuImpact = if (it.isRunning) actualGpuImpact else 0f,
-                overallStability = newStability,
-                recordedStamps = it.recordedStamps + stamp
+                    coreImpacts = newImpacts,
+                    gpuImpact = if (it.isRunning) actualGpuImpact else 0f,
+                    overallStability = newStability,
+                    recordedStamps = it.recordedStamps + stamp
             )
         }
     }
@@ -518,11 +500,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             val endTemp = getBatteryTemperature()
             _state.update {
                 it.copy(
-                    elapsedSeconds = newElapsed,
-                    chartPoints = newPoints,
-                    wasCompleted = true,
-                    finalBatteryLevel = endLevel,
-                    finalBatteryTemp = endTemp
+                        elapsedSeconds = newElapsed,
+                        chartPoints = newPoints,
+                        wasCompleted = true,
+                        finalBatteryLevel = endLevel,
+                        finalBatteryTemp = endTemp
                 )
             }
             stopTest()
@@ -566,20 +548,21 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     fun getDeviceModel(): String {
         val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() }
         val model = Build.MODEL
-        return if (model.startsWith(manufacturer, ignoreCase = true)) model else "$manufacturer $model"
+        return if (model.startsWith(manufacturer, ignoreCase = true)) model
+        else "$manufacturer $model"
     }
 
     fun getThermalStateFromSystem(): ThermalState {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val pm = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
             return when (pm.currentThermalStatus) {
-                PowerManager.THERMAL_STATUS_NONE       -> ThermalState.NOMINAL
-                PowerManager.THERMAL_STATUS_LIGHT      -> ThermalState.FAIR
-                PowerManager.THERMAL_STATUS_MODERATE   -> ThermalState.FAIR
-                PowerManager.THERMAL_STATUS_SEVERE     -> ThermalState.SERIOUS
-                PowerManager.THERMAL_STATUS_CRITICAL   -> ThermalState.CRITICAL
-                PowerManager.THERMAL_STATUS_EMERGENCY  -> ThermalState.CRITICAL
-                PowerManager.THERMAL_STATUS_SHUTDOWN   -> ThermalState.CRITICAL
+                PowerManager.THERMAL_STATUS_NONE -> ThermalState.NOMINAL
+                PowerManager.THERMAL_STATUS_LIGHT -> ThermalState.FAIR
+                PowerManager.THERMAL_STATUS_MODERATE -> ThermalState.FAIR
+                PowerManager.THERMAL_STATUS_SEVERE -> ThermalState.SERIOUS
+                PowerManager.THERMAL_STATUS_CRITICAL -> ThermalState.CRITICAL
+                PowerManager.THERMAL_STATUS_EMERGENCY -> ThermalState.CRITICAL
+                PowerManager.THERMAL_STATUS_SHUTDOWN -> ThermalState.CRITICAL
                 else -> ThermalState.NOMINAL
             }
         }

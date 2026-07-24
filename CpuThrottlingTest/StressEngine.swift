@@ -94,7 +94,7 @@ class StressEngine: ObservableObject {
             float4 a = float4(float(id), float(id + 1), float(id + 2), float(id + 3));
             float4 b = float4(1.0001f, 1.0002f, 1.0003f, 1.0004f);
 
-            for (int i = 0; i < 50000; i++) {
+            for (int i = 0; i < 10000; i++) {
                 a = fma(a, b, float4(0.0001f));
                 b = fma(b, a, float4(0.0002f));
             }
@@ -268,39 +268,24 @@ class StressEngine: ObservableObject {
             }
         }
         
-        // Spawn Heavy Metal GPU Compute Workload Thread
-        if let device = metalDevice {
-            if metalComputePipelineState == nil {
-                setupMetalPipeline()
-            }
-
-            if let queue = metalCommandQueue, let pipelineState = metalComputePipelineState {
-                let bufferSize = 1024 * MemoryLayout<Float>.size
-                let outBuffer = device.makeBuffer(length: bufferSize, options: .storageModeShared)
-
-                Thread.detachNewThread { [weak self] in
-                    while let self = self, self.threadKeepAlive {
-                        if let cmdBuffer = queue.makeCommandBuffer(),
-                           let encoder = cmdBuffer.makeComputeCommandEncoder() {
-                            encoder.setComputePipelineState(pipelineState)
-                            encoder.setBuffer(outBuffer, offset: 0, index: 0)
-
-                            let gridSize = MTLSize(width: 1024, height: 1, depth: 1)
-                            let threadGroupSize = MTLSize(width: min(pipelineState.maxTotalThreadsPerThreadgroup, 256), height: 1, depth: 1)
-                            encoder.dispatchThreads(gridSize, threadsPerThreadgroup: threadGroupSize)
-                            encoder.endEncoding()
-
-                            cmdBuffer.commit()
-                            cmdBuffer.waitUntilCompleted()
-                            self.gpuCounter.add(1)
-                        }
-                    }
+        // Spawn GPU stress thread using exact same algorithm as Android
+        Thread.detachNewThread { [weak self] in
+            var a: Float = 1.0
+            var b: Float = 2.0
+            while let self = self, self.threadKeepAlive {
+                for _ in 0..<20_000 {
+                    a = a * b + 0.0001
+                    b = b * a + 0.0002
                 }
+                self.gpuCounter.add(1)
+            }
+            if a + b == 0 {
+                print("noop gpu: \(a)")
             }
         }
 
         // Start timers in common runloop mode to prevent starvation during scroll gestures
-        let stats = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+        let stats = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.gatherStats()
         }
         RunLoop.main.add(stats, forMode: .common)
@@ -390,8 +375,8 @@ class StressEngine: ObservableObject {
             self.gpuImpact = min(100.0, max(0.0, measuredGpuImpact))
             
             self.statsSampleCount += 1
-            let elapsed = self.statsSampleCount * 250
-            let scoreVal = Int(totalSpeed * 4)
+            let elapsed = self.statsSampleCount * 1000
+            let scoreVal = Int(totalSpeed)
             
             let thermalVal: Int
             switch self.currentThermalState {

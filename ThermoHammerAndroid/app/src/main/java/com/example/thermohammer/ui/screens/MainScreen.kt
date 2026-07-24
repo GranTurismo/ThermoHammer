@@ -127,47 +127,49 @@ private fun DiagnosticsScreenWrapper(
     }
 
     LaunchedEffect(showSummary, state.isRunning) {
-        pendingCount = store.getAllResults().size
+        pendingCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.getAllResults().size }
     }
 
     LaunchedEffect(state.isRunning) {
         if (!state.isRunning && state.elapsedSeconds > 0) {
             isSubmitting = false; submitSuccess = null; submitError = null
             if (state.wasCompleted) {
-                // Automatically save run to pending results immediately!
-                try {
-                    val stamps = state.recordedStamps
-                    val maxScore = stamps.maxOfOrNull { it.score.toDouble() } ?: 1.0
-                    val secondHalfStart = stamps.size / 2
-                    val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
-                    val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
-                    val finalStab = if (maxScore > 0) ((avgSecondHalf / maxScore) * 100.0).toFloat() else 100f
-                    
-                    val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
-                    val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
-                    val durationType = when (state.testDuration) {
-                        TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
+                // Automatically save run to pending results in background thread!
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val stamps = state.recordedStamps
+                        val maxScore = stamps.maxOfOrNull { it.score.toDouble() } ?: 1.0
+                        val secondHalfStart = stamps.size / 2
+                        val secondHalfStamps = stamps.subList(secondHalfStart, stamps.size)
+                        val avgSecondHalf = if (secondHalfStamps.isNotEmpty()) secondHalfStamps.map { it.score.toDouble() }.average() else 0.0
+                        val finalStab = if (maxScore > 0) ((avgSecondHalf / maxScore) * 100.0).toFloat() else 100f
+                        
+                        val minStab = state.chartPoints.minOfOrNull { it.score } ?: state.overallStability
+                        val worstThermal = state.thermalEvents.maxByOrNull { it.state.ordinal }?.state ?: com.example.thermohammer.engine.ThermalState.NOMINAL
+                        val durationType = when (state.testDuration) {
+                            TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
+                        }
+                        val pending = com.example.thermohammer.data.PendingTestResult(
+                            id = java.util.UUID.randomUUID().toString(),
+                            timestamp = System.currentTimeMillis(),
+                            durationSeconds = state.elapsedSeconds,
+                            testDurationType = durationType,
+                            testThreadingType = state.testThreadingType.value,
+                            minStability = minStab,
+                            finalStability = finalStab,
+                            worstThermalState = worstThermal.ordinal,
+                            stamps = stamps,
+                            deviceModel = engine.getDeviceModel(),
+                            deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
+                            osVersion = engine.getAndroidVersion(),
+                            sessionId = 0,
+                            encryptionKey = ""
+                        )
+                        com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
+                        currentPendingResultId = pending.id
+                    } catch (e: Exception) {
+                        // Ignore background errors
                     }
-                    val pending = com.example.thermohammer.data.PendingTestResult(
-                        id = java.util.UUID.randomUUID().toString(),
-                        timestamp = System.currentTimeMillis(),
-                        durationSeconds = state.elapsedSeconds,
-                        testDurationType = durationType,
-                        testThreadingType = state.testThreadingType.value,
-                        minStability = minStab,
-                        finalStability = finalStab,
-                        worstThermalState = worstThermal.ordinal,
-                        stamps = stamps,
-                        deviceModel = engine.getDeviceModel(),
-                        deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
-                        osVersion = engine.getAndroidVersion(),
-                        sessionId = 0,
-                        encryptionKey = ""
-                    )
-                    com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
-                    currentPendingResultId = pending.id
-                } catch (e: Exception) {
-                    // Ignore background errors
                 }
                 
                 if (isNetworkConnected) {
