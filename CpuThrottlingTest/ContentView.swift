@@ -34,6 +34,7 @@ struct ContentView: View {
     
     @State private var selectedTab = 0
     @State private var currentPendingResultId: UUID? = nil
+    @State private var showComparison = false
     @ObservedObject private var pendingStore = PendingResultStore.shared
     
     var body: some View {
@@ -128,6 +129,9 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showComparison) {
+            ComparisonView()
+        }
         .onChange(of: engine.isRunning) { newValue in
             // When the test stops, calculate summary
             if !newValue && engine.elapsedTime > 0 {

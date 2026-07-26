@@ -1,5 +1,6 @@
 package com.example.thermohammer.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -61,7 +62,30 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
     // Upload status for pending runs
     var uploadingId by remember { mutableStateOf<String?>(null) }
     var uploadError by remember { mutableStateOf<String?>(null) }
-    var failedUploadId by remember { mutableStateOf<String?>(null) }
+
+    // Multi-select comparison state
+    var compareSelectedRuns by remember { mutableStateOf<List<PendingTestResult>>(emptyList()) }
+    var showAutoCompareOverlay by remember { mutableStateOf(false) }
+
+    fun toggleCompareRun(run: PendingTestResult) {
+        if (compareSelectedRuns.any { it.id == run.id }) {
+            compareSelectedRuns = compareSelectedRuns.filter { it.id != run.id }
+        } else {
+            if (compareSelectedRuns.isNotEmpty() && compareSelectedRuns.first().testThreadingType != run.testThreadingType) {
+                val modeA = if (compareSelectedRuns.first().testThreadingType == 0) "Single Thread" else "Multi Thread"
+                val modeB = if (run.testThreadingType == 0) "Single Thread" else "Multi Thread"
+                Toast.makeText(context, "Cannot compare $modeA with $modeB test!", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val updated = compareSelectedRuns + run
+            if (updated.size >= 2) {
+                compareSelectedRuns = updated.take(2)
+                showAutoCompareOverlay = true
+            } else {
+                compareSelectedRuns = updated
+            }
+        }
+    }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -128,7 +152,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("GLOBAL LEADERBOARD", style = TextStyle(color = Color.White, fontSize = 18.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp))
-                    Text("Sustained CPU Performance Stability Rankings", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace))
+                    Text("Select 2 Tests to Compare side-by-side", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace))
                 }
                 IconButton(onClick = { loadData() }, enabled = !isLoading) {
                     Text("↻", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -150,17 +174,19 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                         )
                     }
                     items(pendingList) { pending ->
+                        val isSelected = compareSelectedRuns.any { it.id == pending.id }
                         PendingResultRow(
                             pending = pending,
                             isNetworkConnected = isNetworkConnected,
                             isUploading = uploadingId == pending.id,
                             uploadError = if (uploadingId == pending.id) uploadError else null,
+                            isCompareSelected = isSelected,
+                            onToggleCompare = { toggleCompareRun(pending) },
                             onSubmit = {
                                 uploadingId = pending.id
                                 uploadError = null
                                 coroutineScope.launch {
                                     try {
-                                        // Request a fresh session on the server for pending uploads to avoid expired/null sessions
                                         val session = ApiClient.api.createSession()
                                         val hash = ThermoHasher.computeHash(session.encryptionKey, pending.stamps)
                                         val payload = HammerPayload(
@@ -178,7 +204,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                         store.deleteResult(pending.id)
                                         pendingList = store.getAllResults()
                                         uploadingId = null
-                                        loadData() // Refresh leaderboard with new scores
+                                        loadData()
                                     } catch (e: Exception) {
                                         uploadError = e.message ?: "Submission failed"
                                         uploadingId = null
@@ -196,150 +222,76 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                     }
                 }
 
-                // Global Leaderboard Header / Search
+                // Search & Filters
                 item {
-                    Text(
-                        "ONLINE RANKINGS",
-                        style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                }
-
-                if (!isNetworkConnected) {
-                    item {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color.White.copy(alpha = 0.02f))
-                                .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(16.dp))
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("⌀", fontSize = 36.sp, color = Color.White.copy(alpha = 0.3f))
-                                Text("Leaderboard is Offline", style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-                                Text("Please enable cellular data or Wi-Fi to fetch global rankings.", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, textAlign = TextAlign.Center))
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        BasicTextField(
+                            value = searchText,
+                            onValueChange = { searchText = it },
+                            textStyle = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                            singleLine = true,
+                            decorationBox = { innerTextField ->
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.04f)).border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🔍 ", fontSize = 12.sp)
+                                    Box(Modifier.weight(1f)) {
+                                        if (searchText.isEmpty()) Text("Search by device model, manufacturer, or OS...", style = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
+                                        innerTextField()
+                                    }
+                                }
                             }
+                        )
+
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            CustomFilterChip(selected = showOnlyMyDevice, label = "📱 My Model") { showOnlyMyDevice = !showOnlyMyDevice }
+                            CustomFilterChip(selected = showOnlyMyOSVersion, label = "⚙ My OS") { showOnlyMyOSVersion = !showOnlyMyOSVersion }
+                            CustomFilterChip(selected = selectedPlatformFilter == 1, label = "🍎 iOS") { selectedPlatformFilter = if (selectedPlatformFilter == 1) null else 1 }
+                            CustomFilterChip(selected = selectedPlatformFilter == 2, label = "🤖 Android") { selectedPlatformFilter = if (selectedPlatformFilter == 2) null else 2 }
+                            CustomFilterChip(selected = selectedDurationFilter == 0, label = "⏱ 5 Min") { selectedDurationFilter = if (selectedDurationFilter == 0) null else 0 }
+                            CustomFilterChip(selected = selectedDurationFilter == 1, label = "⏱ 15 Min") { selectedDurationFilter = if (selectedDurationFilter == 1) null else 1 }
+                            CustomFilterChip(selected = selectedDurationFilter == 2, label = "⏱ 30 Min") { selectedDurationFilter = if (selectedDurationFilter == 2) null else 2 }
                         }
                     }
-                } else if (isLoading) {
+                }
+
+                // Global Leaderboard Entries List
+                if (isLoading) {
                     item {
-                        Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color(0xFF4A9EFF))
+                        Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Color(0xFF4A9EFF), strokeWidth = 3.dp)
                         }
                     }
                 } else if (errorMsg != null) {
                     item {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("⚠", fontSize = 32.sp, color = Color(0xFFEB5757))
-                                Text("Could Not Fetch Leaderboard", style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-                                Text(errorMsg!!, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center))
+                        Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("⚠ $errorMsg", style = TextStyle(color = Color(0xFFEB5757), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                            Spacer(Modifier.height(8.dp))
+                            Button(onClick = { loadData() }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f))) {
+                                Text("RETRY", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                             }
+                        }
+                    }
+                } else if (filtered.isEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                            Text("No leaderboard entries match filters.", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
                         }
                     }
                 } else {
-                    // Search bar
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.04f))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("⌕ ", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp)
-                            BasicTextField(
-                                value = searchText,
-                                onValueChange = { searchText = it },
-                                singleLine = true,
-                                textStyle = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                                modifier = Modifier.fillMaxWidth(),
-                                decorationBox = { innerTextField ->
-                                    if (searchText.isEmpty()) Text("Search model, vendor, or OS...", style = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = FontFamily.Monospace))
-                                    innerTextField()
-                                }
-                            )
-                        }
-                    }
-
-                    // Client-Side Filters Row
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // My Device Filter Chip
-                            CustomFilterChip(
-                                selected = showOnlyMyDevice,
-                                label = "Device: $myDeviceModel",
-                                onClick = { showOnlyMyDevice = !showOnlyMyDevice }
-                            )
-
-                            // My OS Version Filter Chip
-                            CustomFilterChip(
-                                selected = showOnlyMyOSVersion,
-                                label = "OS: v$myOSVersion",
-                                onClick = { showOnlyMyOSVersion = !showOnlyMyOSVersion }
-                            )
-
-                            // Platform Filter Selector (Cycles)
-                            CustomFilterChip(
-                                selected = selectedPlatformFilter != null,
-                                label = when (selectedPlatformFilter) {
-                                    1 -> "Platform: iOS"
-                                    2 -> "Platform: Android"
-                                    else -> "Platform: All"
-                                },
-                                onClick = {
-                                    selectedPlatformFilter = when (selectedPlatformFilter) {
-                                        null -> 1
-                                        1 -> 2
-                                        else -> null
-                                    }
-                                }
-                            )
-
-                            // Duration Filter Selector (Cycles)
-                            CustomFilterChip(
-                                selected = selectedDurationFilter != null,
-                                label = when (selectedDurationFilter) {
-                                    0 -> "Duration: 5 Min"
-                                    1 -> "Duration: 15 Min"
-                                    2 -> "Duration: 30 Min"
-                                    else -> "Duration: All"
-                                },
-                                onClick = {
-                                    selectedDurationFilter = when (selectedDurationFilter) {
-                                        null -> 0
-                                        0 -> 1
-                                        1 -> 2
-                                        else -> null
-                                    }
-                                }
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                    }
-
-                    if (filtered.isEmpty()) {
-                        item {
-                            Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-                                Text("NO ENTRIES FOUND", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
-                            }
-                        }
-                    } else {
-                        items(filtered) { item ->
-                            LeaderboardRow(item, onClick = {
+                    items(filtered, key = { it.entry.id }) { item ->
+                        val itemRun = remember(item.entry) { item.entry.toPendingTestResult() }
+                        val isSelected = compareSelectedRuns.any { it.id == itemRun.id }
+                        LeaderboardItemRow(
+                            item = item,
+                            isCompareSelected = isSelected,
+                            onToggleCompare = { toggleCompareRun(itemRun) },
+                            onClick = {
                                 selectedEntry = item.entry
-                                detailedStamps = emptyList(); stampsError = null; stampsLoading = true
+                                detailedStamps = emptyList()
+                                stampsLoading = true
+                                stampsError = null
                                 coroutineScope.launch {
                                     try {
                                         detailedStamps = ApiClient.api.fetchStamps(item.entry.id)
@@ -348,30 +300,86 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                     }
                                     stampsLoading = false
                                 }
-                            })
-                        }
+                            }
+                        )
                     }
                 }
-                item { Spacer(Modifier.height(24.dp)) }
             }
         }
 
-        // Detail overlay
-        if (selectedEntry != null) {
+        // Floating Sticky Selection Bar for Comparison at Bottom of Screen
+        if (compareSelectedRuns.isNotEmpty()) {
+            val reqMode = if (compareSelectedRuns.first().testThreadingType == 0) "1 THREAD" else "MULTI THREAD"
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF00E5FF).copy(alpha = 0.95f))
+                    .clickable {
+                        if (compareSelectedRuns.size >= 2) {
+                            showAutoCompareOverlay = true
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("⚖️", fontSize = 16.sp)
+                        Column {
+                            Text(
+                                "${compareSelectedRuns.size} / 2 TESTS SELECTED ($reqMode)",
+                                style = TextStyle(color = Color.Black, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
+                            )
+                            Text(
+                                if (compareSelectedRuns.size == 1) "Tap 1 more $reqMode test to compare!" else "Tap to view detailed side-by-side analysis",
+                                style = TextStyle(color = Color.Black.copy(alpha = 0.7f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.2f))
+                            .clickable { compareSelectedRuns = emptyList() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("CLEAR", style = TextStyle(color = Color.Black, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    }
+                }
+            }
+        }
+
+        // Detail Overlay
+        selectedEntry?.let { entry ->
             DetailOverlay(
-                entry = selectedEntry!!,
+                entry = entry,
                 stamps = detailedStamps,
                 isLoading = stampsLoading,
                 error = stampsError,
                 onDismiss = { selectedEntry = null },
                 onRetry = {
-                    stampsError = null; stampsLoading = true
-                    val id = selectedEntry!!.id
+                    stampsLoading = true; stampsError = null
                     coroutineScope.launch {
-                        try { detailedStamps = ApiClient.api.fetchStamps(id) }
-                        catch (e: Exception) { stampsError = e.message }
+                        try {
+                            detailedStamps = ApiClient.api.fetchStamps(entry.id)
+                        } catch (e: Exception) {
+                            stampsError = e.message ?: "Failed to load stamps"
+                        }
                         stampsLoading = false
                     }
+                }
+            )
+        }
+
+        // Auto Comparison Overlay
+        if (showAutoCompareOverlay && compareSelectedRuns.size >= 2) {
+            ComparisonOverlay(
+                preselectedRunA = compareSelectedRuns[0],
+                preselectedRunB = compareSelectedRuns[1],
+                onDismiss = {
+                    showAutoCompareOverlay = false
+                    compareSelectedRuns = emptyList()
                 }
             )
         }
@@ -379,131 +387,168 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
 }
 
 @Composable
-fun PendingResultRow(
+private fun PendingResultRow(
     pending: PendingTestResult,
     isNetworkConnected: Boolean,
     isUploading: Boolean,
     uploadError: String?,
+    isCompareSelected: Boolean,
+    onToggleCompare: () -> Unit,
     onSubmit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Row(
+    val durationText = when (pending.testDurationType) {
+        0 -> "5 MIN"
+        1 -> "15 MIN"
+        else -> "30 MIN"
+    }
+    val threadText = if (pending.testThreadingType == 0) "1 THREAD" else "MULTI"
+    val threadColor = if (pending.testThreadingType == 0) Color(0xFFFF9500) else Color(0xFF33CC66)
+
+    Column(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.03f))
-            .border(1.dp, Color(0xFFF2C94C).copy(alpha = 0.25f), RoundedCornerShape(16.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .background(Color(0xFFF2C94C).copy(alpha = 0.06f))
+            .border(1.dp, Color(0xFFF2C94C).copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+            .padding(14.dp)
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(pending.deviceModel, style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                val typeName = when (pending.testDurationType) { 0 -> "5 MIN"; 1 -> "15 MIN"; else -> "30 MIN" }
-                Text(typeName, style = TextStyle(color = Color(0xFFF2C94C), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-                Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
-                Text("Score stability: %.0f%%".format(pending.finalStability), style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("OFFLINE RUN", style = TextStyle(color = Color(0xFFF2C94C), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    Text("•", color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp)
+                    Text(durationText, style = TextStyle(color = Color.White.copy(alpha = 0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                    Text("•", color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp)
+                    Text(threadText, style = TextStyle(color = threadColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                }
+                Spacer(Modifier.height(2.dp))
+                Text("${pending.deviceManufacturer} ${pending.deviceModel}", style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
             }
-            if (uploadError != null) {
-                Spacer(Modifier.height(4.dp))
-                Text("Error: $uploadError", style = TextStyle(color = Color(0xFFEB5757), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text("%.1f%%".format(pending.finalStability), style = TextStyle(color = stabilityColor(pending.finalStability), fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                Text("STABILITY", style = TextStyle(color = Color.White.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = FontFamily.Monospace))
             }
         }
 
+        Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Delete button
-            IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                Text("✕", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            // Compare button toggle (ICON ONLY, NO TEXT)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .clickable(onClick = onToggleCompare)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    if (isCompareSelected) "✓" else "⚖️",
+                    style = TextStyle(color = if (isCompareSelected) Color.Black else Color(0xFF00E5FF), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                )
             }
-            // Upload button
-            if (isUploading) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = Color(0xFFF2C94C), strokeWidth = 2.dp)
-            } else {
-                Button(
-                    onClick = onSubmit,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isNetworkConnected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.08f)),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.height(28.dp)
-                ) {
-                    Text(
-                        text = if (isNetworkConnected) "SUBMIT" else "OFFLINE",
-                        style = TextStyle(color = if (isNetworkConnected) Color.Black else Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    )
+
+            if (isNetworkConnected) {
+                if (isUploading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(14.dp), color = Color(0xFF4A9EFF), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text("UPLOADING...", style = TextStyle(color = Color(0xFF4A9EFF), fontSize = 9.sp, fontFamily = FontFamily.Monospace))
+                    }
+                } else {
+                    Button(onClick = onSubmit, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A9EFF))) {
+                        Text("SUBMIT", style = TextStyle(color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                    }
                 }
             }
+            Spacer(Modifier.weight(1f))
+            Text("DELETE", modifier = Modifier.clickable(onClick = onDelete).padding(4.dp), style = TextStyle(color = Color(0xFFEB5757), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
         }
     }
 }
 
 @Composable
-private fun LeaderboardRow(item: RankedEntry, onClick: () -> Unit) {
+private fun LeaderboardItemRow(
+    item: RankedEntry,
+    isCompareSelected: Boolean,
+    onToggleCompare: () -> Unit,
+    onClick: () -> Unit
+) {
     val entry = item.entry
+    val threadText = if ((entry.testThreadingType ?: 1) == 0) "1 THREAD" else "MULTI"
+    val threadColor = if ((entry.testThreadingType ?: 1) == 0) Color(0xFFFF9500) else Color(0xFF33CC66)
+
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.03f))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+            .background(Color(0xFF141414))
+            .border(1.dp, if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Compare Checkbox / Toggle Button (ICON ONLY, NO TEXT)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.05f))
+                .border(1.dp, if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                .clickable(onClick = onToggleCompare)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Text(
+                if (isCompareSelected) "✓" else "⚖️",
+                style = TextStyle(color = if (isCompareSelected) Color.Black else Color(0xFF00E5FF), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            )
+        }
+
         // Rank badge
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(32.dp)) {
+        Box(contentAlignment = Alignment.Center) {
             when (item.rank) {
                 1 -> {
-                    Box(Modifier.size(32.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFF9CC29), Color(0xFFE6A800)))))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("👑", fontSize = 9.sp)
-                        Text("1", style = TextStyle(color = Color.Black, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
-                    }
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFFFD700), Color(0xFFB8860B)))))
+                    Text("1", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
                 }
                 2 -> {
-                    Box(Modifier.size(32.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFD6D6D6), Color(0xFFA5A5A5)))))
-                    Text("2", style = TextStyle(color = Color.Black, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFC0C0C0), Color(0xFF708090)))))
+                    Text("2", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
                 }
                 3 -> {
-                    Box(Modifier.size(32.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFCC7A47), Color(0xFF995733)))))
-                    Text("3", style = TextStyle(color = Color.Black, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFCC7A47), Color(0xFF995733)))))
+                    Text("3", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
                 }
                 else -> {
-                    Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.04f)), contentAlignment = Alignment.Center) {
-                        Text("#${item.rank}", style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.04f)), contentAlignment = Alignment.Center) {
+                        Text("#${item.rank}", style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
                     }
                 }
             }
         }
 
-        // Device info
+        // Device info & Threading Badge
         Column(Modifier.weight(1f)) {
             val fullModelName = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) {
                 entry.deviceModel
             } else {
                 "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
             }
-            Text(fullModelName, style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(entry.deviceManufacturer, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace))
-                Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
-                Text("${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace))
-                Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
-                val durColor = when (entry.type) { 0 -> Color(0xFF33CC66); 1 -> Color(0xFF4A9EFF); else -> Color(0xFFAB5BFF) }
-                Text(when (entry.type) { 0 -> "5 MIN"; 1 -> "15 MIN"; else -> "30 MIN" }, style = TextStyle(color = durColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-                Box(Modifier.size(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
-                val threadText = if ((entry.testThreadingType ?: 1) == 0) "1 THREAD" else "MULTI"
-                val threadColor = if ((entry.testThreadingType ?: 1) == 0) Color(0xFFFF9500) else Color.White.copy(alpha = 0.4f)
-                Text(threadText, style = TextStyle(color = threadColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+            Text(fullModelName, style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(entry.deviceManufacturer, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
+                Box(Modifier.size(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
+                Text("${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
+                Box(Modifier.size(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
+                Text(threadText, style = TextStyle(color = threadColor, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
             }
         }
 
         // Stability score
         Column(horizontalAlignment = Alignment.End) {
-            Text("%.1f%%".format(item.stability), style = TextStyle(color = stabilityColor(item.stability.toFloat()), fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+            Text("%.1f%%".format(item.stability), style = TextStyle(color = stabilityColor(item.stability.toFloat()), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
             Text("STABILITY", style = TextStyle(color = Color.White.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = FontFamily.Monospace))
         }
     }
@@ -602,19 +647,15 @@ fun CustomFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) Color(0xFFF2C94C).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.04f))
-            .border(
-                width = 1.dp,
-                color = if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(8.dp)
-            )
+            .border(1.dp, if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
-            text = label,
+            label,
             style = TextStyle(
                 color = if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.6f),
-                fontSize = 10.sp,
+                fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold
             )

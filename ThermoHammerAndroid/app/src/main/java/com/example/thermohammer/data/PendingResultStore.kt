@@ -20,7 +20,11 @@ data class PendingTestResult(
     val deviceManufacturer: String,
     val osVersion: String,
     val sessionId: Int,
-    val encryptionKey: String
+    val encryptionKey: String,
+    val initialBatteryLevel: Int = 0,
+    val finalBatteryLevel: Int = 0,
+    val initialBatteryTemp: Float = 0f,
+    val finalBatteryTemp: Float = 0f
 )
 
 class PendingResultStore(context: Context) {

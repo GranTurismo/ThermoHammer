@@ -30,6 +30,11 @@ struct LeaderboardView: View {
     @State private var showOnlyMyOSVersion = false
     @State private var selectedPlatformFilter: Int? = nil // nil = All, 1 = iOS, 2 = Android
     @State private var selectedDurationFilter: Int? = nil // nil = All, 0 = 5 Min, 1 = 15 Min, 2 = 30 Min
+
+    // Multi-select comparison system
+    @State private var selectedCompareRuns: [PendingTestResult] = []
+    @State private var showAutoCompareSheet = false
+    @State private var comparisonMismatchAlert: String? = nil
     
     var rankedEntries: [EntryWithStability] {
         let mapped = entries.map { entry in
@@ -58,145 +63,194 @@ struct LeaderboardView: View {
         let myDeviceModel = LeaderboardService.shared.getDeviceModelName()
         let myOSVersion = UIDevice.current.systemVersion
         
-        return ranked.filter { entry in
-            let matchesSearch = searchText.isEmpty ||
-                entry.entry.deviceModel.localizedCaseInsensitiveContains(searchText) ||
-                entry.entry.deviceManufacturer.localizedCaseInsensitiveContains(searchText) ||
-                entry.entry.osVersion.localizedCaseInsensitiveContains(searchText)
+        return ranked.filter { item in
+            let matchesSearch: Bool
+            if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                matchesSearch = true
+            } else {
+                let query = searchText.lowercased()
+                let modelMatch = item.entry.deviceModel.lowercased().contains(query)
+                let vendorMatch = item.entry.deviceManufacturer.lowercased().contains(query)
+                let osMatch = item.entry.osVersion.lowercased().contains(query)
+                matchesSearch = modelMatch || vendorMatch || osMatch
+            }
             
-            let matchesDevice = !showOnlyMyDevice ||
-                entry.entry.deviceModel.localizedCaseInsensitiveCompare(myDeviceModel) == .orderedSame
-            
-            let matchesOS = !showOnlyMyOSVersion ||
-                entry.entry.osVersion.localizedCaseInsensitiveContains(myOSVersion)
+            let matchesDevice = showOnlyMyDevice ? item.entry.deviceModel.caseInsensitiveCompare(myDeviceModel) == .orderedSame : true
+            let matchesOS = showOnlyMyOSVersion ? item.entry.osVersion.contains(myOSVersion) : true
             
             let matchesPlatform: Bool
             switch selectedPlatformFilter {
-            case 1: matchesPlatform = entry.entry.os == 1
-            case 2: matchesPlatform = entry.entry.os == 2
+            case 1: matchesPlatform = item.entry.os == 1
+            case 2: matchesPlatform = item.entry.os == 2
             default: matchesPlatform = true
             }
             
             let matchesDuration: Bool
             switch selectedDurationFilter {
-            case 0: matchesDuration = entry.entry.type == 0
-            case 1: matchesDuration = entry.entry.type == 1
-            case 2: matchesDuration = entry.entry.type == 2
+            case 0: matchesDuration = item.entry.type == 0
+            case 1: matchesDuration = item.entry.type == 1
+            case 2: matchesDuration = item.entry.type == 2
             default: matchesDuration = true
             }
             
             return matchesSearch && matchesDevice && matchesOS && matchesPlatform && matchesDuration
         }
     }
+
+    private func toggleCompareRun(_ run: PendingTestResult) {
+        if let idx = selectedCompareRuns.firstIndex(where: { $0.sessionId == run.sessionId && $0.deviceModel == run.deviceModel }) {
+            selectedCompareRuns.remove(at: idx)
+        } else {
+            if let firstRun = selectedCompareRuns.first {
+                let firstTT = firstRun.testThreadingType ?? 1
+                let nextTT = run.testThreadingType ?? 1
+                if firstTT != nextTT {
+                    let modeA = firstTT == 0 ? "Single Thread" : "Multi Thread"
+                    let modeB = nextTT == 0 ? "Single Thread" : "Multi Thread"
+                    comparisonMismatchAlert = "Cannot compare \(modeA) with \(modeB) test! Please select matching test types."
+                    return
+                }
+            }
+            selectedCompareRuns.append(run)
+            if selectedCompareRuns.count >= 2 {
+                selectedCompareRuns = Array(selectedCompareRuns.prefix(2))
+                showAutoCompareSheet = true
+            }
+        }
+    }
     
     var body: some View {
         ZStack {
+            Color.black.ignoresSafeArea()
+            
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("GLOBAL LEADERBOARD")
-                            .font(.system(size: 20, weight: .black, design: .monospaced))
-                            .tracking(1.5)
-                            .foregroundColor(.white)
-                        
-                        Text("Sustained CPU Performance Stability Rankings")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    
-                    Button(action: {
-                        Task { await loadData() }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(10)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Circle())
-                    }
-                    .disabled(isLoading)
-                }
-                .padding(.horizontal)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                // Header Bar
+                headerView
                 
-                if !networkMonitor.isConnected {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            pendingSection
-                            offlineView
-                        }
-                    }
-                } else if isLoading {
+                // Main Content Body
+                if isLoading {
                     loadingView
-                } else if let error = errorMessage {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            pendingSection
-                            errorView(error)
-                        }
-                    }
+                } else if let msg = errorMessage {
+                    errorView(msg: msg)
                 } else {
                     mainContentView
                 }
             }
-            
-            // Detail Sheet Overlay
-            if let entry = selectedEntry {
-                detailOverlay(entry)
+
+            // Floating Sticky Comparison Selection Bar at Bottom
+            if !selectedCompareRuns.isEmpty {
+                let reqMode = (selectedCompareRuns.first?.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI THREAD"
+                VStack {
+                    Spacer()
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(selectedCompareRuns.count) / 2 TESTS SELECTED (\(reqMode))")
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .foregroundColor(.black)
+                            Text(selectedCompareRuns.count == 1 ? "Tap 1 more \(reqMode) test to compare!" : "Tap to view detailed side-by-side analysis")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.black.opacity(0.7))
+                        }
+                        Spacer()
+                        Button(action: { selectedCompareRuns.removeAll() }) {
+                            Text("CLEAR")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.black.opacity(0.2))
+                                .cornerRadius(12)
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(red: 0.0, green: 0.9, blue: 1.0))
+                    .cornerRadius(16)
+                    .shadow(color: .black.opacity(0.4), radius: 10)
+                    .padding(16)
+                    .onTapGesture {
+                        if selectedCompareRuns.count >= 2 {
+                            showAutoCompareSheet = true
+                        }
+                    }
+                }
             }
+            
+            // Detail Modal Popup
+            if let entry = selectedEntry {
+                detailSheet(entry: entry)
+            }
+        }
+        .sheet(isPresented: $showAutoCompareSheet, onDismiss: { selectedCompareRuns.removeAll() }) {
+            if selectedCompareRuns.count >= 2 {
+                ComparisonView(preselectedRunA: selectedCompareRuns[0], preselectedRunB: selectedCompareRuns[1])
+            }
+        }
+        .alert(item: Binding<AlertItem?>(
+            get: { comparisonMismatchAlert != nil ? AlertItem(message: comparisonMismatchAlert!) : nil },
+            set: { _ in comparisonMismatchAlert = nil }
+        )) { alert in
+            Alert(title: Text("Comparison Mismatch"), message: Text(alert.message), dismissButton: .default(Text("OK")))
         }
         .onAppear {
             Task { await loadData() }
         }
     }
-    
-    // Offline message
-    private var offlineView: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "wifi.slash")
-                .font(.system(size: 50))
-                .foregroundColor(.secondary)
-                .shadow(color: .black.opacity(0.3), radius: 5)
-            
-            Text("LEADERBOARD OFFLINE")
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
-            
-            Text("Please connect to the internet to fetch and view global stability rankings.")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            
-            Spacer()
-        }
+
+    struct AlertItem: Identifiable {
+        let id = UUID()
+        let message: String
     }
     
-    // Loading Screen
+    // Header section view
+    private var headerView: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("GLOBAL LEADERBOARD")
+                    .font(.system(size: 18, weight: .black, design: .monospaced))
+                    .tracking(1.5)
+                    .foregroundColor(.white)
+                Text("Select 2 Tests to Compare side-by-side")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            
+            Button(action: {
+                Task { await loadData() }
+            }) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(8)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+    
+    // Loading View
     private var loadingView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 12) {
             Spacer()
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                .scaleEffect(1.3)
-            
-            Text("FETCHING RANKINGS...")
+                .scaleEffect(1.2)
+            Text("LOADING LEADERBOARD...")
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .foregroundColor(.secondary)
             Spacer()
         }
     }
     
-    // Error screen
-    private func errorView(_ msg: String) -> some View {
-        VStack(spacing: 16) {
+    // Error View
+    private func errorView(msg: String) -> some View {
+        VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "exclamationmark.octagon.fill")
-                .font(.system(size: 40))
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 32))
                 .foregroundColor(.red.opacity(0.8))
             
             Text("COULD NOT LOAD LEADERBOARD")
@@ -339,207 +393,229 @@ struct LeaderboardView: View {
     
     // Row Item View
     private func leaderboardRow(_ item: EntryWithStability) -> some View {
-        Button(action: {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                selectedEntry = item.entry
-            }
-            detailedStamps = []
-            stampsErrorMessage = nil
-            isStampsLoading = true
-            
-            let entryId = item.entry.id
-            Task {
-                do {
-                    let fetchedStamps = try await LeaderboardService.shared.fetchStamps(for: entryId)
-                    await MainActor.run {
-                        detailedStamps = fetchedStamps
-                        isStampsLoading = false
-                    }
-                } catch {
-                    await MainActor.run {
-                        stampsErrorMessage = error.localizedDescription
-                        isStampsLoading = false
-                    }
-                }
-            }
-        }) {
-            HStack(spacing: 16) {
-                // Rank Number / Badge
-                ZStack {
-                    if item.rank == 1 {
-                        Circle()
-                            .fill(LinearGradient(colors: [Color(red: 0.98, green: 0.8, blue: 0.2), Color(red: 0.9, green: 0.65, blue: 0.0)], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 32, height: 32)
-                            .shadow(color: Color.yellow.opacity(0.3), radius: 4)
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.black)
-                            .offset(y: -5)
-                        Text("1")
-                            .font(.system(size: 10, weight: .black, design: .monospaced))
-                            .foregroundColor(.black)
-                            .offset(y: 4)
-                    } else if item.rank == 2 {
-                        Circle()
-                            .fill(LinearGradient(colors: [Color(red: 0.85, green: 0.85, blue: 0.85), Color(red: 0.65, green: 0.65, blue: 0.65)], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 32, height: 32)
-                        Text("2")
-                            .font(.system(size: 12, weight: .black, design: .monospaced))
-                            .foregroundColor(.black)
-                    } else if item.rank == 3 {
-                        Circle()
-                            .fill(LinearGradient(colors: [Color(red: 0.8, green: 0.5, blue: 0.3), Color(red: 0.6, green: 0.35, blue: 0.2)], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 32, height: 32)
-                        Text("3")
-                            .font(.system(size: 12, weight: .black, design: .monospaced))
-                            .foregroundColor(.black)
-                    } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.04))
-                            .frame(width: 32, height: 32)
-                        Text("#\(item.rank)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                // Device Info
-                VStack(alignment: .leading, spacing: 4) {
-                    let fullModelName = item.entry.deviceModel.localizedCaseInsensitiveContains(item.entry.deviceManufacturer) ? item.entry.deviceModel : "\(item.entry.deviceManufacturer) \(item.entry.deviceModel)".trimmingCharacters(in: .whitespaces)
-                    Text(fullModelName)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    HStack(spacing: 6) {
-                        Text(item.entry.deviceManufacturer)
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        
-                        Circle()
-                            .fill(Color.white.opacity(0.15))
-                            .frame(width: 3, height: 3)
-                        
-                        Text(item.entry.os == 1 ? "iOS \(item.entry.osVersion)" : "Android \(item.entry.osVersion)")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        
-                        Circle()
-                            .fill(Color.white.opacity(0.15))
-                            .frame(width: 3, height: 3)
-                        
-                        Text(durationName(for: item.entry.type))
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(item.entry.type == 0 ? .green : (item.entry.type == 1 ? .blue : .purple))
-                        
-                        Circle()
-                            .fill(Color.white.opacity(0.15))
-                            .frame(width: 3, height: 3)
-                        
-                        Text((item.entry.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor((item.entry.testThreadingType ?? 1) == 0 ? .orange : .secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                // Stability Score
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(format: "%.1f%%", item.stability))
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .foregroundColor(stabilityColor(for: item.stability))
-                    
-                    Text("STABILITY")
-                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.03))
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    // Fetch data from service
-    private func loadData() async {
-        await MainActor.run {
-            isLoading = true
-            errorMessage = nil
-        }
+        let itemRun = item.entry.toPendingTestResult()
+        let isSelected = selectedCompareRuns.contains(where: { $0.sessionId == itemRun.sessionId && $0.deviceModel == itemRun.deviceModel })
+        let threadText = (item.entry.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI"
+        let threadColor = (item.entry.testThreadingType ?? 1) == 0 ? Color.orange : Color.green
         
+        return HStack(spacing: 10) {
+            // Compare button toggle (ICON ONLY, NO TEXT)
+            Button(action: { toggleCompareRun(itemRun) }) {
+                Text(isSelected ? "✓" : "⚖️")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(isSelected ? .black : Color(red: 0.0, green: 0.9, blue: 1.0))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.05))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.15), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Button(action: {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    selectedEntry = item.entry
+                }
+                detailedStamps = []
+                stampsErrorMessage = nil
+                isStampsLoading = true
+                
+                let entryId = item.entry.id
+                Task {
+                    do {
+                        let fetchedStamps = try await LeaderboardService.shared.fetchStamps(for: entryId)
+                        await MainActor.run {
+                            detailedStamps = fetchedStamps
+                            isStampsLoading = false
+                        }
+                    } catch {
+                        await MainActor.run {
+                            stampsErrorMessage = error.localizedDescription
+                            isStampsLoading = false
+                        }
+                    }
+                }
+            }) {
+                HStack(spacing: 10) {
+                    // Rank Number / Badge
+                    ZStack {
+                        if item.rank == 1 {
+                            Circle()
+                                .fill(LinearGradient(colors: [Color(red: 0.98, green: 0.8, blue: 0.2), Color(red: 0.9, green: 0.65, blue: 0.0)], startPoint: .top, endPoint: .bottom))
+                                .frame(width: 28, height: 28)
+                            Text("1")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(.black)
+                        } else if item.rank == 2 {
+                            Circle()
+                                .fill(LinearGradient(colors: [Color(red: 0.85, green: 0.85, blue: 0.85), Color(red: 0.65, green: 0.65, blue: 0.65)], startPoint: .top, endPoint: .bottom))
+                                .frame(width: 28, height: 28)
+                            Text("2")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(.black)
+                        } else if item.rank == 3 {
+                            Circle()
+                                .fill(LinearGradient(colors: [Color(red: 0.8, green: 0.5, blue: 0.3), Color(red: 0.6, green: 0.35, blue: 0.2)], startPoint: .top, endPoint: .bottom))
+                                .frame(width: 28, height: 28)
+                            Text("3")
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundColor(.black)
+                        } else {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(0.04))
+                                .frame(width: 28, height: 28)
+                            Text("#\(item.rank)")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    // Device info & Thread Badge
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(item.entry.deviceManufacturer) \(item.entry.deviceModel)")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        
+                        HStack(spacing: 4) {
+                            Text("\(item.entry.os == 1 ? "iOS" : "Android") \(item.entry.osVersion)")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(.secondary)
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary)
+                            Text(threadText)
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundColor(threadColor)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Stability score
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(format: "%.1f%%", item.stability))
+                            .font(.system(size: 13, weight: .black, design: .monospaced))
+                            .foregroundColor(stabilityColor(for: item.stability))
+                        Text("STABILITY")
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(12)
+        .background(Color(white: 0.08).opacity(0.6))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private func loadData() async {
+        isLoading = true
+        errorMessage = nil
         do {
-            let res = try await LeaderboardService.shared.fetchLeaderboard()
+            let items = try await LeaderboardService.shared.fetchLeaderboard()
             await MainActor.run {
-                entries = res
-                isLoading = false
+                self.entries = items
+                self.isLoading = false
             }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
+                self.errorMessage = error.localizedDescription
+                self.isLoading = false
+            }
+        }
+    }
+
+    private func submitPendingRun(_ pending: PendingTestResult) {
+        uploadingId = pending.id
+        uploadError = nil
+        Task {
+            do {
+                let session = try await LeaderboardService.shared.createSession()
+                let hmacHash = ThermoHasher.computeHash(
+                    encryptionKey: session.encryptionKey,
+                    stamps: pending.stamps
+                )
+                let payload = HammerPayload(
+                    stamps: pending.stamps,
+                    type: pending.testDurationType,
+                    testThreadingType: pending.testThreadingType ?? 1,
+                    deviceManufacturer: pending.deviceManufacturer,
+                    deviceModel: pending.deviceModel,
+                    os: 1, // iOS
+                    osVersion: pending.osVersion,
+                    sessionId: session.id,
+                    hash: hmacHash
+                )
+                try await LeaderboardService.shared.submitScore(payload: payload)
+                await MainActor.run {
+                    PendingResultStore.shared.deleteResult(id: pending.id)
+                    uploadingId = nil
+                }
+            } catch {
+                await MainActor.run {
+                    uploadError = error.localizedDescription
+                    uploadingId = nil
+                }
             }
         }
     }
     
-    // Device detail popup sheet
-    private func detailOverlay(_ entry: HammerDto) -> some View {
+    private func detailSheet(entry: HammerDto) -> some View {
         let stabilityVal = Double(entry.stabilityPercentage)
         
         return ZStack {
             Color.black.opacity(0.85)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    withAnimation(.spring()) {
                         selectedEntry = nil
                     }
                 }
             
-            VStack(spacing: 20) {
-                // Header details
+            VStack(spacing: 16) {
+                // Header title
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        let fullModelName = entry.deviceModel.localizedCaseInsensitiveContains(entry.deviceManufacturer) ? entry.deviceModel : "\(entry.deviceManufacturer) \(entry.deviceModel)".trimmingCharacters(in: .whitespaces)
-                        Text(fullModelName)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(entry.deviceManufacturer) \(entry.deviceModel)")
                             .font(.system(size: 16, weight: .black, design: .monospaced))
                             .foregroundColor(.white)
-                        
                         Text("\(entry.deviceManufacturer) • \(entry.os == 1 ? "iOS" : "Android") \(entry.osVersion)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    
                     Button(action: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        withAnimation(.spring()) {
                             selectedEntry = nil
                         }
                     }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .black))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(8)
+                            .frame(width: 32, height: 32)
                             .background(Color.white.opacity(0.08))
                             .clipShape(Circle())
                     }
                 }
-                .padding(.top, 10)
                 
                 Divider()
                     .background(Color.white.opacity(0.1))
                 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
                         if isStampsLoading {
-                            VStack(spacing: 16) {
+                            VStack(spacing: 12) {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                                    .scaleEffect(1.2)
                                 Text("LOADING STAMP DATA...")
                                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                                     .foregroundColor(.secondary)
@@ -591,7 +667,6 @@ struct LeaderboardView: View {
                             .frame(height: 320)
                             .frame(maxWidth: .infinity)
                         } else {
-                            // Stamps are loaded successfully!
                             stampsDetailCard(entry: entry, stamps: detailedStamps, stabilityVal: stabilityVal)
                         }
                     }
@@ -651,7 +726,6 @@ struct LeaderboardView: View {
         let chartEvents = getThermalEvents(from: stamps)
         
         return VStack(spacing: 20) {
-            // Numerical Metrics Card
             VStack(spacing: 12) {
                 detailRow(label: "TEST TYPE", value: durationName(for: entry.type))
                 detailRow(label: "STABILITY", value: String(format: "%.1f%%", calculatedStability), valColor: stabilityColor(for: calculatedStability))
@@ -666,7 +740,6 @@ struct LeaderboardView: View {
             Divider()
                 .background(Color.white.opacity(0.1))
             
-            // Graph visual
             VStack(alignment: .leading, spacing: 8) {
                 Text("PERFORMANCE CURVE")
                     .font(.system(size: 10, weight: .black, design: .monospaced))
@@ -682,6 +755,22 @@ struct LeaderboardView: View {
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(Color.white.opacity(0.04), lineWidth: 1)
                     )
+                
+                Button(action: {
+                    toggleCompareRun(entry.toPendingTestResult(stampsList: stamps))
+                }) {
+                    HStack {
+                        Spacer()
+                        Text("⚖️ ADD TO COMPARISON")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(red: 0.0, green: 0.9, blue: 1.0))
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
+                    .background(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.12))
+                    .cornerRadius(14)
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.3), lineWidth: 1))
+                }
             }
         }
     }
@@ -690,16 +779,97 @@ struct LeaderboardView: View {
     private var pendingSection: some View {
         if !pendingStore.results.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("PENDING OFFLINE RUNS (\(pendingStore.results.count))")
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                        .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
-                    Spacer()
-                }
-                .padding(.vertical, 4)
+                Text("PENDING OFFLINE RUNS (\(pendingStore.results.count))")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
+                    .padding(.vertical, 4)
                 
                 ForEach(pendingStore.results) { pending in
-                    pendingResultRow(pending)
+                    let isSelected = selectedCompareRuns.contains(where: { $0.id == pending.id })
+                    let threadText = (pending.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI"
+                    let threadColor = (pending.testThreadingType ?? 1) == 0 ? Color.orange : Color.green
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("OFFLINE RUN")
+                                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                                        .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
+                                    Text("•")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                    Text(durationName(for: pending.testDurationType))
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                    Text("•")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                    Text(threadText)
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundColor(threadColor)
+                                }
+                                Text("\(pending.deviceManufacturer) \(pending.deviceModel)")
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(String(format: "%.1f%%", pending.finalStability))
+                                    .font(.system(size: 14, weight: .black, design: .monospaced))
+                                    .foregroundColor(stabilityColor(for: pending.finalStability))
+                                Text("STABILITY")
+                                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        HStack(spacing: 8) {
+                            // Compare button toggle (ICON ONLY, NO TEXT)
+                            Button(action: { toggleCompareRun(pending) }) {
+                                Text(isSelected ? "✓" : "⚖️")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(isSelected ? .black : Color(red: 0.0, green: 0.9, blue: 1.0))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.08))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.15), lineWidth: 1)
+                                    )
+                            }
+                            
+                            if networkMonitor.isConnected {
+                                Button(action: { submitPendingRun(pending) }) {
+                                    Text("SUBMIT")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Color.blue)
+                                        .cornerRadius(8)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                PendingResultStore.shared.deleteResult(id: pending.id)
+                            }) {
+                                Text("DELETE")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.06))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.2), lineWidth: 1)
+                    )
                 }
                 
                 Divider()
@@ -709,115 +879,13 @@ struct LeaderboardView: View {
         }
     }
     
-    @ViewBuilder
-    private func pendingResultRow(_ pending: PendingTestResult) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(pending.deviceModel)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                
-                HStack(spacing: 6) {
-                    Text(durationName(for: pending.testDurationType))
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
-                    
-                    Circle()
-                        .frame(width: 3, height: 3)
-                        .foregroundColor(.white.opacity(0.15))
-                    
-                    Text(String(format: "Score stability: %.0f%%", pending.finalStability))
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
-                
-                if failedUploadId == pending.id, let error = uploadError {
-                    Text("Error: \(error)")
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(.red)
-                }
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 8) {
-                // Delete button
-                Button(action: {
-                    pendingStore.deleteResult(id: pending.id)
-                }) {
-                    Text("✕")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white.opacity(0.4))
-                        .padding(6)
-                }
-                
-                // Upload button
-                if uploadingId == pending.id {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.95, green: 0.7, blue: 0.1)))
-                        .scaleEffect(0.8)
-                } else {
-                    Button(action: {
-                        uploadingId = pending.id
-                        failedUploadId = nil
-                        uploadError = nil
-                        Task {
-                            do {
-                                // Request a fresh session on the server for pending uploads to avoid expired sessions
-                                let session = try await LeaderboardService.shared.createSession()
-                                let finalSessionId = session.id
-                                let finalEncryptionKey = session.encryptionKey
-                                
-                                let hmacHash = ThermoHasher.computeHash(
-                                    encryptionKey: finalEncryptionKey,
-                                    stamps: pending.stamps
-                                )
-                                let payload = HammerPayload(
-                                    stamps: pending.stamps,
-                                    type: pending.testDurationType,
-                                    testThreadingType: pending.testThreadingType ?? 1,
-                                    deviceManufacturer: pending.deviceManufacturer,
-                                    deviceModel: pending.deviceModel,
-                                    os: 1,
-                                    osVersion: pending.osVersion,
-                                    sessionId: finalSessionId,
-                                    hash: hmacHash
-                                )
-                                try await LeaderboardService.shared.submitScore(payload: payload)
-                                await MainActor.run {
-                                    pendingStore.deleteResult(id: pending.id)
-                                    uploadingId = nil
-                                    Task { await loadData() }
-                                }
-                            } catch {
-                                await MainActor.run {
-                                    uploadError = error.localizedDescription
-                                    failedUploadId = pending.id
-                                    uploadingId = nil
-                                }
-                            }
-                        }
-                    }) {
-                        Text(networkMonitor.isConnected ? "SUBMIT" : "OFFLINE")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(networkMonitor.isConnected ? .black : .white.opacity(0.4))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(networkMonitor.isConnected ? Color(red: 0.95, green: 0.7, blue: 0.1) : Color.white.opacity(0.08))
-                            .cornerRadius(8)
-                    }
-                    .disabled(!networkMonitor.isConnected)
-                }
-            }
+    private func durationName(for type: Int) -> String {
+        switch type {
+        case 0: return "5 MIN"
+        case 1: return "15 MIN"
+        case 2: return "30 MIN"
+        default: return "5 MIN"
         }
-        .padding(14)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.25), lineWidth: 1)
-        )
     }
     
     private func detailRow(label: String, value: String, valColor: Color = .white) -> some View {
@@ -827,17 +895,8 @@ struct LeaderboardView: View {
                 .foregroundColor(.secondary)
             Spacer()
             Text(value)
-                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundColor(valColor)
-        }
-    }
-    
-    private func durationName(for type: Int) -> String {
-        switch type {
-        case 0: return "5 MIN"
-        case 1: return "15 MIN"
-        case 2: return "30 MIN"
-        default: return "5 MIN"
         }
     }
     
@@ -851,11 +910,12 @@ struct LeaderboardView: View {
         }
     }
     
-    private func formatInteger(_ val: Int) -> String {
+    private func formatInteger(_ number: Int) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        return formatter.string(from: NSNumber(value: val)) ?? "\(val)"
+        return formatter.string(from: NSNumber(value: number)) ?? "\(number)"
     }
+    
     private func customFilterChip(selected: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)

@@ -113,6 +113,7 @@ private fun DiagnosticsScreenWrapper(
     var submitError by remember { mutableStateOf<String?>(null) }
     var currentPendingResultId by remember { mutableStateOf<String?>(null) }
     var showConnectionRequest by remember { mutableStateOf(false) }
+    var showComparison by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val store = remember { com.example.thermohammer.data.PendingResultStore(context) }
@@ -163,7 +164,11 @@ private fun DiagnosticsScreenWrapper(
                             deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
                             osVersion = engine.getAndroidVersion(),
                             sessionId = 0,
-                            encryptionKey = ""
+                            encryptionKey = "",
+                            initialBatteryLevel = state.initialBatteryLevel,
+                            finalBatteryLevel = state.finalBatteryLevel,
+                            initialBatteryTemp = state.initialBatteryTemp,
+                            finalBatteryTemp = state.finalBatteryTemp
                         )
                         com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
                         currentPendingResultId = pending.id
@@ -299,6 +304,7 @@ private fun DiagnosticsScreenWrapper(
                 }
             )
         }
+        if (showComparison) com.example.thermohammer.ui.overlays.ComparisonOverlay(onDismiss = { showComparison = false })
         if (showBackgroundAborted) com.example.thermohammer.ui.overlays.BackgroundAbortedOverlay { showBackgroundAborted = false; engine.resetTestResult() }
         if (showManualCancelled) com.example.thermohammer.ui.overlays.ManualCancelledOverlay { showManualCancelled = false; engine.resetTestResult() }
         if (showServerInit) com.example.thermohammer.ui.overlays.ServerInitOverlay()

@@ -17,6 +17,8 @@
 		B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7DD55569A14DD3A42D804BF7 /* Assets.xcassets */; };
 		BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B3232B3AD29924355737D0 /* StabilityChart.swift */; };
 		EC899A6254442B582B3009DC /* CoreStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709D367D4E29A88B1729A141 /* CoreStatusView.swift */; };
+		A1A1A1A1A1A1A1A1A1A10002 /* ComparisonModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A10001 /* ComparisonModels.swift */; };
+		B2B2B2B2B2B2B2B2B2B20002 /* ComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B2B2B2B2B2B2B20001 /* ComparisonView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +33,8 @@
 		B1B3232B3AD29924355737D0 /* StabilityChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilityChart.swift; sourceTree = "<group>"; };
 		B4F40CC95B1045168CA386E8 /* StressEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressEngine.swift; sourceTree = "<group>"; };
 		FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResultStore.swift; sourceTree = "<group>"; };
+		A1A1A1A1A1A1A1A1A1A10001 /* ComparisonModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComparisonModels.swift; sourceTree = "<group>"; };
+		B2B2B2B2B2B2B2B2B2B20001 /* ComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComparisonView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -47,6 +51,8 @@
 				FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */,
 				B1B3232B3AD29924355737D0 /* StabilityChart.swift */,
 				B4F40CC95B1045168CA386E8 /* StressEngine.swift */,
+				A1A1A1A1A1A1A1A1A1A10001 /* ComparisonModels.swift */,
+				B2B2B2B2B2B2B2B2B2B20001 /* ComparisonView.swift */,
 			);
 			path = CpuThrottlingTest;
 			sourceTree = "<group>";
@@ -147,6 +153,8 @@
 				47E986032A246D224C3A3819 /* PendingResultStore.swift in Sources */,
 				BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */,
 				7300C25E2DA6E7B88D56EEF9 /* StressEngine.swift in Sources */,
+				A1A1A1A1A1A1A1A1A1A10002 /* ComparisonModels.swift in Sources */,
+				B2B2B2B2B2B2B2B2B2B20002 /* ComparisonView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
