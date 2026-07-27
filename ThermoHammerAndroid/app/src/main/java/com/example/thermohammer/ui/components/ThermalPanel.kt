@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.thermohammer.engine.StressState
+import com.example.thermohammer.engine.CpuCoreFreq
 
 @Composable
 fun ThermalMonitoringPanel(state: StressState, modifier: Modifier = Modifier) {
@@ -118,6 +119,12 @@ fun ThermalMonitoringPanel(state: StressState, modifier: Modifier = Modifier) {
                 )
             }
         }
+
+        // ── CPU Frequency Section ──────────────────────────────────────────────
+        if (state.cpuFrequencies.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            CpuFrequencySection(state.cpuFrequencies)
+        }
         
         // Extended sensors list when expanded
         if (expanded && state.thermalSensors.isNotEmpty()) {
@@ -166,6 +173,153 @@ fun ThermalMonitoringPanel(state: StressState, modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CpuFrequencySection(freqs: List<CpuCoreFreq>) {
+    val cyan   = Color(0xFF00E5FF)
+    val orange = Color(0xFFF2994A)
+    val red    = Color(0xFFEB5757)
+    val green  = Color(0xFF27AE60)
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Section header
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                "CPU CORE FREQUENCIES",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+            )
+            // max freq label (all cores share the same cpuinfo_max_freq for the cluster,
+            // pick the first online core's max as reference)
+            val refMax = freqs.firstOrNull { it.maxKHz > 0 }?.maxKHz ?: 0L
+            if (refMax > 0) {
+                Text(
+                    "MAX %.2f GHz".format(refMax / 1_000_000.0),
+                    style = TextStyle(
+                        color = cyan.copy(alpha = 0.6f),
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                )
+            }
+        }
+
+        // Grid: 2 columns
+        val chunked = freqs.chunked(2)
+        chunked.forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                pair.forEach { core ->
+                    CoreFreqCard(
+                        coreFreq = core,
+                        barColor = when {
+                            (core.percentOfMax ?: 0) >= 90 -> red
+                            (core.percentOfMax ?: 0) >= 60 -> orange
+                            else                           -> green
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                // fill the last row if odd number of cores
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoreFreqCard(
+    coreFreq: CpuCoreFreq,
+    barColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val pct = coreFreq.percentOfMax ?: 0
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.03f))
+            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Core label + status
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "CPU${coreFreq.core}",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            if (!coreFreq.isOnline) {
+                Text(
+                    "OFFLINE",
+                    style = TextStyle(
+                        color = Color.White.copy(alpha = 0.25f),
+                        fontSize = 7.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                )
+            } else {
+                Text(
+                    "$pct%",
+                    style = TextStyle(
+                        color = barColor,
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        }
+
+        // Frequency value
+        Text(
+            if (coreFreq.isOnline) "%.2f GHz".format(coreFreq.currentGHz)
+            else "-- GHz",
+            style = TextStyle(
+                color = if (coreFreq.isOnline) Color.White else Color.White.copy(alpha = 0.25f),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+        )
+
+        // Progress bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.07f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(if (coreFreq.isOnline) pct / 100f else 0f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(barColor)
+            )
         }
     }
 }

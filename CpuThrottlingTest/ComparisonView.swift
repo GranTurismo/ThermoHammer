@@ -22,313 +22,361 @@ extension HammerDto {
     }
 }
 
+// MARK: - Colour tokens
+private let cyan   = Color(red: 0.0, green: 0.9, blue: 1.0)
+private let amber  = Color(red: 1.0, green: 0.67, blue: 0.0)
+private let surfaceLow  = Color(white: 0.08)
+private let surfaceMid  = Color(white: 0.11)
+
+// MARK: - ComparisonView
 struct ComparisonView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store = PendingResultStore.shared
-    
+
     var preselectedRunA: PendingTestResult? = nil
     var preselectedRunB: PendingTestResult? = nil
-    
+
     @State private var onlineResults: [PendingTestResult] = []
     @State private var indexA: Int = 0
     @State private var indexB: Int = 1
-    
     @State private var stampsMap: [Int: [DeviceHammerStamp]] = [:]
-    
+
     var targetThreadingType: Int {
-        return (preselectedRunA?.testThreadingType ?? preselectedRunB?.testThreadingType) ?? 1
+        (preselectedRunA?.testThreadingType ?? preselectedRunB?.testThreadingType) ?? 1
     }
-    
+
     var allComparableRuns: [PendingTestResult] {
         let tt = targetThreadingType
         var list = (store.results + onlineResults).filter { ($0.testThreadingType ?? 1) == tt }
-        if let preA = preselectedRunA {
-            if !list.contains(where: { $0.sessionId == preA.sessionId && $0.deviceModel == preA.deviceModel }) {
-                list.insert(preA, at: 0)
-            }
+        if let preA = preselectedRunA, !list.contains(where: { $0.sessionId == preA.sessionId && $0.deviceModel == preA.deviceModel }) {
+            list.insert(preA, at: 0)
         }
-        if let preB = preselectedRunB {
-            if !list.contains(where: { $0.sessionId == preB.sessionId && $0.deviceModel == preB.deviceModel }) {
-                list.insert(preB, at: 0)
-            }
+        if let preB = preselectedRunB, !list.contains(where: { $0.sessionId == preB.sessionId && $0.deviceModel == preB.deviceModel }) {
+            list.insert(preB, at: 0)
         }
         return list
     }
-    
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            
+
             if allComparableRuns.isEmpty {
-                VStack(spacing: 16) {
-                    Text("⚖️")
-                        .font(.system(size: 40))
-                    Text("UNIVERSAL RUN COMPARISON")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    Text("No matching test runs available to compare. Single Thread tests can only be compared with Single Thread tests, and Multi Thread with Multi Thread.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                    
-                    Button(action: { dismiss() }) {
-                        Text("CLOSE")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(12)
-                    }
-                }
+                emptyState
             } else {
-                let runs = allComparableRuns
-                let rawRunA = runs[min(indexA, runs.count - 1)]
-                let rawRunB = runs[min(indexB, runs.count - 1)]
-                
-                let stampsA = stampsMap[rawRunA.sessionId] ?? rawRunA.stamps
-                let stampsB = stampsMap[rawRunB.sessionId] ?? rawRunB.stamps
-                
-                let runA = rawRunA.withStamps(stampsA)
-                let runB = rawRunB.withStamps(stampsB)
-                
-                let analysis = ComparisonEngine.analyze(runA: runA, runB: runB)
-                
-                let pointsA: [StabilityPoint] = {
-                    if !stampsA.isEmpty {
-                        let maxVal = Double(stampsA.map { $0.score }.max() ?? 1)
-                        return stampsA.map { StabilityPoint(time: Double($0.elapsedMs / 1000), score: (Double($0.score) / maxVal) * 100.0) }
-                    } else {
-                        return [StabilityPoint(time: 0, score: runA.finalStability), StabilityPoint(time: Double(runA.durationSeconds), score: runA.finalStability)]
-                    }
-                }()
-                
-                let pointsB: [StabilityPoint] = {
-                    if !stampsB.isEmpty {
-                        let maxVal = Double(stampsB.map { $0.score }.max() ?? 1)
-                        return stampsB.map { StabilityPoint(time: Double($0.elapsedMs / 1000), score: (Double($0.score) / maxVal) * 100.0) }
-                    } else {
-                        return [StabilityPoint(time: 0, score: runB.finalStability), StabilityPoint(time: Double(runB.durationSeconds), score: runB.finalStability)]
-                    }
-                }()
-                
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Title bar
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text("⚖️ UNIVERSAL COMPARISON ENGINE")
-                                        .font(.system(size: 13, weight: .black, design: .monospaced))
-                                        .foregroundColor(.white)
-                                    Text(targetThreadingType == 0 ? "1 THREAD" : "MULTI")
-                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                        .foregroundColor(Color(red: 0.0, green: 0.9, blue: 1.0))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.15))
-                                        .cornerRadius(6)
-                                }
-                                Text("Comparing \(targetThreadingType == 0 ? "Single Thread" : "Multi Thread") Benchmark Runs")
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Button(action: { dismiss() }) {
-                                Text("✕ CLOSE")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.white.opacity(0.1))
-                                    .cornerRadius(16)
-                            }
-                        }
-                        
-                        // Selectors (Run A vs Run B)
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text("RUN A (CYAN)")
-                                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                                        .foregroundColor(Color(red: 0.0, green: 0.9, blue: 1.0))
-                                    if stampsA.isEmpty && rawRunA.sessionId > 0 {
-                                        ProgressView()
-                                            .scaleEffect(0.6)
-                                    }
-                                }
-                                Text("\(runA.deviceManufacturer) \(runA.deviceModel)")
-                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                
-                                Picker("Run A", selection: $indexA) {
-                                    ForEach(0..<runs.count, id: \.self) { idx in
-                                        Text("\(runs[idx].deviceManufacturer) \(runs[idx].deviceModel)").tag(idx)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                            }
-                            .padding(12)
-                            .background(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.08))
-                            .cornerRadius(18)
-                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.3), lineWidth: 1))
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text("RUN B (AMBER)")
-                                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                                        .foregroundColor(Color(red: 1.0, green: 0.67, blue: 0.0))
-                                    if stampsB.isEmpty && rawRunB.sessionId > 0 {
-                                        ProgressView()
-                                            .scaleEffect(0.6)
-                                    }
-                                }
-                                Text("\(runB.deviceManufacturer) \(runB.deviceModel)")
-                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                
-                                Picker("Run B", selection: $indexB) {
-                                    ForEach(0..<runs.count, id: \.self) { idx in
-                                        Text("\(runs[idx].deviceManufacturer) \(runs[idx].deviceModel)").tag(idx)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                            }
-                            .padding(12)
-                            .background(Color(red: 1.0, green: 0.67, blue: 0.0).opacity(0.08))
-                            .cornerRadius(18)
-                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(red: 1.0, green: 0.67, blue: 0.0).opacity(0.3), lineWidth: 1))
-                        }
-                        
-                        // Dual Stability Chart (Real API Time-Series Curves!)
-                        DualStabilityChart(
-                            pointsA: pointsA,
-                            labelA: "Run A (\(runA.deviceModel))",
-                            pointsB: pointsB,
-                            labelB: "Run B (\(runB.deviceModel))"
-                        )
-                        
-                        // Analytical Metric Grid
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("⚡ COMPARATIVE DIAGNOSTICS METRICS")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.secondary)
-                            
-                            HStack(spacing: 12) {
-                                metricCard(
-                                    title: "FINAL STABILITY",
-                                    valA: String(format: "%.1f%%", runA.finalStability),
-                                    valB: String(format: "%.1f%%", runB.finalStability)
-                                )
-                                metricCard(
-                                    title: "PEAK SCORE (IPS)",
-                                    valA: String(format: "%.0f", analysis.peakScoreA),
-                                    valB: String(format: "%.0f (%+.1f%%)", analysis.peakScoreB, analysis.peakScoreDeltaPct)
-                                )
-                            }
-                            
-                            HStack(spacing: 12) {
-                                metricCard(
-                                    title: "THROTTLE ONSET",
-                                    valA: analysis.throttleOnsetTimeA.map { "\($0)s" } ?? "No Throttle",
-                                    valB: analysis.throttleOnsetTimeB.map { "\($0)s" } ?? "No Throttle"
-                                )
-                                metricCard(
-                                    title: "AVG SCORE (IPS)",
-                                    valA: String(format: "%.0f", analysis.avgScoreA),
-                                    valB: String(format: "%.0f (%+.1f%%)", analysis.avgScoreB, analysis.avgScoreDeltaPct)
-                                )
-                            }
-                        }
-                        .padding(16)
-                        .background(Color(white: 0.08).opacity(0.6))
-                        .cornerRadius(24)
-                        
-                        // Automated Analytical Summary Card
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 6) {
-                                Text("🤖")
-                                Text("ANALYTICAL ENGINE INSIGHTS")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(Color(red: 0.0, green: 0.9, blue: 1.0))
-                            }
-                            Text(analysis.summaryText)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.9))
-                        }
-                        .padding(18)
-                        .background(Color(white: 0.1))
-                        .cornerRadius(24)
-                        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.2), lineWidth: 1))
-                    }
-                    .padding(16)
-                    .task(id: rawRunA.sessionId) {
-                        if stampsA.isEmpty && rawRunA.sessionId > 0 {
-                            do {
-                                let fetched = try await LeaderboardService.shared.fetchStamps(for: rawRunA.sessionId)
-                                await MainActor.run {
-                                    self.stampsMap[rawRunA.sessionId] = fetched
-                                }
-                            } catch {}
-                        }
-                    }
-                    .task(id: rawRunB.sessionId) {
-                        if stampsB.isEmpty && rawRunB.sessionId > 0 {
-                            do {
-                                let fetched = try await LeaderboardService.shared.fetchStamps(for: rawRunB.sessionId)
-                                await MainActor.run {
-                                    self.stampsMap[rawRunB.sessionId] = fetched
-                                }
-                            } catch {}
-                        }
-                    }
-                }
+                mainContent
             }
         }
         .task {
             do {
                 let items = try await LeaderboardService.shared.fetchLeaderboard()
                 self.onlineResults = items.map { $0.toPendingTestResult() }
-            } catch {
-                // Ignore offline error
+            } catch {}
+        }
+    }
+
+    // MARK: - Empty state
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            Text("⚖️")
+                .font(.system(size: 44))
+            Text("UNIVERSAL RUN COMPARISON")
+                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .foregroundColor(.white)
+            Text("No matching test runs available.\nSingle Thread tests can only be compared with Single Thread,\nand Multi Thread with Multi Thread.")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            Button(action: { dismiss() }) {
+                Text("CLOSE")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.1))
+                    .cornerRadius(14)
             }
         }
     }
-    
+
+    // MARK: - Main content
+    private var mainContent: some View {
+        let runs   = allComparableRuns
+        let rawA   = runs[min(indexA, runs.count - 1)]
+        let rawB   = runs[min(indexB, runs.count - 1)]
+        let stA    = stampsMap[rawA.sessionId] ?? rawA.stamps
+        let stB    = stampsMap[rawB.sessionId] ?? rawB.stamps
+        let runA   = rawA.withStamps(stA)
+        let runB   = rawB.withStamps(stB)
+        let analysis = ComparisonEngine.analyze(runA: runA, runB: runB)
+
+        let pointsA = buildPoints(stamps: stA, fallback: runA)
+        let pointsB = buildPoints(stamps: stB, fallback: runB)
+
+        return ScrollView {
+            VStack(spacing: 20) {
+                titleBar
+                selectorRow(runs: runs, runA: runA, runB: runB, stA: stA, stB: stB, rawA: rawA, rawB: rawB)
+                DualStabilityChart(
+                    pointsA: pointsA,
+                    labelA: "Run A (\(runA.deviceModel))",
+                    pointsB: pointsB,
+                    labelB: "Run B (\(runB.deviceModel))"
+                )
+                metricsSection(analysis: analysis, runA: runA, runB: runB)
+                insightsCard(analysis: analysis)
+            }
+            .padding(16)
+            .task(id: rawA.sessionId) {
+                if stA.isEmpty && rawA.sessionId > 0 {
+                    if let fetched = try? await LeaderboardService.shared.fetchStamps(for: rawA.sessionId) {
+                        await MainActor.run { stampsMap[rawA.sessionId] = fetched }
+                    }
+                }
+            }
+            .task(id: rawB.sessionId) {
+                if stB.isEmpty && rawB.sessionId > 0 {
+                    if let fetched = try? await LeaderboardService.shared.fetchStamps(for: rawB.sessionId) {
+                        await MainActor.run { stampsMap[rawB.sessionId] = fetched }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Title bar
+    private var titleBar: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("⚖️ COMPARISON ENGINE")
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                    Text(targetThreadingType == 0 ? "1 THREAD" : "MULTI")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(cyan)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(cyan.opacity(0.15))
+                        .cornerRadius(6)
+                }
+                Text(targetThreadingType == 0 ? "Single Thread Benchmark" : "Multi Thread Benchmark")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Button(action: { dismiss() }) {
+                Text("✕ CLOSE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.1))
+                    .cornerRadius(16)
+            }
+        }
+    }
+
+    // MARK: - Selector row
+    private func selectorRow(
+        runs: [PendingTestResult],
+        runA: PendingTestResult, runB: PendingTestResult,
+        stA: [DeviceHammerStamp], stB: [DeviceHammerStamp],
+        rawA: PendingTestResult, rawB: PendingTestResult
+    ) -> some View {
+        HStack(spacing: 12) {
+            runSelectorCard(
+                label: "RUN A", accentColor: cyan,
+                runs: runs, selectedIndex: $indexA,
+                isLoading: stA.isEmpty && rawA.sessionId > 0
+            )
+            runSelectorCard(
+                label: "RUN B", accentColor: amber,
+                runs: runs, selectedIndex: $indexB,
+                isLoading: stB.isEmpty && rawB.sessionId > 0
+            )
+        }
+    }
+
+    private func runSelectorCard(
+        label: String,
+        accentColor: Color,
+        runs: [PendingTestResult],
+        selectedIndex: Binding<Int>,
+        isLoading: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Label row
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundColor(accentColor)
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                }
+            }
+
+            // Picker (device selector) — full width, no duplicate text
+            Picker(label, selection: selectedIndex) {
+                ForEach(0..<runs.count, id: \.self) { idx in
+                    let r = runs[idx]
+                    Text("\(r.deviceManufacturer) \(r.deviceModel)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .tag(idx)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(accentColor)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(accentColor.opacity(0.07))
+        .cornerRadius(18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(accentColor.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Metrics section
+    private func metricsSection(analysis: ComparisonAnalysis, runA: PendingTestResult, runB: PendingTestResult) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("⚡ COMPARATIVE DIAGNOSTICS")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    metricCard(
+                        title: "FINAL STABILITY",
+                        valA: String(format: "%.1f%%", runA.finalStability),
+                        valB: String(format: "%.1f%%", runB.finalStability),
+                        deltaText: nil
+                    )
+                    metricCard(
+                        title: "PEAK SCORE (IPS)",
+                        valA: String(format: "%.0f", analysis.peakScoreA),
+                        valB: String(format: "%.0f", analysis.peakScoreB),
+                        deltaText: String(format: "%+.1f%%", analysis.peakScoreDeltaPct)
+                    )
+                }
+                HStack(spacing: 10) {
+                    metricCard(
+                        title: "THROTTLE ONSET",
+                        valA: analysis.throttleOnsetTimeA.map { "\($0)s" } ?? "None",
+                        valB: analysis.throttleOnsetTimeB.map { "\($0)s" } ?? "None",
+                        deltaText: nil
+                    )
+                    metricCard(
+                        title: "AVG SCORE (IPS)",
+                        valA: String(format: "%.0f", analysis.avgScoreA),
+                        valB: String(format: "%.0f", analysis.avgScoreB),
+                        deltaText: String(format: "%+.1f%%", analysis.avgScoreDeltaPct)
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .background(surfaceLow.opacity(0.7))
+        .cornerRadius(22)
+    }
+
     @ViewBuilder
-    private func metricCard(title: String, valA: String, valB: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func metricCard(title: String, valA: String, valB: String, deltaText: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Title
             Text(title)
                 .font(.system(size: 8, weight: .bold, design: .monospaced))
                 .foregroundColor(.secondary)
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("RUN A")
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(Color(red: 0.0, green: 0.9, blue: 1.0))
-                    Text(valA)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                }
-                Spacer()
-                VStack(alignment: .trailing) {
+                .lineLimit(1)
+
+            // Run A
+            VStack(alignment: .leading, spacing: 2) {
+                Text("RUN A")
+                    .font(.system(size: 7, weight: .semibold, design: .monospaced))
+                    .foregroundColor(cyan)
+                Text(valA)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            Divider()
+                .background(Color.white.opacity(0.07))
+
+            // Run B
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
                     Text("RUN B")
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(Color(red: 1.0, green: 0.67, blue: 0.0))
-                    Text(valB)
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
+                        .font(.system(size: 7, weight: .semibold, design: .monospaced))
+                        .foregroundColor(amber)
+                    if let delta = deltaText {
+                        let positive = delta.hasPrefix("+")
+                        Text(delta)
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundColor(positive ? Color(red: 0.2, green: 0.9, blue: 0.4) : Color(red: 1.0, green: 0.35, blue: 0.35))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background((positive ? Color.green : Color.red).opacity(0.15))
+                            .cornerRadius(5)
+                    }
                 }
+                Text(valB)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.03))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.04))
         .cornerRadius(16)
+    }
+
+    // MARK: - Insights card
+    private func insightsCard(analysis: ComparisonAnalysis) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text("🤖")
+                    .font(.system(size: 14))
+                Text("ANALYTICAL INSIGHTS")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(cyan)
+            }
+            Text(analysis.summaryText)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.white.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(surfaceMid)
+        .cornerRadius(22)
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(cyan.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Helpers
+    private func buildPoints(stamps: [DeviceHammerStamp], fallback: PendingTestResult) -> [StabilityPoint] {
+        if !stamps.isEmpty {
+            let maxVal = Double(stamps.map { $0.score }.max() ?? 1)
+            return stamps.map { StabilityPoint(time: Double($0.elapsedMs / 1000), score: (Double($0.score) / maxVal) * 100.0) }
+        } else {
+            return [
+                StabilityPoint(time: 0, score: fallback.finalStability),
+                StabilityPoint(time: Double(fallback.durationSeconds), score: fallback.finalStability)
+            ]
+        }
     }
 }
 
+// MARK: - PendingTestResult helpers
 extension PendingTestResult {
     func withStamps(_ newStamps: [DeviceHammerStamp]) -> PendingTestResult {
         return PendingTestResult(

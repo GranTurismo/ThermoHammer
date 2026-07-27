@@ -257,7 +257,7 @@ fun ComparisonOverlay(
                     // Run Selectors with Dropdown Spinners (Run A vs Run B)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         RunSpinnerDropdown(
-                            label = "RUN A (CYAN)",
+                            label = "RUN A",
                             accentColor = Color(0xFF00E5FF),
                             selectedIndex = selectedIndexA,
                             runs = allComparableRuns,
@@ -267,7 +267,7 @@ fun ComparisonOverlay(
                         )
 
                         RunSpinnerDropdown(
-                            label = "RUN B (AMBER)",
+                            label = "RUN B",
                             accentColor = Color(0xFFFFAB00),
                             selectedIndex = selectedIndexB,
                             runs = allComparableRuns,
@@ -302,12 +302,14 @@ fun ComparisonOverlay(
                                 title = "FINAL STABILITY",
                                 valA = "%.1f%%".format(Locale.US, runA.finalStability),
                                 valB = "%.1f%%".format(Locale.US, runB.finalStability),
+                                deltaText = null,
                                 modifier = Modifier.weight(1f)
                             )
                             MetricCompareCard(
                                 title = "PEAK SCORE (IPS)",
                                 valA = "%,d".format(Locale.US, analysis.peakScoreA.toLong()),
-                                valB = "%,d (%+.1f%%)".format(Locale.US, analysis.peakScoreB.toLong(), analysis.peakScoreDeltaPct),
+                                valB = "%,d".format(Locale.US, analysis.peakScoreB.toLong()),
+                                deltaText = "%+.1f%%".format(Locale.US, analysis.peakScoreDeltaPct),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -317,12 +319,14 @@ fun ComparisonOverlay(
                                 title = "THROTTLE ONSET",
                                 valA = analysis.throttleOnsetTimeA?.let { "${it}s" } ?: "No Throttle",
                                 valB = analysis.throttleOnsetTimeB?.let { "${it}s" } ?: "No Throttle",
+                                deltaText = null,
                                 modifier = Modifier.weight(1f)
                             )
                             MetricCompareCard(
                                 title = "AVG SCORE (IPS)",
                                 valA = "%,d".format(Locale.US, analysis.avgScoreA.toLong()),
-                                valB = "%,d (%+.1f%%)".format(Locale.US, analysis.avgScoreB.toLong(), analysis.avgScoreDeltaPct),
+                                valB = "%,d".format(Locale.US, analysis.avgScoreB.toLong()),
+                                deltaText = "%+.1f%%".format(Locale.US, analysis.avgScoreDeltaPct),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -464,26 +468,92 @@ private fun MetricCompareCard(
     title: String,
     valA: String,
     valB: String,
+    deltaText: String?,
     modifier: Modifier = Modifier
 ) {
+    val cyan  = Color(0xFF00E5FF)
+    val amber = Color(0xFFFFAB00)
+    val green = Color(0xFF4CAF50)
+    val red   = Color(0xFFEF5350)
+
+    val deltaColor = deltaText?.let { d ->
+        if (d.startsWith("+")) green else red
+    }
+
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(Color.White.copy(alpha = 0.03f))
             .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
-            .padding(10.dp)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(title, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-        Spacer(Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text("RUN A", style = TextStyle(color = Color(0xFF00E5FF), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
-                Text(valA, style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+        // Title
+        Text(
+            title,
+            style = TextStyle(
+                color = Color.White.copy(alpha = 0.4f),
+                fontSize = 8.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+        )
+
+        // RUN A
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                "RUN A",
+                style = TextStyle(color = cyan, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            )
+            Text(
+                valA,
+                style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                maxLines = 1
+            )
+        }
+
+        // Divider
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.06f))
+        )
+
+        // RUN B
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    "RUN B",
+                    style = TextStyle(color = amber, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                )
+                if (deltaText != null && deltaColor != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(deltaColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            deltaText,
+                            style = TextStyle(
+                                color = deltaColor,
+                                fontSize = 7.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("RUN B", style = TextStyle(color = Color(0xFFFFAB00), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
-                Text(valB, style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-            }
+            Text(
+                valB,
+                style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                maxLines = 1
+            )
         }
     }
 }

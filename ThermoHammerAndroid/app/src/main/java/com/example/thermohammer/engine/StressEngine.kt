@@ -56,6 +56,18 @@ data class ThermalEvent(val time: Float, val state: ThermalState) {
                 }
 }
 
+data class CpuCoreFreq(
+        val core: Int,
+        val currentKHz: Long,   // 0 if offline / unreadable
+        val maxKHz: Long        // 0 if unreadable
+) {
+    val currentGHz: Double get() = currentKHz / 1_000_000.0
+    val maxGHz: Double     get() = maxKHz     / 1_000_000.0
+    /** 0‒100 % of max; returns null if max is unknown */
+    val percentOfMax: Int? get() = if (maxKHz > 0) ((currentKHz.toDouble() / maxKHz) * 100).toInt().coerceIn(0, 100) else null
+    val isOnline: Boolean  get() = currentKHz > 0
+}
+
 data class StressState(
         val isRunning: Boolean = false,
         val elapsedSeconds: Int = 0,
@@ -74,6 +86,7 @@ data class StressState(
         val batteryTemp: Float = 0f,
         val cpuTemp: Float = 0f,
         val thermalSensors: List<Pair<String, Float>> = emptyList(),
+        val cpuFrequencies: List<CpuCoreFreq> = emptyList(),
         val initialBatteryLevel: Int = 0,
         val initialBatteryTemp: Float = 0f,
         val finalBatteryLevel: Int = 0,
@@ -121,13 +134,31 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 }
 
         val sensorPairs = zones.map { Pair(it.name, it.temp) }
+        val freqs = getCpuFrequencies()
 
         _state.update {
             it.copy(
                     batteryTemp = battTemp,
                     currentBatteryLevel = battPct,
                     cpuTemp = cpuTemp,
-                    thermalSensors = sensorPairs
+                    thermalSensors = sensorPairs,
+                    cpuFrequencies = freqs
+            )
+        }
+    }
+
+    private fun getCpuFrequencies(): List<CpuCoreFreq> {
+        val cpuDir = java.io.File("/sys/devices/system/cpu")
+        if (!cpuDir.exists()) return emptyList()
+        return (0 until coreCount).map { core ->
+            val base = java.io.File(cpuDir, "cpu$core/cpufreq")
+            fun readLong(name: String): Long =
+                try { java.io.File(base, name).readText().trim().toLongOrNull() ?: 0L }
+                catch (_: Exception) { 0L }
+            CpuCoreFreq(
+                core      = core,
+                currentKHz = readLong("scaling_cur_freq"),
+                maxKHz     = readLong("cpuinfo_max_freq")
             )
         }
     }
