@@ -6,7 +6,7 @@ namespace ThermoHammer.Api.Tools;
 public class DeviceModelResolver
 {
     private readonly HttpClient _httpClient;
-    private const string BaseUrl = "https://gcamatorapi.gtgroup.dev/api/values/devicebymodelnumber/";
+    private const string BaseUrl = "https://dsapi.gtgroup.dev/api/values/devicebymodelnumber/";
 
     public DeviceModelResolver(HttpClient httpClient)
     {

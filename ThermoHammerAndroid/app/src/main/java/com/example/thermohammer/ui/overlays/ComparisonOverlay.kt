@@ -88,28 +88,41 @@ fun ComparisonOverlay(
     val allComparableRuns = remember(localResults, onlineResults, preselectedRunA, preselectedRunB, targetThreadingType) {
         val combined = (localResults + onlineResults).filter { it.testThreadingType == targetThreadingType }.toMutableList()
         preselectedRunA?.let { preA ->
-            if (combined.none { it.id == preA.id }) combined.add(0, preA)
+            if (combined.none { (preA.sessionId > 0 && it.sessionId == preA.sessionId) || it.id == preA.id }) combined.add(0, preA)
         }
         preselectedRunB?.let { preB ->
-            if (combined.none { it.id == preB.id }) combined.add(0, preB)
+            if (combined.none { (preB.sessionId > 0 && it.sessionId == preB.sessionId) || it.id == preB.id }) combined.add(0, preB)
         }
         combined
     }
 
-    var selectedIndexA by remember(allComparableRuns) {
+    var selectedIndexA by remember {
         mutableIntStateOf(
             if (preselectedRunA != null) {
-                allComparableRuns.indexOfFirst { it.id == preselectedRunA.id }.coerceAtLeast(0)
+                allComparableRuns.indexOfFirst { (preselectedRunA.sessionId > 0 && it.sessionId == preselectedRunA.sessionId) || it.id == preselectedRunA.id }.coerceAtLeast(0)
             } else 0
         )
     }
 
-    var selectedIndexB by remember(allComparableRuns) {
+    var selectedIndexB by remember {
         mutableIntStateOf(
             if (preselectedRunB != null) {
-                allComparableRuns.indexOfFirst { it.id == preselectedRunB.id }.coerceAtLeast(0)
+                allComparableRuns.indexOfFirst { (preselectedRunB.sessionId > 0 && it.sessionId == preselectedRunB.sessionId) || it.id == preselectedRunB.id }.coerceAtLeast(0)
             } else if (allComparableRuns.size > 1) 1 else 0
         )
+    }
+
+    LaunchedEffect(onlineResults) {
+        if (onlineResults.isNotEmpty()) {
+            preselectedRunA?.let { preA ->
+                val idx = allComparableRuns.indexOfFirst { (preA.sessionId > 0 && it.sessionId == preA.sessionId) || it.id == preA.id }
+                if (idx >= 0) selectedIndexA = idx
+            }
+            preselectedRunB?.let { preB ->
+                val idx = allComparableRuns.indexOfFirst { (preB.sessionId > 0 && it.sessionId == preB.sessionId) || it.id == preB.id }
+                if (idx >= 0) selectedIndexB = idx
+            }
+        }
     }
 
     Box(

@@ -48,13 +48,25 @@ struct ComparisonView: View {
     var allComparableRuns: [PendingTestResult] {
         let tt = targetThreadingType
         var list = (store.results + onlineResults).filter { ($0.testThreadingType ?? 1) == tt }
-        if let preA = preselectedRunA, !list.contains(where: { $0.sessionId == preA.sessionId && $0.deviceModel == preA.deviceModel }) {
+        if let preA = preselectedRunA, !list.contains(where: { (preA.sessionId > 0 && $0.sessionId == preA.sessionId) || $0.id == preA.id }) {
             list.insert(preA, at: 0)
         }
-        if let preB = preselectedRunB, !list.contains(where: { $0.sessionId == preB.sessionId && $0.deviceModel == preB.deviceModel }) {
+        if let preB = preselectedRunB, !list.contains(where: { (preB.sessionId > 0 && $0.sessionId == preB.sessionId) || $0.id == preB.id }) {
             list.insert(preB, at: 0)
         }
         return list
+    }
+
+    private func updateIndices() {
+        let runs = allComparableRuns
+        if let preA = preselectedRunA,
+           let idxA = runs.firstIndex(where: { (preA.sessionId > 0 && $0.sessionId == preA.sessionId) || $0.id == preA.id }) {
+            indexA = idxA
+        }
+        if let preB = preselectedRunB,
+           let idxB = runs.firstIndex(where: { (preB.sessionId > 0 && $0.sessionId == preB.sessionId) || $0.id == preB.id }) {
+            indexB = idxB
+        }
     }
 
     var body: some View {
@@ -67,10 +79,17 @@ struct ComparisonView: View {
                 mainContent
             }
         }
+        .onAppear {
+            updateIndices()
+        }
+        .onChange(of: onlineResults.count) { _ in
+            updateIndices()
+        }
         .task {
             do {
                 let items = try await LeaderboardService.shared.fetchLeaderboard()
                 self.onlineResults = items.map { $0.toPendingTestResult() }
+                updateIndices()
             } catch {}
         }
     }

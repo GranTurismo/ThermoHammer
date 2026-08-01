@@ -98,7 +98,7 @@ struct LeaderboardView: View {
     }
 
     private func toggleCompareRun(_ run: PendingTestResult) {
-        if let idx = selectedCompareRuns.firstIndex(where: { $0.sessionId == run.sessionId && $0.deviceModel == run.deviceModel }) {
+        if let idx = selectedCompareRuns.firstIndex(where: { ($0.sessionId > 0 && run.sessionId > 0) ? $0.sessionId == run.sessionId : $0.id == run.id }) {
             selectedCompareRuns.remove(at: idx)
         } else {
             if let firstRun = selectedCompareRuns.first {
@@ -394,7 +394,7 @@ struct LeaderboardView: View {
     // Row Item View
     private func leaderboardRow(_ item: EntryWithStability) -> some View {
         let itemRun = item.entry.toPendingTestResult()
-        let isSelected = selectedCompareRuns.contains(where: { $0.sessionId == itemRun.sessionId && $0.deviceModel == itemRun.deviceModel })
+        let isSelected = selectedCompareRuns.contains(where: { ($0.sessionId > 0 && itemRun.sessionId > 0) ? $0.sessionId == itemRun.sessionId : $0.id == itemRun.id })
         let threadText = (item.entry.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI"
         let threadColor = (item.entry.testThreadingType ?? 1) == 0 ? Color.orange : Color.green
         

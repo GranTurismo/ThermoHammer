@@ -68,8 +68,8 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
     var showAutoCompareOverlay by remember { mutableStateOf(false) }
 
     fun toggleCompareRun(run: PendingTestResult) {
-        if (compareSelectedRuns.any { it.id == run.id }) {
-            compareSelectedRuns = compareSelectedRuns.filter { it.id != run.id }
+        if (compareSelectedRuns.any { (run.sessionId > 0 && it.sessionId == run.sessionId) || it.id == run.id }) {
+            compareSelectedRuns = compareSelectedRuns.filter { !((run.sessionId > 0 && it.sessionId == run.sessionId) || it.id == run.id) }
         } else {
             if (compareSelectedRuns.isNotEmpty() && compareSelectedRuns.first().testThreadingType != run.testThreadingType) {
                 val modeA = if (compareSelectedRuns.first().testThreadingType == 0) "Single Thread" else "Multi Thread"
@@ -282,7 +282,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                 } else {
                     items(filtered, key = { it.entry.id }) { item ->
                         val itemRun = remember(item.entry) { item.entry.toPendingTestResult() }
-                        val isSelected = compareSelectedRuns.any { it.id == itemRun.id }
+                        val isSelected = compareSelectedRuns.any { (itemRun.sessionId > 0 && it.sessionId == itemRun.sessionId) || it.id == itemRun.id }
                         LeaderboardItemRow(
                             item = item,
                             isCompareSelected = isSelected,
