@@ -23,7 +23,7 @@ extension HammerDto {
 }
 
 // MARK: - Colour tokens
-private let cyan   = Color(red: 0.0, green: 0.9, blue: 1.0)
+private let cyan   = Forge.phaseMeasured
 private let amber  = Color(red: 1.0, green: 0.67, blue: 0.0)
 private let surfaceLow  = Color(white: 0.08)
 private let surfaceMid  = Color(white: 0.11)
@@ -100,16 +100,16 @@ struct ComparisonView: View {
             Text("⚖️")
                 .font(.system(size: 44))
             Text("UNIVERSAL RUN COMPARISON")
-                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .font(ThermoFont.mono(13, weight: .black))
                 .foregroundColor(.white)
             Text("No matching test runs available.\nSingle Thread tests can only be compared with Single Thread,\nand Multi Thread with Multi Thread.")
-                .font(.system(size: 11, design: .monospaced))
+                .font(ThermoFont.mono(11))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
             Button(action: { dismiss() }) {
                 Text("CLOSE")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(ThermoFont.mono(11, weight: .bold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 10)
@@ -170,10 +170,10 @@ struct ComparisonView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text("⚖️ COMPARISON ENGINE")
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .font(ThermoFont.mono(14, weight: .black))
                         .foregroundColor(.white)
                     Text(targetThreadingType == 0 ? "1 THREAD" : "MULTI")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(ThermoFont.mono(9, weight: .bold))
                         .foregroundColor(cyan)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -181,13 +181,13 @@ struct ComparisonView: View {
                         .cornerRadius(6)
                 }
                 Text(targetThreadingType == 0 ? "Single Thread Benchmark" : "Multi Thread Benchmark")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(ThermoFont.mono(10))
                     .foregroundColor(.secondary)
             }
             Spacer()
             Button(action: { dismiss() }) {
                 Text("✕ CLOSE")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(ThermoFont.mono(10, weight: .bold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
@@ -229,7 +229,7 @@ struct ComparisonView: View {
             // Label row
             HStack(spacing: 6) {
                 Text(label)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .font(ThermoFont.mono(9, weight: .black))
                     .foregroundColor(accentColor)
                 if isLoading {
                     ProgressView()
@@ -242,7 +242,7 @@ struct ComparisonView: View {
                 ForEach(0..<runs.count, id: \.self) { idx in
                     let r = runs[idx]
                     Text("\(r.deviceManufacturer) \(r.deviceModel)")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(ThermoFont.mono(11))
                         .tag(idx)
                 }
             }
@@ -263,7 +263,7 @@ struct ComparisonView: View {
     private func metricsSection(analysis: ComparisonAnalysis, runA: PendingTestResult, runB: PendingTestResult) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("⚡ COMPARATIVE DIAGNOSTICS")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(10, weight: .bold))
                 .foregroundColor(.secondary)
 
             VStack(spacing: 10) {
@@ -307,17 +307,17 @@ struct ComparisonView: View {
         VStack(alignment: .leading, spacing: 8) {
             // Title
             Text(title)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(8, weight: .bold))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
 
             // Run A
             VStack(alignment: .leading, spacing: 2) {
                 Text("RUN A")
-                    .font(.system(size: 7, weight: .semibold, design: .monospaced))
+                    .font(ThermoFont.mono(7, weight: .semibold))
                     .foregroundColor(cyan)
                 Text(valA)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(ThermoFont.mono(13, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -330,12 +330,12 @@ struct ComparisonView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text("RUN B")
-                        .font(.system(size: 7, weight: .semibold, design: .monospaced))
+                        .font(ThermoFont.mono(7, weight: .semibold))
                         .foregroundColor(amber)
                     if let delta = deltaText {
                         let positive = delta.hasPrefix("+")
                         Text(delta)
-                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .font(ThermoFont.mono(7, weight: .bold))
                             .foregroundColor(positive ? Color(red: 0.2, green: 0.9, blue: 0.4) : Color(red: 1.0, green: 0.35, blue: 0.35))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -344,7 +344,7 @@ struct ComparisonView: View {
                     }
                 }
                 Text(valB)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(ThermoFont.mono(13, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -363,11 +363,11 @@ struct ComparisonView: View {
                 Text("🤖")
                     .font(.system(size: 14))
                 Text("ANALYTICAL INSIGHTS")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(ThermoFont.mono(11, weight: .bold))
                     .foregroundColor(cyan)
             }
             Text(analysis.summaryText)
-                .font(.system(size: 11, design: .monospaced))
+                .font(ThermoFont.mono(11))
                 .foregroundColor(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -15,13 +15,20 @@ targets:
       CODE_SIGNING_ALLOWED: YES
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       GENERATE_INFOPLIST_FILE: YES
-      MARKETING_VERSION: "1.2.3"
-      CURRENT_PROJECT_VERSION: "35"
+      MARKETING_VERSION: "1.8"
+      CURRENT_PROJECT_VERSION: "36"
       INFOPLIST_KEY_CFBundleDisplayName: "ThermoHammer"
       INFOPLIST_KEY_CFBundleName: "ThermoHammer"
       INFOPLIST_KEY_UILaunchScreen_Generation: YES
       INFOPLIST_KEY_UIRequiresFullScreen: YES
       INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+      INFOPLIST_KEY_UIAppFonts:
+        - "Fonts/jetbrainsmono_regular.ttf"
+        - "Fonts/jetbrainsmono_medium.ttf"
+        - "Fonts/jetbrainsmono_bold.ttf"
+        - "Fonts/jetbrainsmono_extrabold.ttf"
+        - "Fonts/spacegrotesk_500.ttf"
+        - "Fonts/spacegrotesk_700.ttf"
       INFOPLIST_KEY_UISupportedInterfaceOrientations:
         - "UIInterfaceOrientationPortrait"
         - "UIInterfaceOrientationPortraitUpsideDown"

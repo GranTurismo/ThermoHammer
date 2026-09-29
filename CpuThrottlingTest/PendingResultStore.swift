@@ -15,32 +15,42 @@ struct PendingTestResult: Codable, Identifiable {
     let osVersion: String
     let sessionId: Int
     let encryptionKey: String
+
+    // ── v2 additive fields (optional — legacy rows decode without them) ──
+    var baselineScore: Int? = nil
+    var deliveredCapacity: Double? = nil
+    var sustainedRatio: Double? = nil
+    var throttleOnsetSec: Int? = nil
+    var confidence: Int? = nil
+    var validityFlags: Int? = nil
+    var socModel: String? = nil
+    var clusterTopology: String? = nil
 }
 
 class PendingResultStore: ObservableObject {
     static let shared = PendingResultStore()
-    
+
     @Published var results: [PendingTestResult] = []
-    
+
     private let fileURL: URL = {
         let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
         return paths[0].appendingPathComponent("pending_results.json")
     }()
-    
+
     private init() {
         loadResults()
     }
-    
+
     func saveResult(_ result: PendingTestResult) {
         results.append(result)
         persist()
     }
-    
+
     func deleteResult(id: UUID) {
         results.removeAll { $0.id == id }
         persist()
     }
-    
+
     private func loadResults() {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         do {
@@ -51,7 +61,7 @@ class PendingResultStore: ObservableObject {
             print("Failed to load pending results: \(error)")
         }
     }
-    
+
     private func persist() {
         do {
             let encoder = JSONEncoder()

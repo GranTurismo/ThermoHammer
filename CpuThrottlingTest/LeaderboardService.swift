@@ -20,6 +20,19 @@ struct HammerPayload: Codable {
     let osVersion: String
     let sessionId: Int
     let hash: String
+
+    // ── v2 additive fields (server treats them as optional) ──
+    let schemaVersion: Int?
+    let baselineScore: Int?          // calibration p95 IPS
+    let deliveredCapacity: Double?   // AUC % — leaderboard metric
+    let sustainedRatio: Double?
+    let throttleOnsetSec: Int?
+    let confidence: Int?
+    let validityFlags: Int?          // 0 = verified run
+    let socModel: String?
+    let clusterTopology: String?
+    let governor: String?
+    let hashV2: String?              // hash over stamps + metadata
 }
 
 struct SessionResponse: Codable {
@@ -62,7 +75,34 @@ struct ThermoHasher {
         
         let symmetricKey = SymmetricKey(data: keyData)
         let signature = HMAC<SHA256>.authenticationCode(for: messageData, using: symmetricKey)
-        
+
+        return Data(signature).base64EncodedString()
+    }
+
+    /**
+     * v2 hash — covers the whole submission: run metadata + every stamp, so
+     * conditions/identity fields cannot be altered without detection.
+     * Canonical meta form: "v2|type|threading|manufacturer|model|osVersion|
+     *                       baselineScore|deliveredCapacity|validityFlags"
+     * Must match the Android ThermoHasher.computeHashV2 byte-for-byte.
+     */
+    static func computeHashV2(encryptionKey: String, metaCanonical: String, stamps: [DeviceHammerStamp]) -> String {
+        var sb = baseize(metaCanonical)
+        for stamp in stamps {
+            let thermalStateStr: String
+            switch stamp.thermalState {
+            case 0: thermalStateStr = "Nominal"
+            case 1: thermalStateStr = "Fair"
+            case 2: thermalStateStr = "Serious"
+            case 3: thermalStateStr = "Critical"
+            default: thermalStateStr = "Nominal"
+            }
+            sb += baseize(String(stamp.elapsedMs))
+            sb += baseize(String(stamp.score))
+            sb += baseize(thermalStateStr)
+        }
+        let symmetricKey = SymmetricKey(data: Data(encryptionKey.utf8))
+        let signature = HMAC<SHA256>.authenticationCode(for: Data(sb.utf8), using: symmetricKey)
         return Data(signature).base64EncodedString()
     }
 }

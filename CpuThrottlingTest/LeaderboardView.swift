@@ -145,16 +145,16 @@ struct LeaderboardView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(selectedCompareRuns.count) / 2 TESTS SELECTED (\(reqMode))")
-                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .font(ThermoFont.mono(10, weight: .black))
                                 .foregroundColor(.black)
                             Text(selectedCompareRuns.count == 1 ? "Tap 1 more \(reqMode) test to compare!" : "Tap to view detailed side-by-side analysis")
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(ThermoFont.mono(9))
                                 .foregroundColor(.black.opacity(0.7))
                         }
                         Spacer()
                         Button(action: { selectedCompareRuns.removeAll() }) {
                             Text("CLEAR")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .font(ThermoFont.mono(9, weight: .bold))
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
@@ -163,7 +163,7 @@ struct LeaderboardView: View {
                         }
                     }
                     .padding(14)
-                    .background(Color(red: 0.0, green: 0.9, blue: 1.0))
+                    .background(Forge.phaseMeasured)
                     .cornerRadius(16)
                     .shadow(color: .black.opacity(0.4), radius: 10)
                     .padding(16)
@@ -206,11 +206,11 @@ struct LeaderboardView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("GLOBAL LEADERBOARD")
-                    .font(.system(size: 18, weight: .black, design: .monospaced))
+                    .font(ThermoFont.mono(18, weight: .black))
                     .tracking(1.5)
                     .foregroundColor(.white)
                 Text("Select 2 Tests to Compare side-by-side")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(ThermoFont.mono(10))
                     .foregroundColor(.secondary)
             }
             Spacer()
@@ -239,7 +239,7 @@ struct LeaderboardView: View {
                 .progressViewStyle(CircularProgressViewStyle(tint: .blue))
                 .scaleEffect(1.2)
             Text("LOADING LEADERBOARD...")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(11, weight: .bold))
                 .foregroundColor(.secondary)
             Spacer()
         }
@@ -254,7 +254,7 @@ struct LeaderboardView: View {
                 .foregroundColor(.red.opacity(0.8))
             
             Text("COULD NOT LOAD LEADERBOARD")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(12, weight: .bold))
                 .foregroundColor(.white)
             
             Text(msg)
@@ -267,7 +267,7 @@ struct LeaderboardView: View {
                 Task { await loadData() }
             }) {
                 Text("RETRY")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(ThermoFont.mono(11, weight: .bold))
                     .foregroundColor(.black)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 8)
@@ -288,7 +288,7 @@ struct LeaderboardView: View {
                     .font(.system(size: 14))
                 
                 TextField("Search model, vendor, or OS...", text: $searchText)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(ThermoFont.mono(12))
                     .foregroundColor(.white)
                     .disableAutocorrection(true)
             }
@@ -366,7 +366,7 @@ struct LeaderboardView: View {
                     
                     HStack {
                         Text("ONLINE RANKINGS")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .font(ThermoFont.mono(11, weight: .bold))
                             .foregroundColor(.secondary)
                         Spacer()
                     }
@@ -375,7 +375,7 @@ struct LeaderboardView: View {
                     if filteredEntries.isEmpty {
                         VStack(spacing: 10) {
                             Text("NO ENTRIES FOUND")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .font(ThermoFont.mono(11, weight: .bold))
                                 .foregroundColor(.secondary)
                                 .padding(.top, 40)
                         }
@@ -402,15 +402,15 @@ struct LeaderboardView: View {
             // Compare button toggle (ICON ONLY, NO TEXT)
             Button(action: { toggleCompareRun(itemRun) }) {
                 Text(isSelected ? "✓" : "⚖️")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundColor(isSelected ? .black : Color(red: 0.0, green: 0.9, blue: 1.0))
+                    .font(ThermoFont.mono(12, weight: .bold))
+                    .foregroundColor(isSelected ? .black : Forge.phaseMeasured)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .background(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.05))
+                    .background(isSelected ? Forge.phaseMeasured : Color.white.opacity(0.05))
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.15), lineWidth: 1)
+                            .stroke(isSelected ? Forge.phaseMeasured : Color.white.opacity(0.15), lineWidth: 1)
                     )
             }
             .buttonStyle(PlainButtonStyle())
@@ -447,28 +447,28 @@ struct LeaderboardView: View {
                                 .fill(LinearGradient(colors: [Color(red: 0.98, green: 0.8, blue: 0.2), Color(red: 0.9, green: 0.65, blue: 0.0)], startPoint: .top, endPoint: .bottom))
                                 .frame(width: 28, height: 28)
                             Text("1")
-                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .font(ThermoFont.mono(11, weight: .black))
                                 .foregroundColor(.black)
                         } else if item.rank == 2 {
                             Circle()
                                 .fill(LinearGradient(colors: [Color(red: 0.85, green: 0.85, blue: 0.85), Color(red: 0.65, green: 0.65, blue: 0.65)], startPoint: .top, endPoint: .bottom))
                                 .frame(width: 28, height: 28)
                             Text("2")
-                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .font(ThermoFont.mono(11, weight: .black))
                                 .foregroundColor(.black)
                         } else if item.rank == 3 {
                             Circle()
                                 .fill(LinearGradient(colors: [Color(red: 0.8, green: 0.5, blue: 0.3), Color(red: 0.6, green: 0.35, blue: 0.2)], startPoint: .top, endPoint: .bottom))
                                 .frame(width: 28, height: 28)
                             Text("3")
-                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .font(ThermoFont.mono(11, weight: .black))
                                 .foregroundColor(.black)
                         } else {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Color.white.opacity(0.04))
                                 .frame(width: 28, height: 28)
                             Text("#\(item.rank)")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .font(ThermoFont.mono(9, weight: .bold))
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -476,19 +476,19 @@ struct LeaderboardView: View {
                     // Device info & Thread Badge
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(item.entry.deviceManufacturer) \(item.entry.deviceModel)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(ThermoFont.mono(12, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(1)
                         
                         HStack(spacing: 4) {
                             Text("\(item.entry.os == 1 ? "iOS" : "Android") \(item.entry.osVersion)")
-                                .font(.system(size: 8, design: .monospaced))
+                                .font(ThermoFont.mono(8))
                                 .foregroundColor(.secondary)
                             Text("•")
                                 .font(.system(size: 8))
                                 .foregroundColor(.secondary)
                             Text(threadText)
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .font(ThermoFont.mono(8, weight: .bold))
                                 .foregroundColor(threadColor)
                         }
                     }
@@ -498,10 +498,10 @@ struct LeaderboardView: View {
                     // Stability score
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(String(format: "%.1f%%", item.stability))
-                            .font(.system(size: 13, weight: .black, design: .monospaced))
+                            .font(ThermoFont.mono(13, weight: .black))
                             .foregroundColor(stabilityColor(for: item.stability))
                         Text("STABILITY")
-                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .font(ThermoFont.mono(7, weight: .bold))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -513,7 +513,7 @@ struct LeaderboardView: View {
         .cornerRadius(16)
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(isSelected ? Forge.phaseMeasured : Color.white.opacity(0.06), lineWidth: 1)
         )
     }
 
@@ -544,6 +544,13 @@ struct LeaderboardView: View {
                     encryptionKey: session.encryptionKey,
                     stamps: pending.stamps
                 )
+                // v2 metadata hash — matches Android metaCanonical byte-for-byte
+                let metaCanonical = "v2|\(pending.testDurationType)|\(pending.testThreadingType ?? 1)|\(pending.deviceManufacturer)|\(pending.deviceModel)|\(pending.osVersion)|\(pending.baselineScore ?? 0)|\(String(format: "%.4f", pending.deliveredCapacity ?? 0))|\(pending.validityFlags ?? 0)"
+                let hashV2 = ThermoHasher.computeHashV2(
+                    encryptionKey: session.encryptionKey,
+                    metaCanonical: metaCanonical,
+                    stamps: pending.stamps
+                )
                 let payload = HammerPayload(
                     stamps: pending.stamps,
                     type: pending.testDurationType,
@@ -553,7 +560,18 @@ struct LeaderboardView: View {
                     os: 1, // iOS
                     osVersion: pending.osVersion,
                     sessionId: session.id,
-                    hash: hmacHash
+                    hash: hmacHash,
+                    schemaVersion: pending.baselineScore != nil ? 2 : nil,
+                    baselineScore: pending.baselineScore,
+                    deliveredCapacity: pending.deliveredCapacity,
+                    sustainedRatio: pending.sustainedRatio,
+                    throttleOnsetSec: pending.throttleOnsetSec,
+                    confidence: pending.confidence,
+                    validityFlags: pending.validityFlags,
+                    socModel: pending.socModel,
+                    clusterTopology: pending.clusterTopology,
+                    governor: nil,
+                    hashV2: pending.baselineScore != nil ? hashV2 : nil
                 )
                 try await LeaderboardService.shared.submitScore(payload: payload)
                 await MainActor.run {
@@ -586,10 +604,10 @@ struct LeaderboardView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(entry.deviceManufacturer) \(entry.deviceModel)")
-                            .font(.system(size: 16, weight: .black, design: .monospaced))
+                            .font(ThermoFont.mono(16, weight: .black))
                             .foregroundColor(.white)
                         Text("\(entry.deviceManufacturer) • \(entry.os == 1 ? "iOS" : "Android") \(entry.osVersion)")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(ThermoFont.mono(10))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
@@ -617,7 +635,7 @@ struct LeaderboardView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .blue))
                                 Text("LOADING STAMP DATA...")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .font(ThermoFont.mono(10, weight: .bold))
                                     .foregroundColor(.secondary)
                             }
                             .frame(height: 320)
@@ -628,7 +646,7 @@ struct LeaderboardView: View {
                                     .font(.system(size: 32))
                                     .foregroundColor(.orange)
                                 Text("FAILED TO LOAD STAMPS")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .font(ThermoFont.mono(11, weight: .bold))
                                     .foregroundColor(.white)
                                 Text(errorMsg)
                                     .font(.system(size: 9))
@@ -656,7 +674,7 @@ struct LeaderboardView: View {
                                     }
                                 }) {
                                     Text("RETRY")
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .font(ThermoFont.mono(10, weight: .bold))
                                         .foregroundColor(.black)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 6)
@@ -742,7 +760,7 @@ struct LeaderboardView: View {
             
             VStack(alignment: .leading, spacing: 8) {
                 Text("PERFORMANCE CURVE")
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .font(ThermoFont.mono(10, weight: .black))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 4)
                 
@@ -762,14 +780,14 @@ struct LeaderboardView: View {
                     HStack {
                         Spacer()
                         Text("⚖️ ADD TO COMPARISON")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color(red: 0.0, green: 0.9, blue: 1.0))
+                            .font(ThermoFont.mono(11, weight: .bold))
+                            .foregroundColor(Forge.phaseMeasured)
                         Spacer()
                     }
                     .padding(.vertical, 12)
-                    .background(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.12))
+                    .background(Forge.phaseMeasured.opacity(0.12))
                     .cornerRadius(14)
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(red: 0.0, green: 0.9, blue: 1.0).opacity(0.3), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Forge.phaseMeasured.opacity(0.3), lineWidth: 1))
                 }
             }
         }
@@ -780,7 +798,7 @@ struct LeaderboardView: View {
         if !pendingStore.results.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("PENDING OFFLINE RUNS (\(pendingStore.results.count))")
-                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .font(ThermoFont.mono(11, weight: .black))
                     .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
                     .padding(.vertical, 4)
                 
@@ -794,32 +812,32 @@ struct LeaderboardView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text("OFFLINE RUN")
-                                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                                        .font(ThermoFont.mono(9, weight: .black))
                                         .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
                                     Text("•")
                                         .font(.system(size: 9))
                                         .foregroundColor(.secondary)
                                     Text(durationName(for: pending.testDurationType))
-                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .font(ThermoFont.mono(9, weight: .bold))
                                         .foregroundColor(.secondary)
                                     Text("•")
                                         .font(.system(size: 9))
                                         .foregroundColor(.secondary)
                                     Text(threadText)
-                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .font(ThermoFont.mono(9, weight: .bold))
                                         .foregroundColor(threadColor)
                                 }
                                 Text("\(pending.deviceManufacturer) \(pending.deviceModel)")
-                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .font(ThermoFont.mono(13, weight: .bold))
                                     .foregroundColor(.white)
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text(String(format: "%.1f%%", pending.finalStability))
-                                    .font(.system(size: 14, weight: .black, design: .monospaced))
+                                    .font(ThermoFont.mono(14, weight: .black))
                                     .foregroundColor(stabilityColor(for: pending.finalStability))
                                 Text("STABILITY")
-                                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                    .font(ThermoFont.mono(7, weight: .bold))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -828,22 +846,22 @@ struct LeaderboardView: View {
                             // Compare button toggle (ICON ONLY, NO TEXT)
                             Button(action: { toggleCompareRun(pending) }) {
                                 Text(isSelected ? "✓" : "⚖️")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(isSelected ? .black : Color(red: 0.0, green: 0.9, blue: 1.0))
+                                    .font(ThermoFont.mono(11, weight: .bold))
+                                    .foregroundColor(isSelected ? .black : Forge.phaseMeasured)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.08))
+                                    .background(isSelected ? Forge.phaseMeasured : Color.white.opacity(0.08))
                                     .cornerRadius(8)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
-                                            .stroke(isSelected ? Color(red: 0.0, green: 0.9, blue: 1.0) : Color.white.opacity(0.15), lineWidth: 1)
+                                            .stroke(isSelected ? Forge.phaseMeasured : Color.white.opacity(0.15), lineWidth: 1)
                                     )
                             }
                             
                             if networkMonitor.isConnected {
                                 Button(action: { submitPendingRun(pending) }) {
                                     Text("SUBMIT")
-                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .font(ThermoFont.mono(9, weight: .bold))
                                         .foregroundColor(.white)
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
@@ -858,7 +876,7 @@ struct LeaderboardView: View {
                                 PendingResultStore.shared.deleteResult(id: pending.id)
                             }) {
                                 Text("DELETE")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .font(ThermoFont.mono(9, weight: .bold))
                                     .foregroundColor(.red)
                             }
                         }
@@ -891,11 +909,11 @@ struct LeaderboardView: View {
     private func detailRow(label: String, value: String, valColor: Color = .white) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(10, weight: .bold))
                 .foregroundColor(.secondary)
             Spacer()
             Text(value)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(12, weight: .bold))
                 .foregroundColor(valColor)
         }
     }
@@ -919,7 +937,7 @@ struct LeaderboardView: View {
     private func customFilterChip(selected: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(ThermoFont.mono(9, weight: .bold))
                 .foregroundColor(selected ? Color(red: 0.95, green: 0.7, blue: 0.1) : .white.opacity(0.6))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

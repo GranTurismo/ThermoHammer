@@ -1,1392 +1,466 @@
 import SwiftUI
-import CoreTelephony
+import UIKit
 
-struct SummaryDetails {
-    let duration: TimeInterval
-    let minStability: Double
-    let finalStability: Double
-    let worstThermalState: ProcessInfo.ThermalState
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// THERMOHAMMER FORGE — main diagnostics screen (iOS)
+// ─────────────────────────────────────────────────────────────────────────────
 
 struct ContentView: View {
     @StateObject private var engine = StressEngine.shared
+    @StateObject private var networkMonitor = NetworkMonitor.shared
+    @StateObject private var pendingStore = PendingResultStore.shared
+
     @State private var selectedDuration: TestDuration = .minutes5
     @State private var selectedThreadingType: StressThreadingType = .multi
-    
-    // Summary popup states
-    @State private var showSummary = false
-    @State private var summaryDetails: SummaryDetails? = nil
-    
-    // Alerts/Warnings
-    @State private var showStartWarning = false
-    @State private var showBackgroundCancelledWarning = false
-    @State private var showManualCancelledWarning = false
+    @State private var selectedTab = 0
+
+    // overlays
+    @State private var showPreflight = false
+    @State private var showVerdict = false
+    @State private var showAbort = false
     @State private var showConnectionRequest = false
-    
-    // Network & Leaderboards
-    @StateObject private var networkMonitor = NetworkMonitor.shared
-    @State private var isInitializingServer = false
-    @State private var showInitError = false
-    @State private var initErrorMessage = ""
+    @State private var retainedScorecard: Scorecard? = nil   // kept mounted through exit animation
+    @State private var retainedStamps: [StampV2] = []
+
+    // submission
     @State private var isSubmittingScore = false
     @State private var submitSuccessMessage: String? = nil
     @State private var submitErrorMessage: String? = nil
-    
-    @State private var selectedTab = 0
     @State private var currentPendingResultId: UUID? = nil
-    @State private var showComparison = false
-    @ObservedObject private var pendingStore = PendingResultStore.shared
-    
+
+    private var capacity: Double {
+        guard engine.state.baselineIps > 0 else { return 100 }
+        return min(110, engine.state.liveIps / engine.state.baselineIps * 100)
+    }
+
+    private var phaseProgress: Double {
+        switch engine.state.phase {
+        case .cooldown:    return min(1, engine.state.cooldownElapsed / 120)
+        case .warmup:      return min(1, Double(engine.state.preRunIps.count) / (12.0 * 4))
+        case .calibration: return min(1, max(0, Double(engine.state.preRunIps.count) - 48) / (20.0 * 4))
+        case .measured:    return engine.state.duration > 0 ? min(1, engine.state.elapsed / engine.state.duration) : 0
+        case .idle:        return 0
+        }
+    }
+
+    private var phaseProgressLabel: String {
+        switch engine.state.phase {
+        case .cooldown:    return "\(engine.state.thermalState.name) → NOMINAL · \(Int(engine.state.cooldownElapsed))s"
+        case .warmup:      return "settling"
+        case .calibration: return "locking baseline"
+        case .measured:
+            let r = max(0, Int(engine.state.duration - engine.state.elapsed))
+            return String(format: "T-%02d:%02d", r / 60, r % 60)
+        case .idle:        return ""
+        }
+    }
+
     var body: some View {
         ZStack {
-            // Dark futuristic background gradient
-            LinearGradient(
-                colors: [Color(red: 0.05, green: 0.06, blue: 0.08), Color(red: 0.1, green: 0.12, blue: 0.16)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-            
+            Forge.bg.ignoresSafeArea()
+
             VStack(spacing: 0) {
+                headerSection
+
                 if selectedTab == 0 {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 20) {
-                            
-                            // --- App Header ---
-                            headerSection
-                            
-                            // --- Unsubmitted Runs Warning Banner ---
-                            if !pendingStore.results.isEmpty && !engine.isRunning {
-                                pendingRunsBanner
-                            }
-                            
-                            // --- Top Stats Dashboard ---
-                            statsPanelSection
-                            
-                            // --- Test Duration Options (Only when idle) ---
-                            if !engine.isRunning {
-                                optionsSection
-                            }
-                            
-                            // --- Start/Stop Pulsing Button ---
-                            controlButtonSection
-                            
-                            // --- Main Stability Graph ---
-                            StabilityChart(points: engine.chartPoints, events: engine.thermalEvents)
-                                .padding(.horizontal, 4)
-                            
-                            // --- Core Status Meters ---
-                            CoreStatusView(coreImpacts: engine.coreImpacts, gpuImpact: engine.gpuImpact)
-                                .padding(.horizontal, 4)
-                            
-                            Spacer(minLength: 30)
-                        }
-                        .padding()
-                    }
+                    diagnosticsTab
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
                     LeaderboardView()
-                }
-                
-                // Floating bottom tab bar
-                if !engine.isRunning {
-                    customTabBar
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
-            
-            // --- Summary Overlay ---
-            if showSummary, let details = summaryDetails {
-                summaryOverlay(details)
+            .animation(.easeInOut(duration: 0.28), value: selectedTab)
+
+            // ── overlays (animated entrances) ──
+            if showPreflight {
+                PreflightOverlay(
+                    engine: engine,
+                    onProceed: {
+                        withAnimation(.easeOut(duration: 0.2)) { showPreflight = false }
+                        engine.startTest(duration: selectedDuration, threadingType: selectedThreadingType)
+                    },
+                    onCancel: { withAnimation(.easeOut(duration: 0.2)) { showPreflight = false } }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(10)
             }
-            
-            // --- Start Warning Overlay ---
-            if showStartWarning {
-                startWarningOverlay
+
+            if retainedScorecard != nil {
+                VerdictOverlay(
+                    scorecard: retainedScorecard!,
+                    stamps: retainedStamps,
+                    submitting: isSubmittingScore,
+                    submitMsg: submitSuccessMessage,
+                    submitError: submitErrorMessage,
+                    canSubmit: networkMonitor.isConnected && submitSuccessMessage == nil,
+                    onSubmit: submitScore,
+                    onDismiss: {
+                        withAnimation(.easeOut(duration: 0.2)) { showVerdict = false }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                            retainedScorecard = nil; retainedStamps = []
+                        }
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .zIndex(11)
             }
-            
-            // --- Background Cancelled Warning Overlay ---
-            if showBackgroundCancelledWarning {
-                backgroundCancelledOverlay
+
+            if showAbort {
+                AbortOverlay(elapsed: engine.state.elapsed) {
+                    withAnimation(.easeOut(duration: 0.2)) { showAbort = false }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .zIndex(12)
             }
-            
-            // --- Manual Cancelled Warning Overlay ---
-            if showManualCancelledWarning {
-                manualCancelledOverlay
-            }
-            
-            // --- Connection Request Overlay ---
+
             if showConnectionRequest {
-                connectionRequestOverlay
-            }
-            
-            // --- Server Session Init Overlay ---
-            if isInitializingServer {
-                serverInitOverlay
-            }
-            
-            // --- Server Session Error Overlay ---
-            if showInitError {
-                serverInitErrorOverlay
+                ConnectionOverlay(
+                    onRetry: {
+                        withAnimation(.easeOut(duration: 0.2)) { showConnectionRequest = false }
+                        submitScore()
+                    },
+                    onDismiss: { withAnimation(.easeOut(duration: 0.2)) { showConnectionRequest = false } }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .zIndex(13)
             }
         }
+        .forgeGrain()
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showComparison) {
-            ComparisonView()
-        }
-        .onChange(of: engine.isRunning) { newValue in
-            // When the test stops, calculate summary
-            if !newValue && engine.elapsedTime > 0 {
-                // Reset submit outcomes for a clean state
-                submitSuccessMessage = nil
-                submitErrorMessage = nil
-                isSubmittingScore = false
-                
-                if engine.wasCancelledDueToBackground {
-                    withAnimation(.spring()) {
-                        showBackgroundCancelledWarning = true
-                    }
-                    return
-                }
-                
-                if !engine.wasCompleted {
-                    withAnimation(.spring()) {
-                        showManualCancelledWarning = true
-                    }
-                    return
-                }
-                
-                let minStability = engine.chartPoints.map { $0.score }.min() ?? engine.overallStability
-                let worstState = engine.thermalEvents.map { $0.state }.max(by: { $0.rawValue < $1.rawValue }) ?? .nominal
-                
-                // Automatically save to local history / pending results immediately!
-                let generatedId = UUID()
-                let pendingResult = PendingTestResult(
-                    id: generatedId,
-                    timestamp: Date().timeIntervalSince1970,
-                    durationSeconds: Int(engine.elapsedTime),
-                    testDurationType: {
-                        switch engine.testDuration {
-                        case .minutes5: return 0
-                        case .minutes15: return 1
-                        case .minutes30: return 2
-                        }
-                    }(),
-                    testThreadingType: engine.testThreadingType.rawValue,
-                    minStability: minStability,
-                    finalStability: engine.overallStability,
-                    worstThermalState: {
-                        switch worstState {
-                        case .nominal: return 0
-                        case .fair: return 1
-                        case .serious: return 2
-                        case .critical: return 3
-                        @unknown default: return 0
-                        }
-                    }(),
-                    stamps: engine.recordedStamps,
-                    deviceModel: LeaderboardService.shared.getDeviceModelName(),
-                    deviceManufacturer: "Apple",
-                    osVersion: UIDevice.current.systemVersion,
-                    sessionId: engine.sessionId ?? 0,
-                    encryptionKey: engine.encryptionKey ?? ""
-                )
-                PendingResultStore.shared.saveResult(pendingResult)
-                currentPendingResultId = generatedId
-                submitSuccessMessage = "SAVED TO PENDING RESULTS!"
-                
-                summaryDetails = SummaryDetails(
-                    duration: engine.elapsedTime,
-                    minStability: minStability,
-                    finalStability: engine.overallStability,
-                    worstThermalState: worstState
-                )
-                if networkMonitor.isConnected {
-                    withAnimation(.spring()) {
-                        showSummary = true
-                    }
-                } else {
-                    withAnimation(.spring()) {
-                        showConnectionRequest = true
-                    }
-                }
-            }
+        .onChange(of: engine.isRunning) { running in
+            if !running { handleRunEnd() }
         }
     }
-    
-    // Header View
+
+    // MARK: header
+
     private var headerSection: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text("THERMOHAMMER")
-                        .font(.system(size: 24, weight: .black, design: .monospaced))
+                        .font(ThermoFont.display(22, weight: .bold))
                         .tracking(2)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.white, .secondary],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                    
-                    // Connection Status Capsule
+                        .foregroundColor(Forge.ink0)
                     HStack(spacing: 4) {
-                        Circle()
-                            .fill(networkMonitor.isConnected ? Color.green : Color.yellow)
+                        Circle().fill(networkMonitor.isConnected ? Ramp.at(0.05) : Ramp.at(0.5))
                             .frame(width: 5, height: 5)
                         Text(networkMonitor.isConnected ? "ONLINE" : "OFFLINE")
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
-                            .foregroundColor(networkMonitor.isConnected ? .green : .yellow)
+                            .font(ThermoFont.mono(8, weight: .bold))
+                            .foregroundColor(networkMonitor.isConnected ? Ramp.at(0.05) : Ramp.at(0.5))
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.04))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(networkMonitor.isConnected ? Color.green.opacity(0.15) : Color.yellow.opacity(0.15), lineWidth: 1)
-                    )
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Color.white.opacity(0.04)).cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6)
+                        .stroke(Forge.hairline, lineWidth: 1))
                 }
-                
-                Text("iOS CPU Stress & Throttling Diagnostic")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(engine.isRunning ? .orange : .secondary)
-            }
-            Spacer()
-            
-            // Active Pulsing Radar Icon
-            if engine.isRunning {
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 8, height: 8)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.red, lineWidth: 2)
-                            .scaleEffect(engine.isRunning ? 2.5 : 1.0)
-                            .opacity(engine.isRunning ? 0.0 : 1.0)
-                            .animation(.easeOut(duration: 1.2).repeatForever(autoreverses: false), value: engine.isRunning)
-                    )
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
-    // Stats Panel Section
-    private var statsPanelSection: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 12) {
-                // Time Card
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("TEST DURATION")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                    
-                    if engine.isRunning, let limit = engine.testDuration.timeInterval {
-                        let remaining = max(0.0, limit - engine.elapsedTime)
-                        Text(formatTime(remaining))
-                            .font(.system(size: 22, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                    } else {
-                        Text(formatTime(engine.elapsedTime))
-                            .font(.system(size: 22, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                    }
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.03))
-                .cornerRadius(18)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                )
-                
-                // Stability Card
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("STABILITY SCORE")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                    
-                    Text(String(format: "%.0f%%", engine.overallStability))
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .foregroundColor(stabilityColor(for: engine.overallStability))
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.03))
-                .cornerRadius(18)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                )
-            }
-            
-            // Thermal Status Bar
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: thermalIconName(for: engine.currentThermalState))
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(thermalColor(for: engine.currentThermalState))
-                    
-                    Text("THERMAL STATE: \(thermalStateName(for: engine.currentThermalState))")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                }
-                Spacer()
-                
-                Text(engine.isRunning ? "STRESS ACTIVE" : "STRESS INACTIVE")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(engine.isRunning ? Color.orange.opacity(0.2) : Color.white.opacity(0.06))
-                    .foregroundColor(engine.isRunning ? .orange : .secondary)
-                    .cornerRadius(6)
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.03))
-            .cornerRadius(18)
-            .overlay(
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-            )
-        }
-    }
-    
-    // Options Picker Section
-    private var optionsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("TARGET DURATION")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 4)
-                
-                HStack(spacing: 8) {
-                    ForEach([TestDuration.minutes5, .minutes15, .minutes30], id: \.self) { duration in
-                        Button(action: {
-                            selectedDuration = duration
-                        }) {
-                            Text(duration.displayName)
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(selectedDuration == duration ? .black : .white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(selectedDuration == duration ? Color.white : Color.white.opacity(0.05))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.white.opacity(selectedDuration == duration ? 0.0 : 0.08), lineWidth: 1)
-                                )
-                        }
-                    }
-                }
-            }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                Text("THREADING MODE")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 4)
-                
-                HStack(spacing: 8) {
-                    ForEach([StressThreadingType.multi, StressThreadingType.single], id: \.self) { type in
-                        Button(action: {
-                            selectedThreadingType = type
-                        }) {
-                            VStack(spacing: 3) {
-                                if type == .multi {
-                                    Text("RECOMMENDED")
-                                        .font(.system(size: 7, weight: .black, design: .monospaced))
-                                        .foregroundColor(selectedThreadingType == type ? Color(red: 0.1, green: 0.5, blue: 0.2) : Color(red: 0.2, green: 0.8, blue: 0.4))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(
-                                            Capsule()
-                                                .fill(selectedThreadingType == type ? Color.black.opacity(0.12) : Color(red: 0.2, green: 0.8, blue: 0.4).opacity(0.15))
-                                        )
-                                } else {
-                                    Text("RECOMMENDED")
-                                        .font(.system(size: 7, weight: .black, design: .monospaced))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .opacity(0)
-                                }
-                                Text(type.displayName)
-                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    .foregroundColor(selectedThreadingType == type ? .black : .white)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(selectedThreadingType == type ? Color.white : Color.white.opacity(0.05))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(selectedThreadingType == type ? 0.0 : 0.08), lineWidth: 1)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(18)
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.white.opacity(0.04), lineWidth: 1)
-        )
-    }
-    
-    // Start / Stop stress test button
-    private var controlButtonSection: some View {
-        Button(action: {
-            if engine.isRunning {
-                engine.stopTest()
-            } else {
-                showStartWarning = true
-            }
-        }) {
-            HStack(spacing: 12) {
-                Image(systemName: engine.isRunning ? "stop.fill" : "play.fill")
-                    .font(.system(size: 16, weight: .black))
-                
-                Text(engine.isRunning ? "STOP STRESS TEST" : "INITIATE STRESS TEST")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                Text("iOS CPU THERMAL DIAGNOSTIC")
+                    .font(ThermoFont.mono(9, weight: .bold))
                     .tracking(1)
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(
-                        LinearGradient(
-                            colors: engine.isRunning 
-                                ? [Color(red: 0.85, green: 0.2, blue: 0.2), Color(red: 0.7, green: 0.1, blue: 0.1)]
-                                : [Color(red: 0.05, green: 0.5, blue: 0.95), Color(red: 0.0, green: 0.35, blue: 0.8)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .shadow(
-                        color: (engine.isRunning ? Color.red : Color.blue).opacity(0.4),
-                        radius: 8,
-                        x: 0,
-                        y: 4
-                    )
-            )
-        }
-        .padding(.horizontal, 4)
-    }
-    
-    // Summary Popup Modal
-    private func summaryOverlay(_ details: SummaryDetails) -> some View {
-        ZStack {
-            Color.black.opacity(0.85)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring()) {
-                        showSummary = false
-                    }
-                }
-            
-            VStack(spacing: 20) {
-                // Header
-                VStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.green)
-                    Text("DIAGNOSTIC COMPLETE")
-                        .font(.system(size: 16, weight: .black, design: .monospaced))
-                        .tracking(1)
-                        .foregroundColor(.white)
-                }
-                .padding(.top, 10)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                // Stats Grid
-                VStack(spacing: 12) {
-                    summaryRow(label: "TEST TIME", value: formatTime(details.duration))
-                    summaryRow(label: "MIN STABILITY", value: String(format: "%.0f%%", details.minStability), valColor: stabilityColor(for: details.minStability))
-                    summaryRow(label: "FINAL STABILITY", value: String(format: "%.0f%%", details.finalStability), valColor: stabilityColor(for: details.finalStability))
-                    summaryRow(label: "WORST THERMAL", value: thermalStateName(for: details.worstThermalState), valColor: thermalColor(for: details.worstThermalState))
-                }
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                // --- Leaderboard Section ---
-                VStack(spacing: 8) {
-                    if networkMonitor.isConnected {
-                        if let successMsg = submitSuccessMessage {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text(successMsg)
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.green)
-                            }
-                            .padding(.vertical, 8)
-                        } else if let errorMsg = submitErrorMessage {
-                            VStack(alignment: .center, spacing: 4) {
-                                HStack {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.red)
-                                    Text("SUBMISSION FAILED")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.red)
-                                }
-                                Text(errorMsg)
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(.vertical, 8)
-                        } else if isSubmittingScore {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                                Text("SUBMITTING SCORE...")
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.blue)
-                            }
-                            .padding(.vertical, 8)
-                        } else {
-                            Button(action: {
-                                isSubmittingScore = true
-                                submitSuccessMessage = nil
-                                submitErrorMessage = nil
-                                
-                                Task {
-                                    do {
-                                        // Request a session on-the-fly on submit click
-                                        let session = try await LeaderboardService.shared.createSession()
-                                        
-                                        let hmacHash = ThermoHasher.computeHash(
-                                            encryptionKey: session.encryptionKey,
-                                            stamps: engine.recordedStamps
-                                        )
-                                        
-                                        let durationType: Int
-                                        switch engine.testDuration {
-                                        case .minutes5: durationType = 0
-                                        case .minutes15: durationType = 1
-                                        case .minutes30: durationType = 2
-                                        }
-                                        
-                                        let payload = HammerPayload(
-                                            stamps: engine.recordedStamps,
-                                            type: durationType,
-                                            testThreadingType: engine.testThreadingType.rawValue,
-                                            deviceManufacturer: "Apple",
-                                            deviceModel: LeaderboardService.shared.getDeviceModelName(),
-                                            os: 1, // iOS
-                                            osVersion: UIDevice.current.systemVersion,
-                                            sessionId: session.id,
-                                            hash: hmacHash
-                                        )
-                                        
-                                        try await LeaderboardService.shared.submitScore(payload: payload)
-                                        
-                                        await MainActor.run {
-                                            if let pendingId = currentPendingResultId {
-                                                PendingResultStore.shared.deleteResult(id: pendingId)
-                                            }
-                                            isSubmittingScore = false
-                                            submitSuccessMessage = "SUBMITTED TO LEADERBOARD!"
-                                        }
-                                    } catch {
-                                        await MainActor.run {
-                                            isSubmittingScore = false
-                                            submitErrorMessage = error.localizedDescription
-                                        }
-                                    }
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: "crown.fill")
-                                    Text("SUBMIT SCORE TO LEADERBOARD")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                }
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(
-                                    LinearGradient(
-                                        colors: [Color.blue, Color.purple],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .cornerRadius(10)
-                            }
-                        }
-                    } else {
-                        // Offline run from the start
-                        VStack(alignment: .center, spacing: 6) {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("OFFLINE RUN AUTO-SAVED")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.green)
-                            }
-                            Text("Your result has been saved locally. You can view and submit it from the Leaderboard tab once you're online.")
-                                .font(.system(size: 8))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 12)
-                        }
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.white.opacity(0.02))
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.white.opacity(0.04), lineWidth: 1)
-                        )
-                    }
-                }
-                .padding(.vertical, 8)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                // Done Button
-                Button(action: {
-                    withAnimation(.spring()) {
-                        showSummary = false
-                    }
-                }) {
-                    Text("DISMISS REPORT")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .cornerRadius(12)
-                }
-                .padding(.bottom, 10)
-            }
-            .padding(24)
-            .frame(width: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.1))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    )
-            )
-            .shadow(color: .black, radius: 15)
-        }
-    }
-    
-    // Row inside Summary Modal
-    private func summaryRow(label: String, value: String, valColor: Color = .white) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 13, weight: .black, design: .monospaced))
-                .foregroundColor(valColor)
-        }
-        .padding(.vertical, 4)
-    }
-    
-    // Helper color code based on stability score
-    private func stabilityColor(for score: Double) -> Color {
-        if score >= 90 {
-            return Color(red: 0.2, green: 0.8, blue: 0.4) // Green
-        } else if score >= 75 {
-            return Color(red: 0.95, green: 0.7, blue: 0.1) // Amber
-        } else {
-            return Color(red: 0.9, green: 0.35, blue: 0.1) // Orange/Red
-        }
-    }
-    
-    // Thermal State Name mappings
-    private func thermalStateName(for state: ProcessInfo.ThermalState) -> String {
-        switch state {
-        case .nominal: return "NOMINAL"
-        case .fair: return "FAIR"
-        case .serious: return "SERIOUS (THROTTLED)"
-        case .critical: return "CRITICAL"
-        @unknown default: return "UNKNOWN"
-        }
-    }
-    
-    // Thermal State Color mappings
-    private func thermalColor(for state: ProcessInfo.ThermalState) -> Color {
-        switch state {
-        case .nominal: return .green
-        case .fair: return .yellow
-        case .serious: return .orange
-        case .critical: return .red
-        @unknown default: return .gray
-        }
-    }
-    
-    // Thermal State SF Symbols
-    private func thermalIconName(for state: ProcessInfo.ThermalState) -> String {
-        switch state {
-        case .nominal: return "thermometer.snowflake"
-        case .fair: return "thermometer.low"
-        case .serious: return "thermometer.medium"
-        case .critical: return "thermometer.high"
-        @unknown default: return "thermometer"
-        }
-    }
-    
-    // Time Formatter
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-    
-    // Pre-check diagnostics helpers
-    private var isLowPowerModeEnabled: Bool {
-        ProcessInfo.processInfo.isLowPowerModeEnabled
-    }
-    
-    private var isCharging: Bool {
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        let state = UIDevice.current.batteryState
-        return state == .charging || state == .full
-    }
-    
-    private var isCellularRadioActive: Bool {
-        #if targetEnvironment(simulator)
-        return false
-        #else
-        let networkInfo = CTTelephonyNetworkInfo()
-        if let technologies = networkInfo.serviceCurrentRadioAccessTechnology, !technologies.isEmpty {
-            return true
-        }
-        return false
-        #endif
-    }
-    
-    enum PreCheckStatus {
-        case optimal, warning, critical, info
-    }
-    
-    private func warningRow(icon: String, title: String, message: String, status: PreCheckStatus, statusColor: Color) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(statusColor)
-                .frame(width: 24, height: 24)
-                .background(statusColor.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundColor(.white)
-                
-                Text(message)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundColor(engine.isRunning ? Ramp.at(0.5) : Forge.ink2)
             }
             Spacer()
-            
-            Image(systemName: status == .optimal ? "checkmark.circle.fill" : (status == .critical ? "xmark.octagon.fill" : (status == .info ? "info.circle.fill" : "exclamationmark.circle.fill")))
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(statusColor)
-        }
-        .padding(10)
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.04), lineWidth: 1)
-        )
-    }
-    
-    // --- Custom Warning Overlays ---
-    
-    private var startWarningOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring()) {
-                        showStartWarning = false
-                    }
-                }
-            
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 32))
-                        .foregroundColor(.blue)
-                        .shadow(color: .blue.opacity(0.3), radius: 8)
-                    
-                    Text("PRE-TEST DIAGNOSTICS")
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundColor(.white)
-                }
-                .padding(.top, 5)
-                
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 12) {
-                        // 1. Phone Case Warning (Always shown)
-                        warningRow(
-                            icon: "iphone.smartcover",
-                            title: "REMOVE PHONE CASE",
-                            message: "Highly recommended to remove your device case. Trapped heat severely skews throttling scores.",
-                            status: .warning,
-                            statusColor: .orange
-                        )
-                        
-                        // 2. Low Power Mode Check
-                        if isLowPowerModeEnabled {
-                            warningRow(
-                                icon: "battery.50",
-                                title: "LOW POWER MODE IS ON",
-                                message: "Please turn off Low Power Mode in Settings to get accurate unthrottled CPU performance.",
-                                status: .warning,
-                                statusColor: .orange
-                            )
-                        } else {
-                            warningRow(
-                                icon: "battery.100",
-                                title: "POWER STATE OPTIMAL",
-                                message: "Low Power Mode is disabled.",
-                                status: .optimal,
-                                statusColor: .green
-                            )
-                        }
-                        
-                        // 3. Charger Check
-                        if isCharging {
-                            warningRow(
-                                icon: "bolt.fill",
-                                title: "CHARGER CONNECTED!",
-                                message: "CRITICAL: Unplug your charger. Battery charging emits significant heat that forces thermal throttling.",
-                                status: .critical,
-                                statusColor: .red
-                            )
-                        } else {
-                            warningRow(
-                                icon: "bolt.slash.fill",
-                                title: "DISCONNECTED FROM CHARGER",
-                                message: "Device is running on battery.",
-                                status: .optimal,
-                                statusColor: .green
-                            )
-                        }
-                        
-                        // 4. Airplane Mode Check
-                        if isCellularRadioActive {
-                            warningRow(
-                                icon: "antenna.radiowaves.left.and.right",
-                                title: "CELLULAR NETWORK DETECTED",
-                                message: "Recommend turning on Airplane Mode. Cellular search generates extra background heat.",
-                                status: .warning,
-                                statusColor: .orange
-                            )
-                        } else {
-                            warningRow(
-                                icon: "airplane",
-                                title: "AIRPLANE MODE / OFFLINE",
-                                message: "Cellular radio is offline.",
-                                status: .optimal,
-                                statusColor: .green
-                            )
-                        }
-                        
-                        // 5. Foreground Warning
-                        warningRow(
-                            icon: "app.badge.fill",
-                            title: "KEEP APP IN FOREGROUND",
-                            message: "Minimizing, locking, or switching apps cancels the stress test automatically.",
-                            status: .info,
-                            statusColor: .blue
-                        )
-                    }
-                }
-                .frame(maxHeight: 280)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                HStack(spacing: 12) {
-                    Button(action: {
-                        withAnimation(.spring()) {
-                            showStartWarning = false
-                        }
-                    }) {
-                        Text("CANCEL")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(12)
-                    }
-                    
-                    Button(action: {
-                        withAnimation(.spring()) {
-                            showStartWarning = false
-                        }
-                        
-                        // Start test immediately without pre-test server session delays
-                        engine.sessionId = nil
-                        engine.encryptionKey = nil
-                        engine.startTest(duration: selectedDuration, threadingType: selectedThreadingType)
-                    }) {
-                        Text("PROCEED")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                            .cornerRadius(12)
-                    }
-                }
-                .padding(.bottom, 5)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(engine.state.thermalState.name)
+                    .font(ThermoFont.mono(11, weight: .bold))
+                    .foregroundColor(thermalStateColor(engine.state.thermalState))
+                Engraved(text: "THERMAL", size: 7)
             }
-            .padding(24)
-            .frame(width: min(450, UIScreen.main.bounds.width * 0.9))
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.1).opacity(0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
-            .shadow(color: .black.opacity(0.5), radius: 15)
         }
-    }
-    
-    private var backgroundCancelledOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring()) {
-                        showBackgroundCancelledWarning = false
-                    }
-                }
-            
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "xmark.octagon.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.red)
-                        .shadow(color: .red.opacity(0.3), radius: 8)
-                    
-                    Text("TEST ABORTED")
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .tracking(1)
-                        .foregroundColor(.white)
-                }
-                .padding(.top, 10)
-                
-                Text("The diagnostic test was aborted because the app was minimized or moved to the background. Sticking to the foreground is required for accurate thermal stress measurement.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                Button(action: {
-                    withAnimation(.spring()) {
-                        showBackgroundCancelledWarning = false
-                    }
-                }) {
-                    Text("DISMISS")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .cornerRadius(12)
-                }
-                .padding(.bottom, 5)
-            }
-            .padding(24)
-            .frame(width: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.1).opacity(0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
-            .shadow(color: .black.opacity(0.5), radius: 15)
-        }
-    }
-    
-    private var manualCancelledOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring()) {
-                        showManualCancelledWarning = false
-                    }
-                }
-            
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.orange)
-                        .shadow(color: .orange.opacity(0.3), radius: 8)
-                    
-                    Text("TEST CANCELLED")
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .tracking(1)
-                        .foregroundColor(.white)
-                }
-                .padding(.top, 10)
-                
-                Text("The stress test was stopped manually. The diagnostic run was not allowed to finish, and the results are invalid.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                Button(action: {
-                    withAnimation(.spring()) {
-                        showManualCancelledWarning = false
-                    }
-                }) {
-                    Text("DISMISS")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .cornerRadius(12)
-                }
-                .padding(.bottom, 5)
-            }
-            .padding(24)
-            .frame(width: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.1).opacity(0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
-            .shadow(color: .black.opacity(0.5), radius: 15)
-        }
-    }
-    
-    private var serverInitOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                    .scaleEffect(1.5)
-                    .padding(.top, 10)
-                
-                Text("CONNECTING TO SERVER")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                
-                Text("Initializing secure diagnostic session for leaderboard verification...")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 10)
-            }
-            .padding(24)
-            .frame(width: 280)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.1).opacity(0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                      )
-            )
-            .shadow(color: .black.opacity(0.5), radius: 15)
-        }
-    }
-    
-    private var serverInitErrorOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.spring()) {
-                        showInitError = false
-                    }
-                }
-            
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 40))
-                        .foregroundColor(.yellow)
-                        .shadow(color: .yellow.opacity(0.3), radius: 8)
-                    
-                    Text("SESSION FAILED")
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .tracking(1)
-                        .foregroundColor(.white)
-                }
-                .padding(.top, 10)
-                
-                Text("Could not connect to the diagnostic server:\n\(initErrorMessage)\n\nWould you like to run in Offline mode instead? (Offline runs cannot be submitted to the leaderboard.)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                HStack(spacing: 12) {
-                    Button(action: {
-                        withAnimation(.spring()) {
-                            showInitError = false
-                        }
-                    }) {
-                        Text("CANCEL")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(12)
-                    }
-                    
-                    Button(action: {
-                        withAnimation(.spring()) {
-                            showInitError = false
-                        }
-                        // Proceed in Offline Mode
-                        engine.sessionId = nil
-                        engine.encryptionKey = nil
-                        engine.startTest(duration: selectedDuration)
-                    }) {
-                        Text("RUN OFFLINE")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                            .cornerRadius(12)
-                    }
-                }
-                .padding(.bottom, 5)
-            }
-            .padding(24)
-            .frame(width: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.1).opacity(0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
-            .shadow(color: .black.opacity(0.5), radius: 15)
-        }
-    }
-    
-    private var customTabBar: some View {
-        HStack {
-            Spacer()
-            
-            Button(action: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedTab = 0
-                }
-            }) {
-                VStack(spacing: 4) {
-                    Image(systemName: "gauge.with.needle.fill")
-                        .font(.system(size: 20))
-                    Text("Diagnostics")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(selectedTab == 0 ? .white : .secondary)
-                .frame(maxWidth: .infinity)
-            }
-            
-            Button(action: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedTab = 1
-                }
-            }) {
-                VStack(spacing: 4) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 20))
-                    Text("Leaderboard")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(selectedTab == 1 ? .white : .secondary)
-                .frame(maxWidth: .infinity)
-            }
-            
-            Spacer()
-        }
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(
-            Color(white: 0.08)
-                .opacity(0.85)
-                .background(Material.thinMaterial)
-        )
-        .overlay(
-            Divider()
-                .background(Color.white.opacity(0.1)),
-            alignment: .top
-        )
+        .background(Forge.surface.opacity(0.9))
+        .overlay(Rectangle().fill(Forge.hairline).frame(height: 1), alignment: .bottom)
     }
-    private var connectionRequestOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.8)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "wifi")
-                        .font(.system(size: 40))
-                        .foregroundColor(.blue)
-                        .shadow(color: .blue.opacity(0.3), radius: 8)
-                    
-                    Text("DIAGNOSTICS COMPLETE")
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .tracking(1)
-                        .foregroundColor(.white)
-                }
-                .padding(.top, 10)
-                
-                Text("Please enable Wi-Fi or cellular data now to submit your score to the global leaderboard.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                
-                VStack(spacing: 8) {
-                    Button(action: {
-                        withAnimation(.spring()) {
-                            showConnectionRequest = false
-                        }
-                        submitSuccessMessage = nil
-                        submitErrorMessage = nil
-                        withAnimation(.spring()) {
-                            showSummary = true
-                        }
-                    }) {
-                        Text("I TURNED IT ON")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                            .cornerRadius(12)
-                    }
-                    
-                    Button(action: {
-                        withAnimation(.spring()) {
-                            showConnectionRequest = false
-                        }
-                        withAnimation(.spring()) {
-                            showSummary = true
-                        }
-                    }) {
-                        Text("SUBMIT LATER")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.6))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(12)
-                    }
-                }
-                .padding(.bottom, 5)
-            }
-            .padding(24)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(white: 0.12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
-            .frame(width: 320)
-            .shadow(color: .black.opacity(0.4), radius: 20)
-        }
-    }
-    private var pendingRunsBanner: some View {
-        Button(action: {
-            withAnimation(.spring()) {
-                selectedTab = 1
-            }
-        }) {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(Color(red: 0.95, green: 0.7, blue: 0.1))
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("UNSUBMITTED RESULTS DETECTED")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    
-                    Text("You have \(pendingStore.results.count) locally saved test run\(pendingStore.results.count > 1 ? "s" : ""). Tap here to submit to the leaderboard.")
-                        .font(.system(size: 8))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.leading)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.3))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(white: 0.08).opacity(0.6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color(red: 0.95, green: 0.7, blue: 0.1).opacity(0.3), lineWidth: 1)
-                    )
-            )
-        }
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-}
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
+    // MARK: diagnostics tab
+
+    private var diagnosticsTab: some View {
+        VStack(spacing: 0) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 12) {
+                    PhaseRail(phase: engine.state.phase,
+                              preflightActive: showPreflight,
+                              completed: engine.wasCompleted,
+                              progress: phaseProgress,
+                              progressLabel: phaseProgressLabel)
+                        .padding(.top, 10)
+
+                    ThermalReactor(state: engine.state, topology: engine.topology,
+                                   completed: engine.wasCompleted)
+                        .padding(.top, 4)
+
+                    // live chips under reactor
+                    VStack(spacing: 6) {
+                        if engine.state.phase == .measured && engine.state.attribution != .none {
+                            attributionChip
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                        if engine.state.phase == .cooldown {
+                            Text("❄ COOLING \(engine.state.thermalState.name) → NOMINAL · \(Int(engine.state.cooldownElapsed))s")
+                                .font(ThermoFont.mono(9, weight: .bold))
+                                .foregroundColor(Forge.phaseCooldown)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Forge.phaseCooldown.opacity(0.08))
+                                .cornerRadius(8)
+                                .overlay(RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Forge.phaseCooldown.opacity(0.3), lineWidth: 1))
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.3), value: engine.state.phase)
+                    .animation(.easeInOut(duration: 0.3), value: engine.state.attribution)
+
+                    ThroughputRibbon(stamps: engine.state.stamps,
+                                     preRun: engine.state.preRunIps,
+                                     baselineIps: engine.state.baselineIps,
+                                     duration: engine.state.duration)
+                        .padding(.horizontal, 14)
+                        .background(Forge.surface.opacity(0.5))
+                        .cornerRadius(12)
+                        .cornerTicks()
+                        .padding(.horizontal, 4)
+
+                    CoreConstellation(topology: engine.topology,
+                                      workerRatios: engine.state.workerRatios,
+                                      activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
+                        .padding(.horizontal, 4)
+
+                    ThermalHorizon(thermalState: engine.state.thermalState,
+                                   systemLoad: engine.state.systemLoad,
+                                   history: engine.state.stamps.map { $0.thermalState })
+                        .padding(.horizontal, 4)
+
+                    Spacer(minLength: 90)
+                }
+            }
+
+            // bottom control area
+            controlArea
+        }
+    }
+
+    private var attributionChip: some View {
+        Text("◈ \(attributionLabel(engine.state.attribution))")
+            .font(ThermoFont.mono(9, weight: .bold))
+            .foregroundColor(attributionColor(engine.state.attribution))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(attributionColor(engine.state.attribution).opacity(0.10))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .stroke(attributionColor(engine.state.attribution).opacity(0.35), lineWidth: 1))
+    }
+
+    // MARK: controls
+
+    private var controlArea: some View {
+        VStack(spacing: 10) {
+            if !engine.isRunning {
+                // pickers — animated away during run
+                HStack(spacing: 10) {
+                    ForEach([TestDuration.minutes5, .minutes15, .minutes30], id: \.self) { d in
+                        Button {
+                            selectedDuration = d
+                            ThermoHaptics.tap()
+                        } label: {
+                            Text(d.displayName.uppercased())
+                                .font(ThermoFont.mono(10, weight: .bold))
+                                .foregroundColor(selectedDuration == d ? Forge.bg : Forge.ink1)
+                                .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                .background(selectedDuration == d ? Forge.phaseMeasured : Forge.interact)
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+                HStack(spacing: 10) {
+                    ForEach(StressThreadingType.allCases, id: \.self) { t in
+                        Button {
+                            selectedThreadingType = t
+                            ThermoHaptics.tap()
+                        } label: {
+                            Text(t.displayName.uppercased())
+                                .font(ThermoFont.mono(10, weight: .bold))
+                                .foregroundColor(selectedThreadingType == t ? Forge.bg : Forge.ink1)
+                                .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                .background(selectedThreadingType == t ? Forge.phaseCalibration : Forge.interact)
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+
+                Button {
+                    showPreflight = true
+                    ThermoHaptics.tap()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.fill")
+                        Text("INITIATE STRESS")
+                            .font(ThermoFont.mono(13, weight: .black)).tracking(1.5)
+                    }
+                    .foregroundColor(Forge.bg)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(LinearGradient(colors: [Forge.phaseMeasured, Ramp.at(0.25)],
+                                               startPoint: .leading, endPoint: .trailing))
+                    .cornerRadius(12)
+                    .shadow(color: Forge.phaseMeasured.opacity(0.35), radius: 12)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Engraved(text: engine.state.phase.rawValue, color: phaseColor(engine.state.phase), size: 9)
+                        Text("HOLD ◉ TO ABORT")
+                            .font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
+                    }
+                    Spacer()
+                    HoldToAbort {
+                        engine.abort()
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            tabBar
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(Forge.surface.opacity(0.92))
+        .animation(.easeInOut(duration: 0.3), value: engine.isRunning)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<2, id: \.self) { i in
+                let titles = ["DIAGNOSTICS", "LEADERBOARD"]
+                Button {
+                    selectedTab = i
+                    ThermoHaptics.tap()
+                } label: {
+                    VStack(spacing: 4) {
+                        Text(titles[i])
+                            .font(ThermoFont.mono(9, weight: .bold)).tracking(1)
+                            .foregroundColor(selectedTab == i ? Forge.ink0 : Forge.ink2)
+                        Capsule()
+                            .fill(selectedTab == i ? Forge.phaseMeasured : .clear)
+                            .frame(width: 24, height: 2)
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: selectedTab)
+    }
+
+    // MARK: run end → persist + verdict
+
+    private func handleRunEnd() {
+        guard engine.state.stamps.count > 0 else {
+            if engine.wasCancelledDueToBackground || engine.abortedByUser {
+                withAnimation(.easeOut(duration: 0.2)) { showAbort = true }
+            }
+            return
+        }
+        let sc = engine.state.scorecard
+        let wireStamps = engine.state.stamps.map {
+            DeviceHammerStamp(elapsedMs: $0.elapsedMs, score: Int($0.ipsTotal), thermalState: $0.thermalState)
+        }
+        let minStability = engine.state.stamps.map { Double($0.ipsTotal) / max(1, engine.state.baselineIps) * 100 }.min() ?? 100
+        let worst = engine.state.stamps.map { $0.thermalState }.max() ?? 0
+
+        let pending = PendingTestResult(
+            id: UUID(),
+            timestamp: Date().timeIntervalSince1970,
+            durationSeconds: Int(engine.state.elapsed),
+            testDurationType: { switch engine.testDuration { case .minutes5: return 0; case .minutes15: return 1; case .minutes30: return 2 } }(),
+            testThreadingType: engine.testThreadingType.rawValue,
+            minStability: minStability,
+            finalStability: capacity,
+            worstThermalState: worst,
+            stamps: wireStamps,
+            deviceModel: LeaderboardService.shared.getDeviceModelName(),
+            deviceManufacturer: "Apple",
+            osVersion: UIDevice.current.systemVersion,
+            sessionId: 0,
+            encryptionKey: "",
+            baselineScore: Int(sc?.baselineIps ?? 0),
+            deliveredCapacity: sc?.deliveredCapacity,
+            sustainedRatio: sc?.sustainedRatio,
+            throttleOnsetSec: sc?.throttleOnsetSec,
+            confidence: sc?.confidence,
+            validityFlags: sc?.validityFlags,
+            socModel: StressEngine.socModel(),
+            clusterTopology: engine.topology.describe()
+        )
+        PendingResultStore.shared.saveResult(pending)
+        currentPendingResultId = pending.id
+
+        retainedScorecard = sc
+        retainedStamps = engine.state.stamps
+        if sc != nil {
+            if sc!.isVerified { ThermoHaptics.confirmed() } else { ThermoHaptics.rejected() }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { showVerdict = true }
+        } else if engine.wasCancelledDueToBackground || engine.abortedByUser {
+            withAnimation(.easeOut(duration: 0.2)) { showAbort = true }
+        }
+        if !networkMonitor.isConnected {
+            withAnimation(.easeOut(duration: 0.2)) { showConnectionRequest = true }
+        }
+    }
+
+    private func submitScore() {
+        isSubmittingScore = true
+        submitSuccessMessage = nil
+        submitErrorMessage = nil
+        let wireStamps = retainedStamps.map {
+            DeviceHammerStamp(elapsedMs: $0.elapsedMs, score: Int($0.ipsTotal), thermalState: $0.thermalState)
+        }
+        let sc = retainedScorecard
+        Task {
+            do {
+                let session = try await LeaderboardService.shared.createSession()
+                let hash = ThermoHasher.computeHash(encryptionKey: session.encryptionKey, stamps: wireStamps)
+
+                let type: Int = { switch engine.testDuration { case .minutes5: return 0; case .minutes15: return 1; case .minutes30: return 2 } }()
+                let model = LeaderboardService.shared.getDeviceModelName()
+                let osv = UIDevice.current.systemVersion
+                let metaCanonical = "v2|\(type)|\(engine.testThreadingType.rawValue)|Apple|\(model)|\(osv)|\(Int(sc?.baselineIps ?? 0))|\(String(format: "%.4f", sc?.deliveredCapacity ?? 0))|\(sc?.validityFlags ?? 0)"
+                let hashV2 = ThermoHasher.computeHashV2(encryptionKey: session.encryptionKey,
+                                                        metaCanonical: metaCanonical,
+                                                        stamps: wireStamps)
+                let payload = HammerPayload(
+                    stamps: wireStamps, type: type,
+                    testThreadingType: engine.testThreadingType.rawValue,
+                    deviceManufacturer: "Apple", deviceModel: model,
+                    os: 1, osVersion: osv,
+                    sessionId: session.id, hash: hash,
+                    schemaVersion: 2,
+                    baselineScore: Int(sc?.baselineIps ?? 0),
+                    deliveredCapacity: sc?.deliveredCapacity,
+                    sustainedRatio: sc?.sustainedRatio,
+                    throttleOnsetSec: sc?.throttleOnsetSec,
+                    confidence: sc?.confidence,
+                    validityFlags: sc?.validityFlags,
+                    socModel: StressEngine.socModel(),
+                    clusterTopology: engine.topology.describe(),
+                    governor: nil,
+                    hashV2: hashV2
+                )
+                try await LeaderboardService.shared.submitScore(payload: payload)
+                await MainActor.run {
+                    if let pid = currentPendingResultId {
+                        PendingResultStore.shared.deleteResult(id: pid)
+                    }
+                    isSubmittingScore = false
+                    submitSuccessMessage = "SUBMITTED TO LEADERBOARD"
+                }
+            } catch {
+                await MainActor.run {
+                    isSubmittingScore = false
+                    submitErrorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
