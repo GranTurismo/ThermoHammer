@@ -28,8 +28,10 @@ import com.example.thermohammer.network.DeviceHammerStamp
 import com.example.thermohammer.network.HammerDto
 import com.example.thermohammer.network.HammerPayload
 import com.example.thermohammer.network.ThermoHasher
+import com.example.thermohammer.network.toWire
 import com.example.thermohammer.ui.components.*
 import com.example.thermohammer.ui.overlays.*
+import com.example.thermohammer.ui.theme.*
 import kotlinx.coroutines.launch
 
 data class RankedEntry(val entry: HammerDto, val rank: Int, val stability: Double)
@@ -151,11 +153,11 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("GLOBAL LEADERBOARD", style = TextStyle(color = Color.White, fontSize = 18.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp))
-                    Text("Select 2 Tests to Compare side-by-side", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace))
+                    Text("GLOBAL LEADERBOARD", style = TextStyle(color = Forge.ink0, fontSize = 18.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp))
+                    Text("Select 2 Tests to Compare side-by-side", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
                 }
                 IconButton(onClick = { loadData() }, enabled = !isLoading) {
-                    Text("↻", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("↻", color = Forge.ink0, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -169,7 +171,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                     item {
                         Text(
                             "PENDING OFFLINE RUNS (${pendingList.size})",
-                            style = TextStyle(color = Color(0xFFF2C94C), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black),
+                            style = TextStyle(color = Ramp.at(0.5f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black),
                             modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
@@ -188,9 +190,11 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                 coroutineScope.launch {
                                     try {
                                         val session = ApiClient.api.createSession()
-                                        val hash = ThermoHasher.computeHash(session.encryptionKey, pending.stamps)
+                                        val wireStamps = pending.stamps.toWire()
+                                        val hash = ThermoHasher.computeHash(session.encryptionKey, wireStamps)
+                                        val metaCanonical = "v2|${pending.testDurationType}|${pending.testThreadingType}|${pending.deviceManufacturer}|${pending.deviceModel}|${pending.osVersion}|${pending.baselineScore}|${"%.4f".format(java.util.Locale.US, pending.deliveredCapacity)}|${pending.validityFlags}"
                                         val payload = HammerPayload(
-                                            stamps = pending.stamps,
+                                            stamps = wireStamps,
                                             type = pending.testDurationType,
                                             testThreadingType = pending.testThreadingType,
                                             deviceManufacturer = pending.deviceManufacturer,
@@ -198,7 +202,18 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                             os = 2,
                                             osVersion = pending.osVersion,
                                             sessionId = session.id,
-                                            hash = hash
+                                            hash = hash,
+                                            schemaVersion = 2,
+                                            baselineScore = pending.baselineScore,
+                                            deliveredCapacity = pending.deliveredCapacity.toDouble(),
+                                            sustainedRatio = pending.sustainedRatio.toDouble(),
+                                            throttleOnsetSec = pending.throttleOnsetSec.takeIf { it >= 0 },
+                                            confidence = pending.confidence,
+                                            validityFlags = pending.validityFlags,
+                                            socModel = pending.socModel.ifEmpty { null },
+                                            clusterTopology = pending.clusterTopology.ifEmpty { null },
+                                            governor = pending.governor.ifEmpty { null },
+                                            hashV2 = ThermoHasher.computeHashV2(session.encryptionKey, metaCanonical, wireStamps)
                                         )
                                         ApiClient.api.submitScore(payload)
                                         store.deleteResult(pending.id)
@@ -218,7 +233,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                         )
                     }
                     item {
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 12.dp))
+                        HorizontalDivider(color = Forge.ink0.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 12.dp))
                     }
                 }
 
@@ -228,16 +243,16 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                         BasicTextField(
                             value = searchText,
                             onValueChange = { searchText = it },
-                            textStyle = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                            textStyle = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono),
                             singleLine = true,
                             decorationBox = { innerTextField ->
                                 Row(
-                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.04f)).border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Forge.ink0.copy(alpha = 0.04f)).border(1.dp, Forge.ink0.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text("🔍 ", fontSize = 12.sp)
                                     Box(Modifier.weight(1f)) {
-                                        if (searchText.isEmpty()) Text("Search by device model, manufacturer, or OS...", style = TextStyle(color = Color.White.copy(alpha = 0.3f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
+                                        if (searchText.isEmpty()) Text("Search by device model, manufacturer, or OS...", style = TextStyle(color = Forge.ink0.copy(alpha = 0.3f), fontSize = 11.sp, fontFamily = InstrumentMono))
                                         innerTextField()
                                     }
                                 }
@@ -260,23 +275,23 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                 if (isLoading) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color(0xFF4A9EFF), strokeWidth = 3.dp)
+                            CircularProgressIndicator(color = Forge.phasePreFlight, strokeWidth = 3.dp)
                         }
                     }
                 } else if (errorMsg != null) {
                     item {
                         Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("⚠ $errorMsg", style = TextStyle(color = Color(0xFFEB5757), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                            Text("⚠ $errorMsg", style = TextStyle(color = Ramp.at(0.85f), fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                             Spacer(Modifier.height(8.dp))
-                            Button(onClick = { loadData() }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f))) {
-                                Text("RETRY", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            Button(onClick = { loadData() }, colors = ButtonDefaults.buttonColors(containerColor = Forge.ink0.copy(alpha = 0.1f))) {
+                                Text("RETRY", color = Forge.ink0, fontSize = 10.sp, fontFamily = InstrumentMono)
                             }
                         }
                     }
                 } else if (filtered.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-                            Text("No leaderboard entries match filters.", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontFamily.Monospace))
+                            Text("No leaderboard entries match filters.", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = InstrumentMono))
                         }
                     }
                 } else {
@@ -315,7 +330,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                     .align(Alignment.BottomCenter)
                     .padding(16.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF00E5FF).copy(alpha = 0.95f))
+                    .background(Forge.phaseMeasured.copy(alpha = 0.95f))
                     .clickable {
                         if (compareSelectedRuns.size >= 2) {
                             showAutoCompareOverlay = true
@@ -329,22 +344,22 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                         Column {
                             Text(
                                 "${compareSelectedRuns.size} / 2 TESTS SELECTED ($reqMode)",
-                                style = TextStyle(color = Color.Black, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
+                                style = TextStyle(color = Forge.bg, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
                             )
                             Text(
                                 if (compareSelectedRuns.size == 1) "Tap 1 more $reqMode test to compare!" else "Tap to view detailed side-by-side analysis",
-                                style = TextStyle(color = Color.Black.copy(alpha = 0.7f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                style = TextStyle(color = Forge.bg.copy(alpha = 0.7f), fontSize = 9.sp, fontFamily = InstrumentMono)
                             )
                         }
                     }
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.2f))
+                            .background(Forge.bg.copy(alpha = 0.2f))
                             .clickable { compareSelectedRuns = emptyList() }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text("CLEAR", style = TextStyle(color = Color.Black, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                        Text("CLEAR", style = TextStyle(color = Forge.bg, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                     }
                 }
             }
@@ -403,32 +418,32 @@ private fun PendingResultRow(
         else -> "30 MIN"
     }
     val threadText = if (pending.testThreadingType == 0) "1 THREAD" else "MULTI"
-    val threadColor = if (pending.testThreadingType == 0) Color(0xFFFF9500) else Color(0xFF33CC66)
+    val threadColor = if (pending.testThreadingType == 0) Ramp.at(0.62f) else Forge.phaseMeasured
 
     Column(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFF2C94C).copy(alpha = 0.06f))
-            .border(1.dp, Color(0xFFF2C94C).copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+            .background(Ramp.at(0.5f).copy(alpha = 0.06f))
+            .border(1.dp, Ramp.at(0.5f).copy(alpha = 0.2f), RoundedCornerShape(16.dp))
             .padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("OFFLINE RUN", style = TextStyle(color = Color(0xFFF2C94C), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
-                    Text("•", color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp)
-                    Text(durationText, style = TextStyle(color = Color.White.copy(alpha = 0.6f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
-                    Text("•", color = Color.White.copy(alpha = 0.3f), fontSize = 9.sp)
-                    Text(threadText, style = TextStyle(color = threadColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                    Text("OFFLINE RUN", style = TextStyle(color = Ramp.at(0.5f), fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                    Text("•", color = Forge.ink0.copy(alpha = 0.3f), fontSize = 9.sp)
+                    Text(durationText, style = TextStyle(color = Forge.ink0.copy(alpha = 0.6f), fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                    Text("•", color = Forge.ink0.copy(alpha = 0.3f), fontSize = 9.sp)
+                    Text(threadText, style = TextStyle(color = threadColor, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                 }
                 Spacer(Modifier.height(2.dp))
-                Text("${pending.deviceManufacturer} ${pending.deviceModel}", style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                Text("${pending.deviceManufacturer} ${pending.deviceModel}", style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
             }
 
             Column(horizontalAlignment = Alignment.End) {
-                Text("%.1f%%".format(pending.finalStability), style = TextStyle(color = stabilityColor(pending.finalStability), fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
-                Text("STABILITY", style = TextStyle(color = Color.White.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = FontFamily.Monospace))
+                Text("%.1f%%".format(pending.finalStability), style = TextStyle(color = stabilityColor(pending.finalStability), fontSize = 14.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                Text("STABILITY", style = TextStyle(color = Forge.ink0.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = InstrumentMono))
             }
         }
 
@@ -438,32 +453,32 @@ private fun PendingResultRow(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.08f))
-                    .border(1.dp, if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .background(if (isCompareSelected) Forge.phaseMeasured else Forge.ink0.copy(alpha = 0.08f))
+                    .border(1.dp, if (isCompareSelected) Forge.phaseMeasured else Forge.ink0.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                     .clickable(onClick = onToggleCompare)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 Text(
                     if (isCompareSelected) "✓" else "⚖️",
-                    style = TextStyle(color = if (isCompareSelected) Color.Black else Color(0xFF00E5FF), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = if (isCompareSelected) Forge.bg else Forge.phaseMeasured, fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)
                 )
             }
 
             if (isNetworkConnected) {
                 if (isUploading) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(14.dp), color = Color(0xFF4A9EFF), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(14.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)
                         Spacer(Modifier.width(6.dp))
-                        Text("UPLOADING...", style = TextStyle(color = Color(0xFF4A9EFF), fontSize = 9.sp, fontFamily = FontFamily.Monospace))
+                        Text("UPLOADING...", style = TextStyle(color = Forge.phasePreFlight, fontSize = 9.sp, fontFamily = InstrumentMono))
                     }
                 } else {
-                    Button(onClick = onSubmit, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A9EFF))) {
-                        Text("SUBMIT", style = TextStyle(color = Color.White, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                    Button(onClick = onSubmit, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Forge.phasePreFlight)) {
+                        Text("SUBMIT", style = TextStyle(color = Forge.ink0, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                     }
                 }
             }
             Spacer(Modifier.weight(1f))
-            Text("DELETE", modifier = Modifier.clickable(onClick = onDelete).padding(4.dp), style = TextStyle(color = Color(0xFFEB5757), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+            Text("DELETE", modifier = Modifier.clickable(onClick = onDelete).padding(4.dp), style = TextStyle(color = Ramp.at(0.85f), fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
         }
     }
 }
@@ -477,14 +492,14 @@ private fun LeaderboardItemRow(
 ) {
     val entry = item.entry
     val threadText = if ((entry.testThreadingType ?: 1) == 0) "1 THREAD" else "MULTI"
-    val threadColor = if ((entry.testThreadingType ?: 1) == 0) Color(0xFFFF9500) else Color(0xFF33CC66)
+    val threadColor = if ((entry.testThreadingType ?: 1) == 0) Ramp.at(0.62f) else Forge.phaseMeasured
 
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF141414))
-            .border(1.dp, if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+            .background(Forge.surface)
+            .border(1.dp, if (isCompareSelected) Forge.phaseMeasured else Forge.ink0.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -494,14 +509,14 @@ private fun LeaderboardItemRow(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.05f))
-                .border(1.dp, if (isCompareSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                .background(if (isCompareSelected) Forge.phaseMeasured else Forge.ink0.copy(alpha = 0.05f))
+                .border(1.dp, if (isCompareSelected) Forge.phaseMeasured else Forge.ink0.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                 .clickable(onClick = onToggleCompare)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             Text(
                 if (isCompareSelected) "✓" else "⚖️",
-                style = TextStyle(color = if (isCompareSelected) Color.Black else Color(0xFF00E5FF), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = if (isCompareSelected) Forge.bg else Forge.phaseMeasured, fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)
             )
         }
 
@@ -509,20 +524,20 @@ private fun LeaderboardItemRow(
         Box(contentAlignment = Alignment.Center) {
             when (item.rank) {
                 1 -> {
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFFFD700), Color(0xFFB8860B)))))
-                    Text("1", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Ramp.at(1f), Ramp.at(0.68f)))))
+                    Text("1", style = TextStyle(color = Forge.bg, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                 }
                 2 -> {
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFC0C0C0), Color(0xFF708090)))))
-                    Text("2", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Forge.ink1, Forge.ink2))))
+                    Text("2", style = TextStyle(color = Forge.bg, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                 }
                 3 -> {
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFCC7A47), Color(0xFF995733)))))
-                    Text("3", style = TextStyle(color = Color.Black, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Ramp.at(0.62f), Ramp.at(0.85f)))))
+                    Text("3", style = TextStyle(color = Forge.bg, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                 }
                 else -> {
-                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.04f)), contentAlignment = Alignment.Center) {
-                        Text("#${item.rank}", style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Forge.ink0.copy(alpha = 0.04f)), contentAlignment = Alignment.Center) {
+                        Text("#${item.rank}", style = TextStyle(color = Forge.ink0.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                     }
                 }
             }
@@ -535,21 +550,21 @@ private fun LeaderboardItemRow(
             } else {
                 "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
             }
-            Text(fullModelName, style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), maxLines = 1)
+            Text(fullModelName, style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold), maxLines = 1)
             Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(entry.deviceManufacturer, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
-                Box(Modifier.size(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
-                Text("${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace))
-                Box(Modifier.size(2.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
-                Text(threadText, style = TextStyle(color = threadColor, fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                Text(entry.deviceManufacturer, style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
+                Box(Modifier.size(2.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.15f)))
+                Text("${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
+                Box(Modifier.size(2.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.15f)))
+                Text(threadText, style = TextStyle(color = threadColor, fontSize = 8.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
             }
         }
 
         // Stability score
         Column(horizontalAlignment = Alignment.End) {
-            Text("%.1f%%".format(item.stability), style = TextStyle(color = stabilityColor(item.stability.toFloat()), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
-            Text("STABILITY", style = TextStyle(color = Color.White.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = FontFamily.Monospace))
+            Text("%.1f%%".format(item.stability), style = TextStyle(color = stabilityColor(item.stability.toFloat()), fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+            Text("STABILITY", style = TextStyle(color = Forge.ink0.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = InstrumentMono))
         }
     }
 }
@@ -563,14 +578,14 @@ private fun DetailOverlay(
     onDismiss: () -> Unit,
     onRetry: () -> Unit
 ) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Forge.bg.copy(alpha = 0.85f)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
         Column(
             Modifier
                 .fillMaxWidth(0.92f)
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFF1A1A1A))
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
+                .background(Forge.raised)
+                .border(1.dp, Forge.ink0.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
                 .clickable(enabled = false) {}
                 .padding(24.dp)
         ) {
@@ -581,34 +596,34 @@ private fun DetailOverlay(
                     } else {
                         "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
                     }
-                    Text(fullModelName, style = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
-                    Text("${entry.deviceManufacturer} • ${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace))
+                    Text(fullModelName, style = TextStyle(color = Forge.ink0, fontSize = 16.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                    Text("${entry.deviceManufacturer} • ${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
                 }
                 Box(
-                    Modifier.size(32.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f)).clickable(onClick = onDismiss),
+                    Modifier.size(32.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.08f)).clickable(onClick = onDismiss),
                     contentAlignment = Alignment.Center
-                ) { Text("✕", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black) }
+                ) { Text("✕", color = Forge.ink0, fontSize = 12.sp, fontWeight = FontWeight.Black) }
             }
-            HorizontalDivider(Modifier.padding(vertical = 16.dp), color = Color.White.copy(alpha = 0.1f))
+            HorizontalDivider(Modifier.padding(vertical = 16.dp), color = Forge.ink0.copy(alpha = 0.1f))
 
             when {
                 isLoading -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(Modifier.size(32.dp), color = Color(0xFF4A9EFF), strokeWidth = 3.dp)
+                        CircularProgressIndicator(Modifier.size(32.dp), color = Forge.phasePreFlight, strokeWidth = 3.dp)
                         Spacer(Modifier.height(12.dp))
-                        Text("LOADING STAMP DATA...", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace))
+                        Text("LOADING STAMP DATA...", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
                     }
                 }
                 error != null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("⚠", fontSize = 32.sp, color = Color(0xFFF2994A))
+                        Text("⚠", fontSize = 32.sp, color = Ramp.at(0.5f))
                         Spacer(Modifier.height(8.dp))
-                        Text("FAILED TO LOAD STAMPS", style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                        Text("FAILED TO LOAD STAMPS", style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                         Spacer(Modifier.height(4.dp))
-                        Text(error, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center))
+                        Text(error, style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, textAlign = TextAlign.Center))
                         Spacer(Modifier.height(12.dp))
-                        Button(onClick = onRetry, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.White)) {
-                            Text("RETRY", style = TextStyle(color = Color.Black, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                        Button(onClick = onRetry, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Forge.ink0)) {
+                            Text("RETRY", style = TextStyle(color = Forge.bg, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                         }
                     }
                 }
@@ -621,7 +636,7 @@ private fun DetailOverlay(
 
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                         Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.03f)).padding(14.dp),
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Forge.ink0.copy(alpha = 0.03f)).padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             SummaryRow("TEST TYPE", when (entry.type) { 0 -> "5 MIN"; 1 -> "15 MIN"; else -> "30 MIN" })
@@ -631,7 +646,7 @@ private fun DetailOverlay(
                             SummaryRow("SAMPLES RECORDED", stamps.size.toString())
                         }
                         Spacer(Modifier.height(16.dp))
-                        Text("PERFORMANCE CURVE", style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+                        Text("PERFORMANCE CURVE", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                         Spacer(Modifier.height(8.dp))
                         StabilityChart(points = chartPts, events = emptyList())
                     }
@@ -646,17 +661,17 @@ fun CustomFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) Color(0xFFF2C94C).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.04f))
-            .border(1.dp, if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+            .background(if (selected) Ramp.at(0.5f).copy(alpha = 0.2f) else Forge.ink0.copy(alpha = 0.04f))
+            .border(1.dp, if (selected) Ramp.at(0.5f) else Forge.ink0.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
             label,
             style = TextStyle(
-                color = if (selected) Color(0xFFF2C94C) else Color.White.copy(alpha = 0.6f),
+                color = if (selected) Ramp.at(0.5f) else Forge.ink0.copy(alpha = 0.6f),
                 fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = InstrumentMono,
                 fontWeight = FontWeight.Bold
             )
         )

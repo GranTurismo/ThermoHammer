@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -21,9 +22,14 @@ import com.example.thermohammer.engine.*
 import com.example.thermohammer.network.ApiClient
 import com.example.thermohammer.network.HammerPayload
 import com.example.thermohammer.network.ThermoHasher
+import com.example.thermohammer.network.toWire
 import com.example.thermohammer.ui.components.*
 import com.example.thermohammer.ui.overlays.*
+import com.example.thermohammer.ui.theme.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -136,9 +142,9 @@ fun DiagnosticsScreen(
                                 TestDuration.MINUTES_15 -> 1
                                 TestDuration.MINUTES_30 -> 2
                             }
-                            val hash = ThermoHasher.computeHash(state.encryptionKey!!, stamps)
+                            val hash = ThermoHasher.computeHash(state.encryptionKey!!, stamps.toWire())
                             val payload = HammerPayload(
-                                stamps = stamps,
+                                stamps = stamps.toWire(),
                                 type = durationType,
                                 testThreadingType = state.testThreadingType.value,
                                 deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
@@ -237,25 +243,31 @@ private fun ScrollableContent(
 
 @Composable
 internal fun AppHeader(state: StressState, isNetworkConnected: Boolean) {
+    val thermalCol = thermalStateColor(state.currentThermalState)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("⌖", color = Forge.phaseMeasured, fontSize = 15.sp, fontWeight = FontWeight.Black)
                 Text(
                     "THERMOHAMMER",
                     style = TextStyle(
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp
+                        color = Forge.ink0,
+                        fontSize = 16.sp,
+                        fontFamily = DisplayFont,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 3.sp
                     )
                 )
                 // Online/Offline pill
                 Row(
                     Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color.White.copy(alpha = 0.04f))
-                        .border(1.dp, if (isNetworkConnected) Color(0xFF33CC66).copy(alpha = 0.15f) else Color(0xFFF2C94C).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                        .background(Forge.surface)
+                        .border(
+                            1.dp,
+                            (if (isNetworkConnected) Forge.phaseMeasured else Ramp.at(0.5f)).copy(alpha = 0.25f),
+                            RoundedCornerShape(6.dp)
+                        )
                         .padding(horizontal = 6.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -264,56 +276,60 @@ internal fun AppHeader(state: StressState, isNetworkConnected: Boolean) {
                         Modifier
                             .size(5.dp)
                             .clip(CircleShape)
-                            .background(if (isNetworkConnected) Color(0xFF33CC66) else Color(0xFFF2C94C))
+                            .background(if (isNetworkConnected) Forge.phaseMeasured else Ramp.at(0.5f))
                     )
                     Text(
                         if (isNetworkConnected) "ONLINE" else "OFFLINE",
-                        style = TextStyle(
-                            color = if (isNetworkConnected) Color(0xFF33CC66) else Color(0xFFF2C94C),
-                            fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black
-                        )
+                        style = ThermoType.label(7f, if (isNetworkConnected) Forge.phaseMeasured else Ramp.at(0.5f))
                     )
                 }
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                "Android CPU Stress & Throttling Diagnostic",
-                style = TextStyle(
-                    color = if (state.isRunning) Color(0xFFF2994A) else Color.White.copy(alpha = 0.4f),
-                    fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
-                )
+                "cpu stress & thermal-efficiency instrument",
+                style = ThermoType.annotation(8f, if (state.isRunning) phaseColor(state.phase) else Forge.ink2)
             )
         }
-        // Pulsing red dot when running
-        if (state.isRunning) {
-            val pulseAnim = rememberInfiniteTransition(label = "pulse")
-            val scale by pulseAnim.animateFloat(1f, 2.5f, infiniteRepeatable(tween(1200, easing = LinearOutSlowInEasing), RepeatMode.Restart), label = "pulse_scale")
-            Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(8.dp).scale(scale).clip(CircleShape).background(Color(0xFFEB5757).copy(alpha = 0.3f)))
-                Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFEB5757)))
+        // Live thermal status chip — the instrument's always-on readout
+        Column(horizontalAlignment = Alignment.End) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(thermalCol))
+                Text(
+                    thermalStateName(state.currentThermalState),
+                    style = ThermoType.label(9f, thermalCol)
+                )
             }
+            Spacer(Modifier.height(3.dp))
+            TickerText(
+                value = state.cpuTemp,
+                format = { if (it > 0f) "%.1f°C".format(it) else "--°C" },
+                color = if (state.cpuTemp > 0f) Ramp.forTemp(state.cpuTemp) else Forge.ink2,
+                size = 11f
+            )
         }
     }
 }
 
 @Composable
 internal fun StatsPanel(state: StressState) {
-    val thermalColor = com.example.thermohammer.ui.components.thermalColor(state.currentThermalState)
-    val thermalName = com.example.thermohammer.ui.components.thermalName(state.currentThermalState)
+    val thermalCol = thermalStateColor(state.currentThermalState)
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            val displaySeconds = if (state.isRunning) {
-                val totalSeconds = state.testDuration.seconds ?: 300
-                maxOf(0, totalSeconds - state.elapsedSeconds)
-            } else {
-                state.elapsedSeconds
+            val durationText = when {
+                !state.isRunning -> "%02d:%02d".format(state.elapsedSeconds / 60, state.elapsedSeconds % 60)
+                state.phase == RunPhase.MEASURED -> {
+                    val totalSeconds = state.testDuration.seconds ?: 300
+                    val remaining = maxOf(0, totalSeconds - state.elapsedSeconds)
+                    "%02d:%02d".format(remaining / 60, remaining % 60)
+                }
+                else -> state.phase.displayName
             }
-            StatCard(title = "TEST DURATION", value = "%02d:%02d".format(displaySeconds / 60, displaySeconds % 60), modifier = Modifier.weight(1f))
+            StatCard(title = "TEST TIME", value = durationText, modifier = Modifier.weight(1f))
             StatCard(
-                title = "STABILITY SCORE",
+                title = "DELIVERED",
                 value = "%.0f%%".format(state.overallStability),
-                valueColor = stabilityColor(state.overallStability),
+                valueColor = Ramp.forCapacity(state.overallStability),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -321,42 +337,40 @@ internal fun StatsPanel(state: StressState) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.03f))
-                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(Forge.raised)
+                .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("🌡 ", fontSize = 14.sp, color = thermalColor)
-            Text("THERMAL STATE: $thermalName", style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+            Box(Modifier.size(8.dp).clip(CircleShape).background(thermalCol))
+            Spacer(Modifier.width(10.dp))
+            Text("THERMAL: ${thermalStateName(state.currentThermalState)}", style = ThermoType.data(11f, Forge.ink0, FontWeight.Bold))
             Spacer(Modifier.weight(1f))
             Text(
-                if (state.isRunning) "STRESS ACTIVE" else "STRESS INACTIVE",
+                if (state.isRunning) state.phase.displayName else "STANDBY",
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(if (state.isRunning) Color(0xFFF2994A).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.06f))
+                    .background(phaseColor(state.phase).copy(alpha = if (state.isRunning) 0.18f else 0.08f))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
-                style = TextStyle(
-                    color = if (state.isRunning) Color(0xFFF2994A) else Color.White.copy(alpha = 0.4f),
-                    fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black
-                )
+                style = ThermoType.label(8f, if (state.isRunning) phaseColor(state.phase) else Forge.ink2)
             )
         }
     }
 }
 
 @Composable
-internal fun StatCard(title: String, value: String, modifier: Modifier = Modifier, valueColor: Color = Color.White) {
+internal fun StatCard(title: String, value: String, modifier: Modifier = Modifier, valueColor: Color = Forge.ink0) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.03f))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(Forge.raised)
+            .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
             .padding(14.dp)
     ) {
-        Text(title, style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+        Text(title, style = ThermoType.label(8.5f))
         Spacer(Modifier.height(6.dp))
-        Text(value, style = TextStyle(color = valueColor, fontSize = 22.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+        Text(value, style = ThermoType.data(20f, valueColor, FontWeight.Bold))
     }
 }
 
@@ -376,16 +390,16 @@ fun DurationPicker(
     Column(modifier = modifier) {
         Text(
             "TARGET DURATION",
-            style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
         )
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.02f))
-                .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(18.dp))
-                .padding(12.dp),
+                .clip(RoundedCornerShape(14.dp))
+                .background(Forge.surface)
+                .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
+                .padding(10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             listOf(TestDuration.MINUTES_5, TestDuration.MINUTES_15, TestDuration.MINUTES_30).forEach { duration ->
@@ -393,9 +407,9 @@ fun DurationPicker(
                 Box(
                     Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.05f))
-                        .border(1.dp, if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) Forge.phaseMeasured else Forge.raised)
+                        .border(1.dp, if (isSelected) Color.Transparent else Forge.hairline, RoundedCornerShape(10.dp))
                         .clickable { onSelect(duration) }
                         .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
@@ -403,8 +417,8 @@ fun DurationPicker(
                     Text(
                         duration.displayName,
                         style = TextStyle(
-                            color = if (isSelected) Color.Black else Color.White,
-                            fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
+                            color = if (isSelected) Forge.bg else Forge.ink0,
+                            fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold
                         )
                     )
                 }
@@ -422,16 +436,16 @@ fun ThreadingPicker(
     Column(modifier = modifier) {
         Text(
             "THREADING MODE",
-            style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
         )
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.02f))
-                .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(18.dp))
-                .padding(12.dp),
+                .clip(RoundedCornerShape(14.dp))
+                .background(Forge.surface)
+                .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
+                .padding(10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             listOf(StressThreadingType.MULTI, StressThreadingType.SINGLE).forEach { type ->
@@ -439,48 +453,29 @@ fun ThreadingPicker(
                 Box(
                     Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.05f))
-                        .border(1.dp, if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) Forge.phaseMeasured else Forge.raised)
+                        .border(1.dp, if (isSelected) Color.Transparent else Forge.hairline, RoundedCornerShape(10.dp))
                         .clickable { onSelect(type) }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (type == StressThreadingType.MULTI) {
-                            Text(
-                                text = "RECOMMENDED",
-                                style = TextStyle(
-                                    color = if (isSelected) Color(0xFF1E602B) else Color(0xFF33CC66),
-                                    fontSize = 7.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Black
-                                ),
-                                modifier = Modifier
-                                    .padding(bottom = 3.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (isSelected) Color.Black.copy(alpha = 0.12f) else Color(0xFF33CC66).copy(alpha = 0.15f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        } else {
-                            Text(
-                                text = "RECOMMENDED",
-                                style = TextStyle(
-                                    color = Color.Transparent,
-                                    fontSize = 7.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Black
-                                ),
-                                modifier = Modifier
-                                    .padding(bottom = 3.dp)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        Text(
+                            text = if (type == StressThreadingType.MULTI) "RECOMMENDED" else " ",
+                            style = TextStyle(
+                                color = if (isSelected) Forge.bg.copy(alpha = 0.7f) else Forge.phaseMeasured.copy(alpha = 0.7f),
+                                fontSize = 7.sp,
+                                fontFamily = InstrumentMono,
+                                fontWeight = FontWeight.Black
+                            ),
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
                         Text(
                             type.displayName,
                             style = TextStyle(
-                                color = if (isSelected) Color.Black else Color.White,
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold
+                                color = if (isSelected) Forge.bg else Forge.ink0,
+                                fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold
                             )
                         )
                     }
@@ -493,25 +488,70 @@ fun ThreadingPicker(
 @Composable
 internal fun ControlButton(state: StressState, onStart: () -> Unit, onStop: () -> Unit) {
     val isRunning = state.isRunning
-    val gradient = if (isRunning)
-        Brush.verticalGradient(listOf(Color(0xFFD93025), Color(0xFFB71C1C)))
-    else
-        Brush.verticalGradient(listOf(Color(0xFF0D84FF), Color(0xFF005AC1)))
+    if (!isRunning) {
+        // INITIATE — ramp-teal edge-to-edge CTA
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Brush.horizontalGradient(listOf(Forge.phaseMeasured, Ramp.at(0.25f))))
+                .clickable(onClick = onStart)
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("▸", color = Forge.bg, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "INITIATE STRESS TEST",
+                    style = TextStyle(color = Forge.bg, fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                )
+            }
+        }
+        return
+    }
+
+    // HOLD TO STOP — press-and-hold ring prevents accidental kills mid-run
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val holdProgress = remember { Animatable(0f) }
+    var holdFired by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pressed) {
+        if (pressed && !holdFired) {
+            holdProgress.animateTo(
+                1f,
+                animationSpec = tween(600, easing = LinearEasing)
+            )
+            if (!holdFired) { holdFired = true; onStop() }
+        } else if (!pressed) {
+            holdProgress.snapTo(0f)
+            if (holdFired) holdFired = false
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(gradient)
-            .clickable { if (isRunning) onStop() else onStart() }
-            .padding(vertical = 16.dp),
+            .clip(RoundedCornerShape(14.dp))
+            .background(Forge.raised)
+            .border(1.dp, Ramp.at(0.85f).copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clickable(interactionSource = interactionSource, indication = null) {}
+            .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (isRunning) "◼" else "▶", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(18.dp)) {
+                    drawCircle(Ramp.at(0.85f).copy(alpha = 0.25f), style = Stroke(2.5f))
+                    drawArc(
+                        Ramp.at(0.85f), -90f, 360f * holdProgress.value, false,
+                        style = Stroke(2.5f, cap = StrokeCap.Round)
+                    )
+                }
+            }
             Text(
-                if (isRunning) "STOP STRESS TEST" else "INITIATE STRESS TEST",
-                style = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                if (pressed && !holdFired) "HOLDING…" else "HOLD TO ABORT",
+                style = TextStyle(color = Ramp.at(0.85f), fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
             )
         }
     }

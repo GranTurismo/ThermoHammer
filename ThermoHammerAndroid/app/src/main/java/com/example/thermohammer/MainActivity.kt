@@ -61,15 +61,15 @@ class MainActivity : ComponentActivity() {
 fun ThermoHammerTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            background = Color(0xFF0D0F14),
-            surface = Color(0xFF1A1A1A),
-            primary = Color(0xFF4A9EFF)
+            background = com.example.thermohammer.ui.theme.Forge.bg,
+            surface = com.example.thermohammer.ui.theme.Forge.surface,
+            primary = com.example.thermohammer.ui.theme.Forge.phaseMeasured
         ),
         content = {
             androidx.compose.foundation.layout.Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF0D0F14))
+                    .background(com.example.thermohammer.ui.theme.Forge.bg)
                     .systemBarsPadding()
             ) {
                 content()

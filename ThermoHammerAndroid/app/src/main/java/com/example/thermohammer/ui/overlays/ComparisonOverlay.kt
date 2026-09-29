@@ -25,10 +25,13 @@ import com.example.thermohammer.data.ComparisonEngine
 import com.example.thermohammer.data.PendingResultStore
 import com.example.thermohammer.data.PendingTestResult
 import com.example.thermohammer.engine.StabilityPoint
+import com.example.thermohammer.engine.StampV2
 import com.example.thermohammer.network.ApiClient
 import com.example.thermohammer.network.DeviceHammerStamp
 import com.example.thermohammer.network.HammerDto
+import com.example.thermohammer.network.toStampV2
 import com.example.thermohammer.ui.components.DualStabilityChart
+import com.example.thermohammer.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -48,7 +51,14 @@ fun HammerDto.toPendingTestResult(): PendingTestResult {
         minStability = stab,
         finalStability = stab,
         worstThermalState = 0,
-        stamps = stamps ?: emptyList(),
+        // Legacy wire stamps → minimal StampV2 (only throughput + time known)
+        stamps = (stamps ?: emptyList()).map { s ->
+            StampV2(
+                tNs = s.elapsedMs * 1_000_000L,
+                ipsTotal = s.score,
+                thermalStatus = s.thermalState
+            )
+        },
         deviceModel = deviceModel,
         deviceManufacturer = deviceManufacturer,
         osVersion = osVersion,
@@ -69,7 +79,7 @@ fun ComparisonOverlay(
 
     var onlineResults by remember { mutableStateOf<List<PendingTestResult>>(emptyList()) }
     var isLoadingOnline by remember { mutableStateOf(false) }
-    val fetchedStampsMap = remember { mutableStateMapOf<Int, List<DeviceHammerStamp>>() }
+    val fetchedStampsMap = remember { mutableStateMapOf<Int, List<StampV2>>() }
 
     LaunchedEffect(Unit) {
         try {
@@ -128,7 +138,7 @@ fun ComparisonOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.92f))
+            .background(Forge.bg.copy(alpha = 0.92f))
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
@@ -137,8 +147,8 @@ fun ComparisonOverlay(
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFF101216))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
+                .background(Forge.bg)
+                .border(1.dp, Forge.ink0.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
                 .clickable(enabled = false) {}
                 .padding(18.dp)
         ) {
@@ -152,23 +162,23 @@ fun ComparisonOverlay(
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "UNIVERSAL RUN COMPARISON",
-                        style = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = Forge.ink0, fontSize = 16.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "No matching test runs available to compare. Single Thread tests can only be compared with Single Thread tests, and Multi Thread with Multi Thread.",
-                        style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+                        style = TextStyle(color = Forge.ink0.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = InstrumentMono),
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(20.dp))
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.1f))
+                            .background(Forge.ink0.copy(alpha = 0.1f))
                             .clickable(onClick = onDismiss)
                             .padding(horizontal = 24.dp, vertical = 10.dp)
                     ) {
-                        Text("CLOSE", style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                        Text("CLOSE", style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                     }
                 }
             } else {
@@ -180,7 +190,7 @@ fun ComparisonOverlay(
                     if (rawRunA.stamps.isEmpty() && rawRunA.sessionId > 0 && !fetchedStampsMap.containsKey(rawRunA.sessionId)) {
                         try {
                             val stamps = ApiClient.api.fetchStamps(rawRunA.sessionId)
-                            fetchedStampsMap[rawRunA.sessionId] = stamps
+                            fetchedStampsMap[rawRunA.sessionId] = stamps.map { it.toStampV2() }
                         } catch (_: Exception) {}
                     }
                 }
@@ -190,7 +200,7 @@ fun ComparisonOverlay(
                     if (rawRunB.stamps.isEmpty() && rawRunB.sessionId > 0 && !fetchedStampsMap.containsKey(rawRunB.sessionId)) {
                         try {
                             val stamps = ApiClient.api.fetchStamps(rawRunB.sessionId)
-                            fetchedStampsMap[rawRunB.sessionId] = stamps
+                            fetchedStampsMap[rawRunB.sessionId] = stamps.map { it.toStampV2() }
                         } catch (_: Exception) {}
                     }
                 }
@@ -238,20 +248,20 @@ fun ComparisonOverlay(
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
                                     "⚖️ COMPARISON ENGINE",
-                                    style = TextStyle(color = Color.White, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black)
+                                    style = TextStyle(color = Forge.ink0, fontSize = 16.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
                                 )
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF00E5FF).copy(alpha = 0.15f))
+                                        .background(Forge.phaseMeasured.copy(alpha = 0.15f))
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
-                                    Text(modeText, style = TextStyle(color = Color(0xFF00E5FF), fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                                    Text(modeText, style = TextStyle(color = Forge.phaseMeasured, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                                 }
                             }
                             Text(
                                 "Side-by-side benchmark comparison",
-                                style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = InstrumentMono)
                             )
                         }
 
@@ -259,11 +269,11 @@ fun ComparisonOverlay(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.08f))
+                                .background(Forge.ink0.copy(alpha = 0.08f))
                                 .clickable(onClick = onDismiss),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✕", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                            Text("✕", color = Forge.ink0, fontSize = 12.sp, fontWeight = FontWeight.Black)
                         }
                     }
 
@@ -271,7 +281,7 @@ fun ComparisonOverlay(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         RunSpinnerDropdown(
                             label = "RUN A",
-                            accentColor = Color(0xFF00E5FF),
+                            accentColor = Forge.phaseMeasured,
                             selectedIndex = selectedIndexA,
                             runs = allComparableRuns,
                             onSelectIndex = { selectedIndexA = it },
@@ -281,7 +291,7 @@ fun ComparisonOverlay(
 
                         RunSpinnerDropdown(
                             label = "RUN B",
-                            accentColor = Color(0xFFFFAB00),
+                            accentColor = Forge.phaseCalibration,
                             selectedIndex = selectedIndexB,
                             runs = allComparableRuns,
                             onSelectIndex = { selectedIndexB = it },
@@ -303,12 +313,12 @@ fun ComparisonOverlay(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFF14161B))
-                            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
+                            .background(Forge.surface)
+                            .border(1.dp, Forge.ink0.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text("⚡ DIAGNOSTIC METRICS COMPARISON", style = TextStyle(color = Color.White.copy(alpha = 0.5f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold))
+                        Text("⚡ DIAGNOSTIC METRICS COMPARISON", style = TextStyle(color = Forge.ink0.copy(alpha = 0.5f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             MetricCompareCard(
@@ -352,23 +362,23 @@ fun ComparisonOverlay(
                             .clip(RoundedCornerShape(20.dp))
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF14161B), Color(0xFF19202E))
+                                    listOf(Forge.surface, Forge.raised)
                                 )
                             )
-                            .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                            .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
                             .padding(16.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("🤖", fontSize = 16.sp)
                             Text(
                                 "ANALYTICAL ENGINE INSIGHTS",
-                                style = TextStyle(color = Color(0xFF00E5FF), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                style = TextStyle(color = Forge.phaseMeasured, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)
                             )
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
                             analysis.summaryText,
-                            style = TextStyle(color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp, lineHeight = 16.sp)
+                            style = TextStyle(color = Forge.ink0.copy(alpha = 0.9f), fontSize = 11.sp, lineHeight = 16.sp)
                         )
                     }
 
@@ -404,7 +414,7 @@ private fun RunSpinnerDropdown(
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(label, style = TextStyle(color = accentColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black))
+            Text(label, style = TextStyle(color = accentColor, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
             if (isLoadingStamps) {
                 CircularProgressIndicator(Modifier.size(10.dp), color = accentColor, strokeWidth = 1.5.dp)
             }
@@ -416,8 +426,8 @@ private fun RunSpinnerDropdown(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+                    .background(Forge.ink0.copy(alpha = 0.06f))
+                    .border(1.dp, Forge.ink0.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                     .clickable { expanded = true }
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -426,12 +436,12 @@ private fun RunSpinnerDropdown(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = currentRun?.let { "${it.deviceManufacturer} ${it.deviceModel}" } ?: "Select Device",
-                        style = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                        style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
                         maxLines = 1
                     )
                     Text(
                         text = if (currentRun?.id?.startsWith("online_") == true) "Global Leaderboard" else "Local Run",
-                        style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                        style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono)
                     )
                 }
                 Spacer(Modifier.width(4.dp))
@@ -442,7 +452,7 @@ private fun RunSpinnerDropdown(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
                 modifier = Modifier
-                    .background(Color(0xFF1A1D24))
+                    .background(Forge.raised)
                     .border(1.dp, accentColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
             ) {
                 runs.forEachIndexed { idx, item ->
@@ -453,15 +463,15 @@ private fun RunSpinnerDropdown(
                                 Text(
                                     if (isOnline) "🌐 ${item.deviceManufacturer} ${item.deviceModel}" else "📱 ${item.deviceManufacturer} ${item.deviceModel}",
                                     style = TextStyle(
-                                        color = if (idx == selectedIndex) accentColor else Color.White,
+                                        color = if (idx == selectedIndex) accentColor else Forge.ink0,
                                         fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = InstrumentMono,
                                         fontWeight = if (idx == selectedIndex) FontWeight.Bold else FontWeight.Normal
                                     )
                                 )
                                 Text(
                                     "Stability: %.1f%%".format(Locale.US, item.finalStability),
-                                    style = TextStyle(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = InstrumentMono)
                                 )
                             }
                         },
@@ -484,10 +494,10 @@ private fun MetricCompareCard(
     deltaText: String?,
     modifier: Modifier = Modifier
 ) {
-    val cyan  = Color(0xFF00E5FF)
-    val amber = Color(0xFFFFAB00)
-    val green = Color(0xFF4CAF50)
-    val red   = Color(0xFFEF5350)
+    val cyan  = Forge.phaseMeasured
+    val amber = Forge.phaseCalibration
+    val green = Forge.phaseMeasured
+    val red   = Ramp.at(0.85f)
 
     val deltaColor = deltaText?.let { d ->
         if (d.startsWith("+")) green else red
@@ -496,8 +506,8 @@ private fun MetricCompareCard(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.03f))
-            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+            .background(Forge.ink0.copy(alpha = 0.03f))
+            .border(1.dp, Forge.ink0.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -505,9 +515,9 @@ private fun MetricCompareCard(
         Text(
             title,
             style = TextStyle(
-                color = Color.White.copy(alpha = 0.4f),
+                color = Forge.ink0.copy(alpha = 0.4f),
                 fontSize = 8.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = InstrumentMono,
                 fontWeight = FontWeight.Bold
             )
         )
@@ -516,11 +526,11 @@ private fun MetricCompareCard(
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 "RUN A",
-                style = TextStyle(color = cyan, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                style = TextStyle(color = cyan, fontSize = 7.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.SemiBold)
             )
             Text(
                 valA,
-                style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
                 maxLines = 1
             )
         }
@@ -530,7 +540,7 @@ private fun MetricCompareCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(Color.White.copy(alpha = 0.06f))
+                .background(Forge.ink0.copy(alpha = 0.06f))
         )
 
         // RUN B
@@ -541,7 +551,7 @@ private fun MetricCompareCard(
             ) {
                 Text(
                     "RUN B",
-                    style = TextStyle(color = amber, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                    style = TextStyle(color = amber, fontSize = 7.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.SemiBold)
                 )
                 if (deltaText != null && deltaColor != null) {
                     Box(
@@ -555,7 +565,7 @@ private fun MetricCompareCard(
                             style = TextStyle(
                                 color = deltaColor,
                                 fontSize = 7.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = InstrumentMono,
                                 fontWeight = FontWeight.Bold
                             )
                         )
@@ -564,7 +574,7 @@ private fun MetricCompareCard(
             }
             Text(
                 valB,
-                style = TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
                 maxLines = 1
             )
         }

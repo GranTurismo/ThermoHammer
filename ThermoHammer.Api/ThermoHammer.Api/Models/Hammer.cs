@@ -89,6 +89,13 @@ public static class HammerExtensions
             stability = (averageSecondHalf / maxScore) * 100;
         }
 
+        // Schema v2: client-computed delivered capacity (AUC vs calibrated baseline)
+        // is a fairer sustained-performance metric — prefer it when present.
+        if (request.DeliveredCapacity is > 0 and <= 150)
+        {
+            stability = request.DeliveredCapacity.Value;
+        }
+
         var threadType = StressThreadingType.Multi;
 
         if (request is HammerRequest hammerRequest)
@@ -135,4 +142,17 @@ public class HammerRequestBase
     public required string OsVersion { get; set; }
     public int SessionId { get; set; }
     public required string Hash { get; set; }
+
+    // ── Schema v2 — additive optional fields; null for legacy clients ──
+    public int? SchemaVersion { get; set; }
+    public long? BaselineScore { get; set; }
+    public double? DeliveredCapacity { get; set; }
+    public double? SustainedRatio { get; set; }
+    public int? ThrottleOnsetSec { get; set; }
+    public int? Confidence { get; set; }
+    public int? ValidityFlags { get; set; }
+    public string? SocModel { get; set; }
+    public string? ClusterTopology { get; set; }
+    public string? Governor { get; set; }
+    public string? HashV2 { get; set; }
 }

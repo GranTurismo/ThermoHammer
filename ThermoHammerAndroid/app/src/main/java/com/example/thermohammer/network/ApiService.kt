@@ -1,5 +1,6 @@
 package com.example.thermohammer.network
 
+import com.example.thermohammer.engine.StampV2
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -27,8 +28,30 @@ data class HammerPayload(
     @SerializedName("testThreadingType") val testThreadingType: Int = 1, // 0 = Single, 1 = Multi
     @SerializedName("osVersion") val osVersion: String,
     @SerializedName("sessionId") val sessionId: Int,
-    @SerializedName("hash") val hash: String
+    @SerializedName("hash") val hash: String,
+    // ── Schema v2 — additive optional fields; absent on legacy clients ──
+    @SerializedName("schemaVersion") val schemaVersion: Int? = null,
+    @SerializedName("baselineScore") val baselineScore: Long? = null,      // calibration p95 IPS
+    @SerializedName("deliveredCapacity") val deliveredCapacity: Double? = null, // AUC % — leaderboard metric
+    @SerializedName("sustainedRatio") val sustainedRatio: Double? = null,
+    @SerializedName("throttleOnsetSec") val throttleOnsetSec: Int? = null,
+    @SerializedName("confidence") val confidence: Int? = null,
+    @SerializedName("validityFlags") val validityFlags: Int? = null,       // 0 = verified run
+    @SerializedName("socModel") val socModel: String? = null,
+    @SerializedName("clusterTopology") val clusterTopology: String? = null,
+    @SerializedName("governor") val governor: String? = null,
+    @SerializedName("hashV2") val hashV2: String? = null                   // hash over stamps + metadata
 )
+
+/** Convert a StampV2 (recorded truth) to the wire stamp the server hashes/stores. */
+fun StampV2.toWire(): DeviceHammerStamp =
+    DeviceHammerStamp(elapsedMs = elapsedMs, score = score, thermalState = thermalState)
+
+fun List<StampV2>.toWire(): List<DeviceHammerStamp> = map { it.toWire() }
+
+/** Convert a fetched wire stamp back into a minimal StampV2 for analysis/comparison. */
+fun DeviceHammerStamp.toStampV2(): StampV2 =
+    StampV2(tNs = elapsedMs * 1_000_000L, ipsTotal = score, thermalStatus = thermalState)
 
 data class SessionResponse(
     @SerializedName("id") val id: Int,

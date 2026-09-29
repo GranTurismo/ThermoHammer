@@ -1,0 +1,42 @@
+{
+  "id": 1042,
+  "name": "Nino Beridze",
+  "email": "nino.beridze@example.com",
+  "isActive": true,
+  "isDeleted": false,
+  "balance": 1523.75,
+  "rating": -4.5,
+  "score": 1.25e3,
+  "middleName": null,
+  "note": "Line one\nLine \"two\" with a tab\t and a backslash \\ and caf\u00e9",
+  "tags": ["premium", "verified", "beta-tester"],
+  "loginCounts": [3, 0, 12, 7],
+  "address": {
+    "street": "12 Rustaveli Ave",
+    "city": "Tbilisi",
+    "postalCode": "0108",
+    "coordinates": {
+      "lat": 41.6938,
+      "lng": 44.8015
+    }
+  },
+  "orders": [
+    {
+      "orderId": "ORD-001",
+      "amount": 250.0,
+      "items": ["book", "pen"],
+      "shipped": true,
+      "deliveredAt": null
+    },
+    {
+      "orderId": "ORD-002",
+      "amount": 99.99,
+      "items": [],
+      "shipped": false,
+      "deliveredAt": "2026-08-30T14:22:00Z"
+    }
+  ],
+  "matrix": [[1, 2, 3], [4, 5, 6]],
+  "metadata": {},
+  "legacyCode": "XY-99"
+}
