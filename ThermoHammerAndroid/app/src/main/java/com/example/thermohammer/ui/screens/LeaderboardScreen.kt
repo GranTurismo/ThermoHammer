@@ -1,6 +1,9 @@
 package com.example.thermohammer.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -365,33 +368,47 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
             }
         }
 
-        // Detail Overlay
-        selectedEntry?.let { entry ->
-            DetailOverlay(
-                entry = entry,
-                stamps = detailedStamps,
-                isLoading = stampsLoading,
-                error = stampsError,
-                onDismiss = { selectedEntry = null },
-                onRetry = {
-                    stampsLoading = true; stampsError = null
-                    coroutineScope.launch {
-                        try {
-                            detailedStamps = ApiClient.api.fetchStamps(entry.id)
-                        } catch (e: Exception) {
-                            stampsError = e.message ?: "Failed to load stamps"
+        // Detail Overlay — record card rises in with a soft settle
+        androidx.compose.animation.AnimatedVisibility(
+            visible = selectedEntry != null,
+            enter = fadeIn(tween(240)) +
+                    slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 } +
+                    scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
+            exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.97f)
+        ) {
+            selectedEntry?.let { entry ->
+                DetailOverlay(
+                    entry = entry,
+                    stamps = detailedStamps,
+                    isLoading = stampsLoading,
+                    error = stampsError,
+                    onDismiss = { selectedEntry = null },
+                    onRetry = {
+                        stampsLoading = true; stampsError = null
+                        coroutineScope.launch {
+                            try {
+                                detailedStamps = ApiClient.api.fetchStamps(entry.id)
+                            } catch (e: Exception) {
+                                stampsError = e.message ?: "Failed to load stamps"
+                            }
+                            stampsLoading = false
                         }
-                        stampsLoading = false
                     }
-                }
-            )
+                )
+            }
         }
 
         // Auto Comparison Overlay
-        if (showAutoCompareOverlay && compareSelectedRuns.size >= 2) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showAutoCompareOverlay && compareSelectedRuns.size >= 2,
+            enter = fadeIn(tween(240)) +
+                    slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 } +
+                    scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
+            exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.97f)
+        ) {
             ComparisonOverlay(
-                preselectedRunA = compareSelectedRuns[0],
-                preselectedRunB = compareSelectedRuns[1],
+                preselectedRunA = compareSelectedRuns.getOrNull(0),
+                preselectedRunB = compareSelectedRuns.getOrNull(1),
                 onDismiss = {
                     showAutoCompareOverlay = false
                     compareSelectedRuns = emptyList()
