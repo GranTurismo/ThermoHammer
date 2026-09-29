@@ -87,7 +87,11 @@ fun MainScreen() {
                     }
                 }
             }
-            if (!state.isRunning) {
+            AnimatedVisibility(
+                visible = !state.isRunning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
                 BottomTabBar(selectedTab = selectedTab, onTabSelected = { selectedTab = it })
             }
         }
@@ -366,12 +370,22 @@ private fun DiagnosticsScreenWrapper(
                 CooldownChip(state)
             }
 
-            if (pendingCount > 0 && !state.isRunning) {
+            AnimatedVisibility(
+                visible = pendingCount > 0 && !state.isRunning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
                 PendingRunsBanner(pendingCount, onNavigateToLeaderboard)
             }
-            if (!state.isRunning) {
-                DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
-                ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
+            AnimatedVisibility(
+                visible = !state.isRunning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
+                    ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
+                }
             }
             ControlButton(
                 state,
@@ -389,7 +403,11 @@ private fun DiagnosticsScreenWrapper(
                 preRunIps = state.preRunIps,
                 preRunMarkIdx = state.calibrationMarkIdx
             )
-            if (state.coreImpacts.isNotEmpty()) {
+            AnimatedVisibility(
+                visible = state.coreImpacts.isNotEmpty(),
+                enter = fadeIn(tween(400)) + expandVertically(tween(400)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
                 CoreStatusView(
                     coreImpacts = state.coreImpacts,
                     cpuFrequencies = state.cpuFrequencies,

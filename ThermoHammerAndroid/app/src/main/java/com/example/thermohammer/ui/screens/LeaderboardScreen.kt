@@ -368,15 +368,21 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
             }
         }
 
-        // Detail Overlay — record card rises in with a soft settle
+        // Detail Overlay — record card rises in with a soft settle.
+        // lastDetailEntry keeps the card mounted through the exit animation —
+        // selectedEntry goes null instantly on dismiss, which would otherwise
+        // unmount the content before the exit transition can play.
+        var lastDetailEntry by remember { mutableStateOf<HammerDto?>(null) }
+        if (selectedEntry != null) lastDetailEntry = selectedEntry
         androidx.compose.animation.AnimatedVisibility(
             visible = selectedEntry != null,
             enter = fadeIn(tween(240)) +
                     slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 } +
                     scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
-            exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.97f)
+            exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 18 } +
+                   scaleOut(tween(200), targetScale = 0.96f)
         ) {
-            selectedEntry?.let { entry ->
+            lastDetailEntry?.let { entry ->
                 DetailOverlay(
                     entry = entry,
                     stamps = detailedStamps,
@@ -398,17 +404,20 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
             }
         }
 
-        // Auto Comparison Overlay
+        // Auto Comparison Overlay — same retained-content fix for exit
+        var lastCompareRuns by remember { mutableStateOf<List<PendingTestResult>>(emptyList()) }
+        if (compareSelectedRuns.size >= 2) lastCompareRuns = compareSelectedRuns
         androidx.compose.animation.AnimatedVisibility(
             visible = showAutoCompareOverlay && compareSelectedRuns.size >= 2,
             enter = fadeIn(tween(240)) +
                     slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 } +
                     scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.96f),
-            exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.97f)
+            exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 18 } +
+                   scaleOut(tween(200), targetScale = 0.96f)
         ) {
             ComparisonOverlay(
-                preselectedRunA = compareSelectedRuns.getOrNull(0),
-                preselectedRunB = compareSelectedRuns.getOrNull(1),
+                preselectedRunA = lastCompareRuns.getOrNull(0),
+                preselectedRunB = lastCompareRuns.getOrNull(1),
                 onDismiss = {
                     showAutoCompareOverlay = false
                     compareSelectedRuns = emptyList()
