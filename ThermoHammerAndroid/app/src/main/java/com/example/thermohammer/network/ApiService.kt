@@ -40,7 +40,13 @@ data class HammerPayload(
     @SerializedName("socModel") val socModel: String? = null,
     @SerializedName("clusterTopology") val clusterTopology: String? = null,
     @SerializedName("governor") val governor: String? = null,
-    @SerializedName("hashV2") val hashV2: String? = null                   // hash over stamps + metadata
+    @SerializedName("hashV2") val hashV2: String? = null,                  // hash over stamps + metadata
+    // ── GPU channel ──
+    @SerializedName("stressMode") val stressMode: Int? = null,             // 0=CPU 1=GPU 2=COMBINED
+    @SerializedName("gpuBaselineFps") val gpuBaselineFps: Double? = null,
+    @SerializedName("gpuDeliveredCapacity") val gpuDeliveredCapacity: Double? = null,
+    @SerializedName("gpuSustainedRatio") val gpuSustainedRatio: Double? = null,
+    @SerializedName("gpuName") val gpuName: String? = null
 )
 
 /** Convert a StampV2 (recorded truth) to the wire stamp the server hashes/stores. */

@@ -110,7 +110,13 @@ data class StressState(
         val cooldownTargetC: Float = 0f,
         val cooldownElapsedSec: Int = 0,
         val preRunIps: List<Double> = emptyList(),      // raw IPS per 250ms window — warmup+calibration
-        val calibrationMarkIdx: Int = 0                  // index in preRunIps where calibration began
+        val calibrationMarkIdx: Int = 0,                 // index in preRunIps where calibration began
+        val stressMode: StressMode = StressMode.CPU,
+        val gpuFps: Double = -1.0,                       // live GPU fps (−1 = channel off)
+        val gpuBaselineFps: Double = 0.0,
+        val gpuName: String = "",
+        val gpuActive: Boolean = false,                  // GPU renderer thread running
+        val preRunGpuFps: List<Double> = emptyList()     // ghost prefix for the GPU channel
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -141,7 +147,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         const val COOLDOWN_MAX_MS = 120_000L   // hard cap — flag & proceed beyond this
         const val COOLDOWN_STALL_MS = 30_000L  // plateau detection window
         const val COOLDOWN_STALL_DELTA = 0.5f  // <0.5°C improvement in window = plateaued
-        const val GATE_TEMP_HARD_C = 55f       // pre-flight still blocks above this
     }
 
     private val _state = MutableStateFlow(StressState())
@@ -229,6 +234,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     private var sessionJob: Job? = null
     private var workerThreads: List<Thread> = emptyList()
+    private val gpuBench = GpuBench()
+    private var gpuFramesPrev = 0L
 
     // ── Lifecycle (background cancel) ────────────────────────────────────────
 
@@ -243,12 +250,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     fun startTest(
             duration: TestDuration,
-            threadingType: StressThreadingType = StressThreadingType.MULTI
+            threadingType: StressThreadingType = StressThreadingType.MULTI,
+            mode: StressMode = StressMode.CPU
     ) {
         if (_state.value.isRunning) return
 
         activeThreadCount =
-            if (threadingType == StressThreadingType.SINGLE) 1 else coreCount
+            if (!mode.usesCpu) 0
+            else if (threadingType == StressThreadingType.SINGLE) 1 else coreCount
         val initialCores =
                 List(coreCount) { idx ->
                     if (threadingType == StressThreadingType.SINGLE && idx > 0) 0f else 100f
@@ -265,6 +274,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     cooldownElapsedSec = 0,
                     preRunIps = emptyList(),
                     calibrationMarkIdx = 0,
+                    stressMode = mode,
+                    gpuFps = -1.0,
+                    gpuBaselineFps = 0.0,
+                    gpuName = "",
+                    preRunGpuFps = emptyList(),
                     elapsedSeconds = 0,
                     overallStability = 100f,
                     coreImpacts = initialCores,
@@ -350,9 +364,15 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 }
     }
 
+    /** UI attaches/detaches the stage SurfaceView — forwarded to the GL thread. */
+    fun gpuAttachSurface(surface: android.view.Surface) = gpuBench.attachDisplay(surface)
+    fun gpuDetachSurface() = gpuBench.detachDisplay()
+
     fun stopTest() {
         if (!_state.value.isRunning) return
         threadAlive.set(false)
+        gpuBench.stop()
+        _state.update { it.copy(gpuActive = false) }
         sessionJob?.cancel()
         sessionJob = null
         val endLevel = _state.value.currentBatteryLevel
@@ -435,20 +455,16 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         )
         if (busy != null && busy > GATE_BG_BUSY) hints = hints or ValidityFlag.INTERFERENCE
 
-        // Starting temperature — the COOLDOWN phase handles warm devices, so the
-        // gate is advisory unless the SoC is dangerously hot already.
+        // Starting temperature — informational only. The COOLDOWN phase handles
+        // warm devices; the gate never blocks or fails, it just reports state.
         val zones = StressProbes.readThermalZones()
         val cpuTemp = StressProbes.cpuAdjacentTemp(zones)
         gates += GateResult(
-            "starttemp", "STARTING TEMPERATURE",
-            blocking = cpuTemp != null && cpuTemp >= GATE_TEMP_HARD_C,
-            passed = cpuTemp == null || cpuTemp <= GATE_TEMP_C,
+            "starttemp", "STARTING TEMPERATURE", blocking = false, passed = true,
             detail = when {
                 cpuTemp == null -> "Thermal sensors unreadable — run flagged unverified"
                 cpuTemp <= GATE_TEMP_C -> "Warmest CPU zone %.1f°C".format(cpuTemp)
-                cpuTemp < GATE_TEMP_HARD_C ->
-                    "Warmest CPU zone %.1f°C — cooldown will run first".format(cpuTemp)
-                else -> "Warmest CPU zone %.1f°C — too hot to run".format(cpuTemp)
+                else -> "Warmest CPU zone %.1f°C — cooldown will run first".format(cpuTemp)
             }
         )
         if (cpuTemp != null && cpuTemp > GATE_TEMP_C) hints = hints or ValidityFlag.WARM_STARTED
@@ -493,6 +509,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             "cellular", "CELLULAR RADIO", blocking = false, passed = !isCellularActive(),
             detail = if (isCellularActive()) "Cellular active — airplane mode recommended"
                     else "Radio offline"
+        )
+
+        // GPU renderer probe — the 3D channel needs GLES 3.x + EGL.
+        val glVer = try {
+            (appContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager)
+                .deviceConfigurationInfo.reqGlEsVersion
+        } catch (_: Exception) { 0 }
+        gates += GateResult(
+            "gpu", "GPU RENDERER", blocking = false,
+            passed = glVer >= 0x30000,
+            detail = if (glVer >= 0x30000) "OpenGL ES ${glVer shr 16}.${glVer and 0xFFFF} — 3D benchmark available"
+                     else "GLES 3.x unavailable — GPU 3D mode will not run"
         )
 
         val canRun = gates.filter { it.blocking }.all { it.passed }
@@ -639,6 +667,15 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         )
     }
 
+    /** GPU frames rendered within dtNs — −1 when the channel is off. */
+    private fun gpuFpsDelta(dtNs: Long): Double {
+        if (!gpuBench.running || dtNs <= 0) return -1.0
+        val f = gpuBench.framesRendered.get()
+        val df = (f - gpuFramesPrev).coerceAtLeast(0)
+        gpuFramesPrev = f
+        return df * 1e9 / dtNs
+    }
+
     private fun p95(values: List<Double>): Double {
         if (values.isEmpty()) return 0.0
         val s = values.sorted()
@@ -660,6 +697,15 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         aggSchedFrac < SCHED_STARVED -> Attribution.CONTENTION
         aggLittleShare > littleShareCal + MIGRATION_DELTA -> Attribution.MIGRATION
         aggFreqRatio < FREQ_LOW -> Attribution.GOVERNOR
+        else -> Attribution.NONE
+    }
+
+    /** GPU-channel attribution — devfreq clock ratio + thermal-status evidence. */
+    private fun classifyGpu(gpuFreqRatio: Float, thermalOrdinal: Int, belowBaseline: Boolean): Attribution = when {
+        gpuFreqRatio in 0f..CAP_THROTTLE -> Attribution.DVFS_CAP
+        gpuFreqRatio < 0f -> if (belowBaseline && thermalOrdinal >= 2) Attribution.DVFS_CAP else if (belowBaseline) Attribution.UNKNOWN else Attribution.NONE
+        belowBaseline && thermalOrdinal >= 2 -> Attribution.DVFS_CAP
+        belowBaseline -> Attribution.UNKNOWN
         else -> Attribution.NONE
     }
 
@@ -691,7 +737,13 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         if (!_state.value.isRunning) return
         val cooldownTimedOut = !reachedTarget
 
-        startWorkers()
+        val mode = _state.value.stressMode
+        if (mode.usesCpu) startWorkers()
+        if (mode.usesGpu) {
+            gpuBench.start()
+            gpuFramesPrev = 0
+            _state.update { it.copy(gpuName = gpuBench.gpuName, gpuActive = true) }
+        }
 
         // ── WARM-UP — settles ART JIT + governor; unrecorded as stamps but the
         // throughput trace IS surfaced as the chart's ghost prefix so users see
@@ -706,7 +758,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             if (dt > 0) {
                 var tot = 0.0
                 for (i in 0 until coreCount) tot += (cur.counters[i] - prev.counters[i]) * 1e9 / dt
-                _state.update { it.copy(preRunIps = it.preRunIps + tot) }
+                val gfps = gpuFpsDelta(dt)
+                _state.update {
+                    it.copy(
+                        preRunIps = it.preRunIps + (if (mode.usesCpu) tot else gfps * 100),
+                        preRunGpuFps = if (gfps >= 0) it.preRunGpuFps + gfps else it.preRunGpuFps,
+                        gpuFps = gfps
+                    )
+                }
             }
             prev = cur
         }
@@ -718,6 +777,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         prev = snapshot()
         val calIpsTotal = mutableListOf<Double>()
+        val calGpuFps = mutableListOf<Double>()
         val calIpsWorker = List(coreCount) { mutableListOf<Double>() }
         val calIpsCluster = List(topology.clusters.size.coerceAtLeast(1)) { mutableListOf<Double>() }
         val calCaps = mutableListOf<Float>()
@@ -732,23 +792,36 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 val ips = win.itersPerWorker[i] * 1e9 / win.dtNs
                 calIpsWorker[i] += ips; tot += ips
             }
-            calIpsTotal += tot
+            val gfps = gpuFpsDelta(win.dtNs)
+            if (gfps >= 0) calGpuFps += gfps
+            // GPU-mode primary channel = fps × 100 (keeps integer stamps resolvable to 0.01 fps)
+            calIpsTotal += if (mode.usesCpu) tot else gfps * 100
             for (k in calIpsCluster.indices) calIpsCluster[k] += win.ipsPerCluster[k]
             calCaps += win.minCapRatio
             calLittleShares += win.littleShare
             calElapsed += win.dtNs
             prev = cur
-            _state.update { it.copy(preRunIps = it.preRunIps + tot) }
+            _state.update {
+                it.copy(
+                    preRunIps = it.preRunIps + (if (mode.usesCpu) tot else gfps * 100),
+                    preRunGpuFps = if (gfps >= 0) it.preRunGpuFps + gfps else it.preRunGpuFps,
+                    gpuFps = gfps
+                )
+            }
         }
         if (!_state.value.isRunning) return
 
         val baseline = p95(calIpsTotal)
+        val gpuBaseline = p95(calGpuFps)
         val workerBaseline = calIpsWorker.map { p95(it).coerceAtLeast(1.0) }
         val littleShareCal = calLittleShares.sorted().getOrElse(calLittleShares.size / 2) { 0.0 }
         val warmStarted = calCaps.isNotEmpty() && calCaps.count { it < 0.99f } > calCaps.size / 2
 
         // ── MEASURED RUN ────────────────────────────────────────────────────────
-        _state.update { it.copy(phase = RunPhase.MEASURED, baselineIps = baseline) }
+        _state.update {
+            it.copy(phase = RunPhase.MEASURED, baselineIps = baseline,
+                    gpuBaselineFps = gpuBaseline, gpuName = gpuBench.gpuName)
+        }
         val measuredStartNs = System.nanoTime()
         val durationNs = (state.value.testDuration.seconds ?: 300) * 1_000_000_000L
         var freqEverReadable = false
@@ -770,12 +843,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             var lastPerCore = IntArray(0); var lastOffline = 0; var env = 0
             var lastWinDt = 0L
 
+            val gpuFramesAtStart = gpuBench.framesRendered.get()
+            var gpuFreqAcc = 0f; var gpuFreqN = 0
+
             while (System.nanoTime() - stampStart < STAMP_MS * 1_000_000L && _state.value.isRunning) {
                 delay(SAMPLE_MS)
                 val cur = snapshot()
                 val win = diffWindow(prev, cur)
                 prev = cur
                 if (win.dtNs <= 0) continue
+                gpuFpsDelta(win.dtNs) // keeps live-FPS state fresh for the reactor
+                val gfr = gpuBench.gpuFreqRatio()
+                if (gfr >= 0) { gpuFreqAcc += gfr; gpuFreqN++ }
                 accDt += win.dtNs; lastWinDt = win.dtNs; nWins++
                 for (i in 0 until coreCount) accIters[i] += win.itersPerWorker[i]
                 for (k in accClusterIps.indices) accClusterIps[k] += win.ipsPerCluster[k] * win.dtNs / 1e9
@@ -794,18 +873,30 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             }
             if (nWins == 0) break
 
-            val ipsTotal = (accIters.sum() * 1e9 / accDt).toLong()
+            // ── GPU channel this stamp ──
+            val gpuFramesNow = gpuBench.framesRendered.get()
+            val stampDurNs = System.nanoTime() - stampStart
+            val gpuFpsStamp = if (mode.usesGpu)
+                (gpuFramesNow - gpuFramesAtStart).coerceAtLeast(0) * 1e9 / stampDurNs else -1.0
+            val gpuP95 = if (mode.usesGpu)
+                gpuBench.frameP95Ms((gpuFramesNow - gpuFramesAtStart).toInt().coerceAtLeast(1)) else -1f
+            val gpuFreqR = if (gpuFreqN > 0) gpuFreqAcc / gpuFreqN else -1f
+
+            val cpuIps = (accIters.sum() * 1e9 / accDt).toLong()
+            // Primary channel: CPU iterations when workers run, GPU fps×100 otherwise —
+            // so the whole scorecard/baseline/onset pipeline applies unchanged.
+            val ipsTotal = if (mode.usesCpu) cpuIps else (gpuFpsStamp * 100).toLong()
             val ipsPerCluster = accClusterIps.map { (it * 1e9 / accDt).toLong() }
             val nowNs = System.nanoTime() - measuredStartNs
             val aggMinCap = minCap
             val aggSched = (schedSum / nWins).toFloat()
             val aggLittle = littleSum / nWins
             val aggFreq = (freqSum / nWins).toFloat()
-            val freqMissing = !freqEverReadable
-            val attribution = classify(
+            val freqMissing = if (mode.usesCpu) !freqEverReadable else gpuFreqR < 0
+            val attribution = if (mode.usesCpu) classify(
                 aggMinCap, aggSched, aggLittle, aggFreq, lastOffline,
                 littleShareCal, freqMissing
-            )
+            ) else classifyGpu(gpuFreqR, lastStatus.ordinal, gpuFpsStamp < gpuBaseline * 0.9)
             if (attribution == Attribution.CONTENTION) contentionStamps++
             if (env and EnvFlag.CHARGING != 0) powerEvent = true
 
@@ -813,6 +904,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 tNs = nowNs,
                 windowNs = accDt,
                 ipsTotal = ipsTotal,
+                gpuFps = gpuFpsStamp,
+                gpuFrameP95Ms = gpuP95,
+                gpuFreqRatio = gpuFreqR,
                 ipsPerCluster = ipsPerCluster,
                 capRatioAvg = (capSum / nWins).toFloat(),
                 minCapRatio = aggMinCap,
@@ -843,6 +937,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 st.copy(
                     elapsedSeconds = elapsed,
                     overallStability = ratio,
+                    gpuFps = gpuFpsStamp,
+                    gpuName = st.gpuName.ifEmpty { gpuBench.gpuName },
                     coreImpacts = impacts,
                     currentAttribution = attribution,
                     capRatioAvg = stamp.capRatioAvg,
@@ -861,16 +957,20 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val targetNs = durationNs
         val actualNs = System.nanoTime() - measuredStartNs
 
+        gpuBench.stop()
+
         val card = buildScorecard(
             baseline = baseline,
             littleShareCal = littleShareCal,
             warmStarted = warmStarted,
             cooldownTimedOut = cooldownTimedOut,
-            freqMissing = !freqEverReadable,
+            freqMissing = if (mode.usesCpu) !freqEverReadable else gpuBaseline <= 0,
             contentionStamps = contentionStamps,
             powerEvent = powerEvent,
             shortRun = actualNs < targetNs * 9 / 10,
-            saverDuringRun = batterySaverAtStart
+            saverDuringRun = batterySaverAtStart,
+            gpuBaselineFps = gpuBaseline,
+            gpuName = gpuBench.gpuName
         )
 
         _state.update {
@@ -894,7 +994,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         contentionStamps: Int,
         powerEvent: Boolean,
         shortRun: Boolean,
-        saverDuringRun: Boolean
+        saverDuringRun: Boolean,
+        gpuBaselineFps: Double = 0.0,
+        gpuName: String = ""
     ): Scorecard {
         val stamps = _state.value.recordedStamps
         if (stamps.isEmpty() || baseline <= 0) {
@@ -991,6 +1093,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         if (perfPerWatt == null) conf -= 5
         conf = conf.coerceIn(0, 100)
 
+        // ── GPU channel scorecard (stamps carry fps/ips of the primary channel) ──
+        val gpuSustained: Float
+        val gpuDelivered: Float
+        if (gpuBaselineFps > 0 && stamps.any { it.gpuFps >= 0 }) {
+            val gq = stamps.takeLast(max(1, stamps.size / 4))
+                .map { it.gpuFps / gpuBaselineFps }.sorted()
+            gpuSustained = (gq[gq.size / 2] * 100).toFloat().coerceIn(0f, 150f)
+            var gw = 0.0; var gws = 0.0
+            for (s in stamps) if (s.gpuFps >= 0) { gw += s.gpuFps * s.windowNs; gws += s.windowNs }
+            gpuDelivered = ((gw / gws) / gpuBaselineFps * 100).toFloat().coerceIn(0f, 150f)
+        } else { gpuSustained = 0f; gpuDelivered = 0f }
+
         return Scorecard(
             baselineIps = baseline,
             sustainedRatio = sustained,
@@ -1002,7 +1116,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             thermalEfficiency = thermalEff,
             confidence = conf,
             validityFlags = flags,
-            warmStarted = warmStarted
+            warmStarted = warmStarted,
+            gpuBaselineFps = gpuBaselineFps,
+            gpuDeliveredCapacity = gpuDelivered,
+            gpuSustainedRatio = gpuSustained,
+            gpuName = gpuName
         )
     }
 

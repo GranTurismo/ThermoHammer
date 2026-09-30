@@ -216,7 +216,12 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                             socModel = pending.socModel.ifEmpty { null },
                                             clusterTopology = pending.clusterTopology.ifEmpty { null },
                                             governor = pending.governor.ifEmpty { null },
-                                            hashV2 = ThermoHasher.computeHashV2(session.encryptionKey, metaCanonical, wireStamps)
+                                            hashV2 = ThermoHasher.computeHashV2(session.encryptionKey, metaCanonical, wireStamps),
+                                            stressMode = pending.stressMode,
+                                            gpuBaselineFps = pending.gpuBaselineFps.takeIf { it > 0 },
+                                            gpuDeliveredCapacity = pending.gpuDeliveredCapacity.toDouble().takeIf { it > 0 },
+                                            gpuSustainedRatio = pending.gpuSustainedRatio.toDouble().takeIf { it > 0 },
+                                            gpuName = pending.gpuName.ifEmpty { null }
                                         )
                                         ApiClient.api.submitScore(payload)
                                         store.deleteResult(pending.id)

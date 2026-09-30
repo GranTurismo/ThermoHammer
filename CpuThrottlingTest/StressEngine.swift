@@ -389,9 +389,9 @@ final class StressEngine: ObservableObject {
                                 detail: level < 0 ? "level unknown" : "\(Int(level * 100))% \(battOK ? "" : "— charge first")"))
         // Thermal state
         let ts = ProcessInfo.processInfo.thermalState
-        let tsOK = ts != .serious && ts != .critical
-        gates.append(GateResult(id: "thermal", title: "THERMAL", blocking: ts == .serious || ts == .critical,
-                                passed: tsOK,
+        // Informational only — cooldown handles elevated states, never blocks.
+        gates.append(GateResult(id: "thermal", title: "THERMAL", blocking: false,
+                                passed: true,
                                 detail: ts == .nominal ? "nominal" : "\(ts.name.lowercased()) — cooldown will run first"))
         if ts != .nominal { hints |= ValidityFlag.warmStarted }
         // Low power mode

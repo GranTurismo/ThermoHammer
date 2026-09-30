@@ -63,6 +63,7 @@ fun MainScreen() {
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedDuration by remember { mutableStateOf(TestDuration.MINUTES_5) }
     var selectedThreadingType by remember { mutableStateOf(com.example.thermohammer.engine.StressThreadingType.MULTI) }
+    var selectedMode by remember { mutableStateOf(com.example.thermohammer.engine.StressMode.CPU) }
 
     Box(
         modifier = Modifier
@@ -79,8 +80,10 @@ fun MainScreen() {
                             isNetworkConnected = isNetworkConnected.value,
                             selectedDuration = selectedDuration,
                             selectedThreadingType = selectedThreadingType,
+                            selectedMode = selectedMode,
                             onDurationChange = { selectedDuration = it },
                             onThreadingChange = { selectedThreadingType = it },
+                            onModeChange = { selectedMode = it },
                             onNavigateToLeaderboard = { selectedTab = 1 }
                         )
                         1 -> LeaderboardScreen(isNetworkConnected.value)
@@ -107,8 +110,10 @@ private fun DiagnosticsScreenWrapper(
     isNetworkConnected: Boolean,
     selectedDuration: TestDuration,
     selectedThreadingType: com.example.thermohammer.engine.StressThreadingType,
+    selectedMode: com.example.thermohammer.engine.StressMode,
     onDurationChange: (TestDuration) -> Unit,
     onThreadingChange: (com.example.thermohammer.engine.StressThreadingType) -> Unit,
+    onModeChange: (com.example.thermohammer.engine.StressMode) -> Unit,
     onNavigateToLeaderboard: () -> Unit
 ) {
     val state by engine.state.collectAsState()
@@ -270,7 +275,12 @@ private fun DiagnosticsScreenWrapper(
                             validityFlags = card?.validityFlags ?: 0,
                             socModel = engine.getSocModel(),
                             clusterTopology = engine.topology.describe(),
-                            governor = engine.governor
+                            governor = engine.governor,
+                            stressMode = state.stressMode.value,
+                            gpuBaselineFps = card?.gpuBaselineFps ?: 0.0,
+                            gpuDeliveredCapacity = card?.gpuDeliveredCapacity ?: 0f,
+                            gpuSustainedRatio = card?.gpuSustainedRatio ?: 0f,
+                            gpuName = card?.gpuName ?: ""
                         )
                         com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
                         currentPendingResultId = pending.id
@@ -384,7 +394,10 @@ private fun DiagnosticsScreenWrapper(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
-                    ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
+                    ModePicker(selected = selectedMode, onSelect = onModeChange)
+                    if (selectedMode.usesCpu) {
+                        ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
+                    }
                 }
             }
             ControlButton(
@@ -401,7 +414,9 @@ private fun DiagnosticsScreenWrapper(
                 stamps = state.recordedStamps,
                 baselineIps = state.baselineIps,
                 preRunIps = state.preRunIps,
-                preRunMarkIdx = state.calibrationMarkIdx
+                preRunMarkIdx = state.calibrationMarkIdx,
+                gpuBaselineFps = if (state.stressMode == com.example.thermohammer.engine.StressMode.COMBINED) state.gpuBaselineFps else 0.0,
+                preRunGpuFps = state.preRunGpuFps
             )
             AnimatedVisibility(
                 visible = state.coreImpacts.isNotEmpty(),
@@ -430,7 +445,7 @@ private fun DiagnosticsScreenWrapper(
                 onProceed = {
                     showPreTest = false
                     engine.clearSession()
-                    engine.startTest(selectedDuration, selectedThreadingType)
+                    engine.startTest(selectedDuration, selectedThreadingType, selectedMode)
                 }
             )
         }
@@ -463,6 +478,10 @@ private fun DiagnosticsScreenWrapper(
                 confidence = card?.confidence,
                 validityFlags = card?.validityFlags ?: 0,
                 isVerified = card?.isVerified ?: false,
+                gpuBaselineFps = card?.gpuBaselineFps ?: 0.0,
+                gpuDeliveredCapacity = card?.gpuDeliveredCapacity,
+                gpuSustainedRatio = card?.gpuSustainedRatio,
+                gpuName = card?.gpuName ?: "",
                 onSubmit = {
                     isSubmitting = true
                     coroutineScope.launch {
@@ -492,7 +511,12 @@ private fun DiagnosticsScreenWrapper(
                                 socModel = engine.getSocModel(),
                                 clusterTopology = engine.topology.describe(),
                                 governor = engine.governor,
-                                hashV2 = hashV2
+                                hashV2 = hashV2,
+                                stressMode = state.stressMode.value,
+                                gpuBaselineFps = card?.gpuBaselineFps,
+                                gpuDeliveredCapacity = card?.gpuDeliveredCapacity?.toDouble(),
+                                gpuSustainedRatio = card?.gpuSustainedRatio?.toDouble(),
+                                gpuName = card?.gpuName?.ifEmpty { null }
                             )
                             com.example.thermohammer.network.ApiClient.api.submitScore(payload)
 
@@ -541,8 +565,21 @@ private fun DiagnosticsScreenWrapper(
             com.example.thermohammer.ui.overlays.ServerErrorOverlay(
             errorMessage = serverErrorMsg,
             onCancel = { showServerError = false },
-            onRunOffline = { showServerError = false; engine.clearSession(); engine.startTest(selectedDuration, selectedThreadingType) }
+            onRunOffline = { showServerError = false; engine.clearSession(); engine.startTest(selectedDuration, selectedThreadingType, selectedMode) }
         )
+        }
+
+        // ── GPU stage — full-screen live render while a GPU mode is active ──
+        AnimatedVisibility(
+            state.isRunning && state.gpuActive,
+            enter = fadeIn(tween(350)), exit = fadeOut(tween(250))
+        ) {
+            com.example.thermohammer.ui.components.GpuStage(
+                state = state,
+                onSurfaceReady = { engine.gpuAttachSurface(it) },
+                onSurfaceGone = { engine.gpuDetachSurface() },
+                onStop = { engine.stopTest() }
+            )
         }
     }
 }

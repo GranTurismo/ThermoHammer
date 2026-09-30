@@ -12,6 +12,16 @@ enum class RunPhase(val displayName: String) {
     MEASURED("STRESS ACTIVE")
 }
 
+// ── Stress modes — which engine channels are under load ────────────────────────
+
+enum class StressMode(val displayName: String, val value: Int) {
+    CPU("CPU ONLY", 0),
+    GPU("GPU 3D", 1),       // headless GLES3 sustained-rendering benchmark
+    COMBINED("CPU + GPU", 2);
+    val usesCpu get() = this != GPU
+    val usesGpu get() = this != CPU
+}
+
 // ── Per-sample throttling attribution ─────────────────────────────────────────
 // Why did throughput drop in this window? Classified from frequency caps,
 // scheduled time and core residency — not assumed to be "thermal".
@@ -78,7 +88,11 @@ data class StampV2(
     val thermalHeadroom: Float? = null,        // PowerManager.getThermalHeadroom()
     val thermalStatus: Int = 0,                // 0..3 ThermalState ordinal
     val attribution: Int = 0,                  // Attribution.code
-    val envFlags: Int = 0                      // EnvFlag bitmask
+    val envFlags: Int = 0,                     // EnvFlag bitmask
+    // ── GPU channel (−1 = channel not running) ──
+    val gpuFps: Double = -1.0,                 // frames/sec in this window (offscreen 1080p)
+    val gpuFrameP95Ms: Float = -1f,            // p95 frame time in ms
+    val gpuFreqRatio: Float = -1f              // devfreq cur/max, −1 = unreadable
 ) {
     // ── Back-compat accessors so legacy analytics keep working on StampV2 ──
     val elapsedMs: Int get() = (tNs / 1_000_000L).toInt()
@@ -135,7 +149,14 @@ data class Scorecard(
     val thermalEfficiency: Float? = null,     // deliveredCapacity / ΔT(°C)
     val confidence: Int = 100,
     val validityFlags: Int = 0,
-    val warmStarted: Boolean = false
+    val warmStarted: Boolean = false,
+    // ── GPU channel scorecard (null/0 = not measured) ──
+    val gpuBaselineFps: Double = 0.0,          // p95 of calibration-window FPS
+    val gpuDeliveredCapacity: Float = 0f,      // AUC vs GPU baseline
+    val gpuSustainedRatio: Float = 0f,         // median last-quartile FPS / baseline
+    val gpuMinSustained: Float? = null,
+    val gpuName: String = "",
+    val gpuAttribution: Int = 0
 ) {
     /** Verified = clean run eligible for the global leaderboard. */
     val isVerified: Boolean get() = validityFlags == 0

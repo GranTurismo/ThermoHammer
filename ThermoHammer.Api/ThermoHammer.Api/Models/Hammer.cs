@@ -155,4 +155,11 @@ public class HammerRequestBase
     public string? ClusterTopology { get; set; }
     public string? Governor { get; set; }
     public string? HashV2 { get; set; }
+
+    // ── GPU channel (3D benchmark) — null on CPU-only / legacy runs ──
+    public int? StressMode { get; set; }              // 0=CPU 1=GPU 2=COMBINED
+    public double? GpuBaselineFps { get; set; }
+    public double? GpuDeliveredCapacity { get; set; }
+    public double? GpuSustainedRatio { get; set; }
+    public string? GpuName { get; set; }
 }

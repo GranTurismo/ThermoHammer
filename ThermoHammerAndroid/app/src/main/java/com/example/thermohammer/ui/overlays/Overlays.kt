@@ -374,6 +374,10 @@ fun SummaryOverlay(
     confidence: Int? = null,
     validityFlags: Int = 0,
     isVerified: Boolean = false,
+    gpuBaselineFps: Double = 0.0,
+    gpuDeliveredCapacity: Float? = null,
+    gpuSustainedRatio: Float? = null,
+    gpuName: String = "",
     onSubmit: () -> Unit,
     onSavePending: () -> Unit,
     onDismiss: () -> Unit
@@ -491,6 +495,22 @@ fun SummaryOverlay(
                     SummaryRow("MIN SUSTAINED", "%.0f%%".format(minStability), Ramp.forCapacity(minStability))
                 } else {
                     SummaryRow("MIN SUSTAINED", "NO THROTTLE", Forge.phaseMeasured)
+                }
+                if (gpuBaselineFps > 0) {
+                    OverlayDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "GPU CHANNEL — ${gpuName.ifEmpty { "GLES3" }}",
+                        style = ThermoType.label(8f, Forge.phaseCalibration)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    SummaryRow("BASELINE FPS", "%.1f".format(gpuBaselineFps))
+                    gpuDeliveredCapacity?.let {
+                        SummaryRow("GPU DELIVERED", "%.1f%%".format(it), Ramp.forCapacity(it))
+                    }
+                    gpuSustainedRatio?.let {
+                        SummaryRow("GPU SUSTAINED", "%.1f%%".format(it), Ramp.forCapacity(it))
+                    }
                 }
                 throttleOnsetSec?.let {
                     SummaryRow("THROTTLE ONSET", "${it}s", if (it < 60) Ramp.at(0.85f) else Ramp.at(0.5f))

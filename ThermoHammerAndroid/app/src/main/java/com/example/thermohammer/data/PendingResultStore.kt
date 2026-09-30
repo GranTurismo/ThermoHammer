@@ -38,7 +38,13 @@ data class PendingTestResult(
     val validityFlags: Int = 0,         // ValidityFlag bitmask — 0 = verified
     val socModel: String = "",
     val clusterTopology: String = "",   // e.g. "4x1804|3x2457|1x2956"
-    val governor: String = ""
+    val governor: String = "",
+    // ── GPU channel (0 = CPU-only run) ──
+    val stressMode: Int = 0,            // StressMode.value — 0 CPU, 1 GPU, 2 COMBINED
+    val gpuBaselineFps: Double = 0.0,
+    val gpuDeliveredCapacity: Float = 0f,
+    val gpuSustainedRatio: Float = 0f,
+    val gpuName: String = ""
 )
 
 class PendingResultStore(context: Context) {

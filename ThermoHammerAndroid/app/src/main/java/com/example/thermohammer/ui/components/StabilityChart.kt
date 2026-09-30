@@ -63,7 +63,9 @@ fun StabilityChart(
     stamps: List<StampV2> = emptyList(),
     baselineIps: Double = 0.0,
     preRunIps: List<Double> = emptyList(),
-    preRunMarkIdx: Int = 0
+    preRunMarkIdx: Int = 0,
+    gpuBaselineFps: Double = 0.0,
+    preRunGpuFps: List<Double> = emptyList()
 ) {
     var touchX by remember { mutableStateOf<Float?>(null) }
     var chartWidthPx by remember { mutableFloatStateOf(1f) }
@@ -304,6 +306,37 @@ fun StabilityChart(
                 }
                 if (points.size == 1) {
                     drawLine(Ramp.forCapacity(points[0].score), Offset(0f, getY(points[0].score)), Offset(w, getY(points[0].score)), 4f)
+                }
+
+                // ── GPU channel trace — dashed violet, % of its own baseline ──
+                // Drawn when stamps carry fps (COMBINED mode); in GPU-only mode
+                // the ribbon itself already IS the gpu curve.
+                if (gpuBaselineFps > 0 && stamps.any { it.gpuFps >= 0 }) {
+                    for (i in 0 until points.size - 1) {
+                        val s0 = stamps.getOrNull(i)?.gpuFps ?: continue
+                        val s1 = stamps.getOrNull(i + 1)?.gpuFps ?: continue
+                        if (s0 < 0 || s1 < 0) continue
+                        drawLine(
+                            color = Forge.phaseCalibration.copy(alpha = 0.85f),
+                            start = Offset(getX(points[i].time), getY((s0 / gpuBaselineFps * 100).toFloat())),
+                            end = Offset(getX(points[i + 1].time), getY((s1 / gpuBaselineFps * 100).toFloat())),
+                            strokeWidth = 2.5f, cap = StrokeCap.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f), 0f)
+                        )
+                    }
+                    // GPU ghost prefix — same -32s domain as the CPU trace
+                    if (preRunGpuFps.size > 1) {
+                        for (i in 0 until preRunGpuFps.size - 1) {
+                            val t0 = -(preRunGpuFps.size - i) * 0.25f
+                            val t1 = -(preRunGpuFps.size - i - 1) * 0.25f
+                            drawLine(
+                                color = Forge.phaseCalibration.copy(alpha = 0.35f),
+                                start = Offset(getX(t0), getY((preRunGpuFps[i] / gpuBaselineFps * 100).toFloat())),
+                                end = Offset(getX(t1), getY((preRunGpuFps[i + 1] / gpuBaselineFps * 100).toFloat())),
+                                strokeWidth = 2f, cap = StrokeCap.Round
+                            )
+                        }
+                    }
                 }
 
                 // ── Live head pip — the breathing tip of the ribbon ─────────

@@ -428,6 +428,52 @@ fun DurationPicker(
 }
 
 @Composable
+fun ModePicker(
+    selected: StressMode,
+    onSelect: (StressMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            "STRESS CHANNEL",
+            style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Forge.surface)
+                .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
+                .padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StressMode.entries.forEach { mode ->
+                val isSelected = selected == mode
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) Forge.phaseCalibration else Forge.raised)
+                        .border(1.dp, if (isSelected) Color.Transparent else Forge.hairline, RoundedCornerShape(10.dp))
+                        .clickable { onSelect(mode) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        mode.displayName,
+                        style = TextStyle(
+                            color = if (isSelected) Forge.bg else Forge.ink0,
+                            fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ThreadingPicker(
     selected: StressThreadingType,
     onSelect: (StressThreadingType) -> Unit,
