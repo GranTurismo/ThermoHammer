@@ -18,6 +18,10 @@ public class ThermoDbContext(DbContextOptions<ThermoDbContext> options) : DbCont
         .HasForeignKey(o => o.HammerId)
         .HasPrincipalKey(o => o.Id);
 
+        modelBuilder.Entity<Hammer>().Property(o => o.SocModel).HasMaxLength(Hammer.MaxShortText);
+        modelBuilder.Entity<Hammer>().Property(o => o.OsBuild).HasMaxLength(Hammer.MaxShortText);
+        modelBuilder.Entity<Hammer>().Property(o => o.SecurityPatch).HasMaxLength(Hammer.MaxPatchText);
+
         modelBuilder.Entity<Hammer>()
         .HasOne(o => o.Session)
         .WithOne()

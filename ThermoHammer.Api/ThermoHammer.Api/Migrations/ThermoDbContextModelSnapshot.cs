@@ -30,6 +30,9 @@ namespace ThermoHammer.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("Confidence")
+                        .HasColumnType("int");
+
                     b.Property<string>("DeviceManufacturer")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -45,20 +48,41 @@ namespace ThermoHammer.Api.Migrations
                     b.Property<int>("Os")
                         .HasColumnType("int");
 
+                    b.Property<string>("OsBuild")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("OsVersion")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("SchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SecurityPatch")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<int>("SessionId")
                         .HasColumnType("int");
 
+                    b.Property<string>("SocModel")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<double>("StabilityPercentage")
                         .HasColumnType("float");
+
+                    b.Property<int?>("StressMode")
+                        .HasColumnType("int");
 
                     b.Property<int>("TestThreadingType")
                         .HasColumnType("int");
 
                     b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ValidityFlags")
                         .HasColumnType("int");
 
                     b.HasKey("Id");

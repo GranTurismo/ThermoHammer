@@ -18,6 +18,9 @@ public class HammerDto
 
 public class Hammer
 {
+    public const int MaxShortText = 64;
+    public const int MaxPatchText = 16;
+
     public int Id { get; set; }
     public required List<HammerStamp> Stamps { get; set; }
     public required HammerType Type { get; set; }
@@ -31,6 +34,18 @@ public class Hammer
     public int SessionId { get; set; }
     public required string Hash { get; set; }
     public double StabilityPercentage { get; set; }
+
+    // ── Run quality & OS build — all nullable: null means "legacy run, unknown" ──
+    // Needed to compare OS versions fairly: dirty runs (charging, hot start, low-power
+    // mode…) must be filterable, and Android's OsVersion alone ("16") cannot tell
+    // monthly updates apart. Client-reported — see HammerExtensions.ToDao.
+    public int? SchemaVersion { get; set; }
+    public int? ValidityFlags { get; set; }    // 0 = clean run; null = legacy / unknown
+    public int? Confidence { get; set; }       // 0..100
+    public int? StressMode { get; set; }       // 0=CPU 1=GPU 2=COMBINED; null = legacy CPU
+    public string? SocModel { get; set; }
+    public string? OsBuild { get; set; }       // Android Build.ID / iOS kern.osversion
+    public string? SecurityPatch { get; set; } // Android Build.VERSION.SECURITY_PATCH
 }
 
 public class HammerRequest : HammerRequestBase
@@ -112,8 +127,23 @@ public static class HammerExtensions
             SessionId = request.SessionId,
             Hash = request.Hash,
             StabilityPercentage = stability,
-            TestThreadingType = threadType
+            TestThreadingType = threadType,
+            SchemaVersion = request.SchemaVersion,
+            ValidityFlags = request.ValidityFlags is >= 0 ? request.ValidityFlags : null,
+            Confidence = request.Confidence is >= 0 and <= 100 ? request.Confidence : null,
+            StressMode = request.StressMode is >= 0 and <= 2 ? request.StressMode : null,
+            SocModel = Clip(request.SocModel, Hammer.MaxShortText),
+            OsBuild = Clip(request.OsBuild, Hammer.MaxShortText),
+            SecurityPatch = Clip(request.SecurityPatch, Hammer.MaxPatchText)
         };
+    }
+
+    /// <summary>Trim and cap free text from the client; empty becomes null.</summary>
+    private static string? Clip(string? value, int max)
+    {
+        var v = value?.Trim();
+        if (string.IsNullOrEmpty(v)) return null;
+        return v.Length <= max ? v : v[..max];
     }
 
     public static HammerDto ToDto(this Hammer hammer)
@@ -155,6 +185,10 @@ public class HammerRequestBase
     public string? ClusterTopology { get; set; }
     public string? Governor { get; set; }
     public string? HashV2 { get; set; }
+
+    // ── OS build identity — optional; lets monthly updates be told apart ──
+    public string? OsBuild { get; set; }
+    public string? SecurityPatch { get; set; }
 
     // ── GPU channel (3D benchmark) — null on CPU-only / legacy runs ──
     public int? StressMode { get; set; }              // 0=CPU 1=GPU 2=COMBINED
