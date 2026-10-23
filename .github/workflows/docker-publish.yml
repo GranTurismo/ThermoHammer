@@ -51,4 +51,18 @@ jobs:
             cd ~/docker/thapi
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             sudo docker pull ghcr.io/granturismo/thapi:latest
+
+            # The production database login comes from a GitHub secret - never from the repo or
+            # the (public) image. It is written to a compose override, which `docker compose`
+            # loads automatically, so manual restarts on the server keep working too.
+            # Fails closed: if the secret is missing, abort BEFORE touching the running container.
+            DB_PW='${{ secrets.DB_APP_PASSWORD }}'
+            if [ "${#DB_PW}" -lt 24 ]; then
+              echo "DB_APP_PASSWORD secret is missing or too short - aborting before restart"
+              exit 1
+            fi
+            umask 077
+            printf 'services:\n  thapi:\n    environment:\n      ConnectionStrings__DefaultConnection: "Server=sqlthermo;Database=thermo;User Id=thermo_app;Password=%s;TrustServerCertificate=True;"\n' "$DB_PW" > docker-compose.override.yaml.tmp
+            mv docker-compose.override.yaml.tmp docker-compose.override.yaml
+
             sudo docker compose up -d
