@@ -11,8 +11,8 @@ android {
         applicationId = "com.granturismo.thermohammer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.8"
+        versionCode = 11
+        versionName = "1.9"
     }
 
     // Release-signing secrets live OUTSIDE the repo (the repo is public). On each build machine put
