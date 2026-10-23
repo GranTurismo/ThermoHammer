@@ -9,6 +9,7 @@ struct ContentView: View {
     @StateObject private var engine = StressEngine.shared
     @StateObject private var networkMonitor = NetworkMonitor.shared
     @StateObject private var pendingStore = PendingResultStore.shared
+    @StateObject private var runHistory = RunHistoryStore.shared
 
     @State private var selectedDuration: TestDuration = .minutes5
     @State private var selectedThreadingType: StressThreadingType = .multi
@@ -31,6 +32,13 @@ struct ContentView: View {
     private var capacity: Double {
         guard engine.state.baselineIps > 0 else { return 100 }
         return min(110, engine.state.liveIps / engine.state.baselineIps * 100)
+    }
+
+    /// This phone vs. itself across an OS update — nil when there is nothing honest to say.
+    private var currentUpdateInsight: UpdateImpact.Insight? {
+        runHistory.insight(deviceModel: LeaderboardService.shared.getDeviceModelName(),
+                           osVersion: UIDevice.current.systemVersion,
+                           osBuild: StressEngine.osBuild())
     }
 
     private var phaseProgress: Double {
@@ -180,6 +188,24 @@ struct ContentView: View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
+                    if !engine.isRunning, let insight = currentUpdateInsight {
+                        UpdateImpactCard(
+                            insight: insight,
+                            onRetest: { rec in
+                                // Repeat exactly the test the old result came from, then open pre-flight.
+                                selectedDuration = rec.durationType == 1 ? .minutes15
+                                    : rec.durationType == 2 ? .minutes30 : .minutes5
+                                selectedThreadingType = StressThreadingType(rawValue: rec.threadingType) ?? .multi
+                                ThermoHaptics.tap()
+                                showPreflight = true
+                            },
+                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { runHistory.dismiss(insight) } }
+                        )
+                        .padding(.horizontal, 4)
+                        .padding(.top, 10)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
                     PhaseRail(phase: engine.state.phase,
                               preflightActive: showPreflight,
                               completed: engine.wasCompleted,
@@ -225,6 +251,10 @@ struct ContentView: View {
                     CoreConstellation(topology: engine.topology,
                                       workerRatios: engine.state.workerRatios,
                                       activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
+                        .padding(.horizontal, 4)
+
+                    ThermalXRay(state: engine.state, topology: engine.topology,
+                                activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
                         .padding(.horizontal, 4)
 
                     ThermalHorizon(thermalState: engine.state.thermalState,
@@ -391,10 +421,21 @@ struct ContentView: View {
             confidence: sc?.confidence,
             validityFlags: sc?.validityFlags,
             socModel: StressEngine.socModel(),
-            clusterTopology: engine.topology.describe()
+            clusterTopology: engine.topology.describe(),
+            osBuild: StressEngine.osBuild()
         )
         PendingResultStore.shared.saveResult(pending)
         currentPendingResultId = pending.id
+
+        // Local history for the before/after-update comparison (never uploaded).
+        if engine.wasCompleted, let sc {
+            runHistory.add(RunRecord(
+                id: pending.id, timestamp: pending.timestamp,
+                deviceModel: pending.deviceModel, osVersion: pending.osVersion, osBuild: pending.osBuild,
+                durationType: pending.testDurationType, threadingType: engine.testThreadingType.rawValue,
+                capacity: sc.deliveredCapacity, onsetSec: sc.throttleOnsetSec,
+                validityFlags: sc.validityFlags, confidence: sc.confidence))
+        }
 
         retainedScorecard = sc
         retainedStamps = engine.state.stamps
@@ -445,7 +486,8 @@ struct ContentView: View {
                     socModel: StressEngine.socModel(),
                     clusterTopology: engine.topology.describe(),
                     governor: nil,
-                    hashV2: hashV2
+                    hashV2: hashV2,
+                    osBuild: StressEngine.osBuild()
                 )
                 try await LeaderboardService.shared.submitScore(payload: payload)
                 await MainActor.run {

@@ -571,7 +571,8 @@ struct LeaderboardView: View {
                     socModel: pending.socModel,
                     clusterTopology: pending.clusterTopology,
                     governor: nil,
-                    hashV2: pending.baselineScore != nil ? hashV2 : nil
+                    hashV2: pending.baselineScore != nil ? hashV2 : nil,
+                    osBuild: pending.osBuild   // what was recorded at test time, never today's build
                 )
                 try await LeaderboardService.shared.submitScore(payload: payload)
                 await MainActor.run {

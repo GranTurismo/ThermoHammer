@@ -33,6 +33,10 @@ struct HammerPayload: Codable {
     let clusterTopology: String?
     let governor: String?
     let hashV2: String?              // hash over stamps + metadata
+
+    // Exact OS build (kern.osversion, e.g. "23F77") — lets the server tell point releases and
+    // betas apart. Defaulted so existing call sites keep compiling; nil is omitted from the JSON.
+    var osBuild: String? = nil
 }
 
 struct SessionResponse: Codable {

@@ -329,6 +329,13 @@ final class StressEngine: ObservableObject {
         sysctlString("hw.model") ?? sysctlString("machdep.cpu.brand_string") ?? "Apple SoC"
     }
 
+    /// Exact OS build id (kern.osversion, e.g. "23F77"). nil when the kernel gives nothing.
+    static func osBuild() -> String? {
+        guard let s = sysctlString("kern.osversion")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !s.isEmpty else { return nil }
+        return s
+    }
+
     // MARK: monitors
 
     private func setupMonitors() {

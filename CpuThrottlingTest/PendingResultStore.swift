@@ -25,6 +25,10 @@ struct PendingTestResult: Codable, Identifiable {
     var validityFlags: Int? = nil
     var socModel: String? = nil
     var clusterTopology: String? = nil
+
+    // OS build the run was MEASURED on — captured at test time, never filled in at upload time.
+    // Optional: results saved by older app versions decode without it.
+    var osBuild: String? = nil
 }
 
 class PendingResultStore: ObservableObject {
