@@ -922,9 +922,10 @@ Honest assessment — things to know before trusting/extending the numbers:
   anyway, but there is no partial wakelock guaranteeing worker scheduling.
 * **30 min run = 1800 stamps ≈ tens of KB JSON** — trivial payload; the whole
   file rewrites on each save are fine at this scale.
-* **Security: release keystore credentials are committed in cleartext** in
-  `app/build.gradle.kts` (`strelok222`). Anyone with repo access can sign
-  updates — should be moved to env/CI secrets.
+* **Security: release-signing credentials were once committed in cleartext** in
+  `app/build.gradle.kts`. They are now read from `~/.gradle/gradle.properties` or
+  environment variables (see `SECRETS.md` at the repository root); the old value
+  remains in git history, so treat it as exposed.
 * **`BATTERY_STATS` permission is inert** — granted only to privileged apps;
   kept harmlessly.
 * Comparison engine quirks: fallback fake scores (`stability×2500`/`×2200`)

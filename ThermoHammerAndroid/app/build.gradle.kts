@@ -15,16 +15,28 @@ android {
         versionName = "1.8"
     }
 
+    // Release-signing secrets live OUTSIDE the repo (the repo is public). On each build machine put
+    // these in ~/.gradle/gradle.properties, or provide them as environment variables:
+    //   THERMOHAMMER_STORE_FILE=/path/to/GTech.keystore
+    //   THERMOHAMMER_STORE_PASSWORD=...
+    //   THERMOHAMMER_KEY_ALIAS=gtech        (optional - defaults to gtech)
+    //   THERMOHAMMER_KEY_PASSWORD=...
+    // Without them the release build still works, but is left UNSIGNED.
+    fun signingSecret(name: String): String? =
+        (project.findProperty(name) as String?)?.takeIf { it.isNotBlank() }
+            ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+    val releaseStoreFile = signingSecret("THERMOHAMMER_STORE_FILE")
+
     signingConfigs {
-        create("release") {
-            storeFile = if (System.getProperty("os.name").lowercase().contains("windows")) {
-                file("C:/Users/Kupa/Downloads/GTech.keystore")
-            } else {
-                file("/Users/gogitakupatadze/Downloads/GTech.keystore")
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = signingSecret("THERMOHAMMER_STORE_PASSWORD")
+                keyAlias = signingSecret("THERMOHAMMER_KEY_ALIAS") ?: "gtech"
+                keyPassword = signingSecret("THERMOHAMMER_KEY_PASSWORD")
             }
-            storePassword = "strelok222"
-            keyAlias = "gtech"
-            keyPassword = "strelok222"
+        } else {
+            logger.warn("THERMOHAMMER_STORE_FILE is not set - the release APK will be UNSIGNED (see build.gradle.kts).")
         }
     }
 
@@ -33,7 +45,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
     compileOptions {
