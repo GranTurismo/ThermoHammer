@@ -26,13 +26,20 @@ import com.example.thermohammer.engine.Attribution
 import com.example.thermohammer.engine.RunPhase
 import com.example.thermohammer.engine.StressEngine
 import com.example.thermohammer.engine.StressEngineFactory
+import com.example.thermohammer.engine.StressMode
+import com.example.thermohammer.engine.StressThreadingType
 import com.example.thermohammer.engine.TestDuration
+import com.example.thermohammer.data.RunHistoryStore
+import com.example.thermohammer.data.RunRecord
+import com.example.thermohammer.data.UpdateImpact
+import com.example.thermohammer.ui.components.UpdateImpactCard
 import com.example.thermohammer.network.toWire
 import com.example.thermohammer.ui.components.CoreStatusView
 import com.example.thermohammer.ui.components.PhaseRail
 import com.example.thermohammer.ui.components.StabilityChart
 import com.example.thermohammer.ui.components.ThermalMonitoringPanel
 import com.example.thermohammer.ui.components.ThermalReactor
+import com.example.thermohammer.ui.components.ThermalXRayCard
 import com.example.thermohammer.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -140,6 +147,22 @@ private fun DiagnosticsScreenWrapper(
     val context = LocalContext.current
     val store = remember { com.example.thermohammer.data.PendingResultStore(context) }
     var pendingCount by remember { mutableIntStateOf(0) }
+
+    // ── Update impact: this phone compared with itself across an OS update ──
+    val historyStore = remember { RunHistoryStore(context) }
+    var historyTick by remember { mutableIntStateOf(0) }
+    var updateInsight by remember { mutableStateOf<UpdateImpact.Insight?>(null) }
+    LaunchedEffect(historyTick) {
+        updateInsight = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            UpdateImpact.insight(
+                history = historyStore.all(),
+                deviceModel = engine.getDeviceModel(),
+                osVersion = engine.getAndroidVersion(),
+                osBuild = engine.getOsBuild().ifBlank { null },
+                securityPatch = engine.getSecurityPatch().ifBlank { null }
+            )?.takeUnless { historyStore.isDismissed(it) }
+        }
+    }
 
     // ── Live pre-flight verification — while the checklist is open, gates
     // re-run continuously so a fix (unplug charger, wait for idle) flips the
@@ -257,6 +280,8 @@ private fun DiagnosticsScreenWrapper(
                             deviceModel = engine.getDeviceModel(),
                             deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
                             osVersion = engine.getAndroidVersion(),
+                            osBuild = engine.getOsBuild().ifBlank { null },
+                            securityPatch = engine.getSecurityPatch().ifBlank { null },
                             sessionId = 0,
                             encryptionKey = "",
                             initialBatteryLevel = state.initialBatteryLevel,
@@ -284,6 +309,26 @@ private fun DiagnosticsScreenWrapper(
                         )
                         com.example.thermohammer.data.PendingResultStore(context).saveResult(pending)
                         currentPendingResultId = pending.id
+
+                        // Local history for the before/after-update comparison (never uploaded).
+                        if (card != null) {
+                            historyStore.add(RunRecord(
+                                id = pending.id,
+                                timestamp = pending.timestamp,
+                                deviceModel = pending.deviceModel,
+                                osVersion = pending.osVersion,
+                                osBuild = pending.osBuild,
+                                securityPatch = pending.securityPatch,
+                                durationType = durationType,
+                                threadingType = state.testThreadingType.value,
+                                stressMode = state.stressMode.value,
+                                capacity = card.deliveredCapacity.toDouble(),
+                                onsetSec = card.throttleOnsetSec,
+                                validityFlags = card.validityFlags,
+                                confidence = card.confidence
+                            ))
+                            historyTick++
+                        }
                     } catch (e: Exception) {
                         // Ignore background errors
                     }
@@ -381,6 +426,32 @@ private fun DiagnosticsScreenWrapper(
             }
 
             AnimatedVisibility(
+                visible = updateInsight != null && !state.isRunning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
+                updateInsight?.let { insight ->
+                    UpdateImpactCard(
+                        insight = insight,
+                        onRetest = { rec ->
+                            // Repeat exactly the test the old result came from, then open pre-flight.
+                            onDurationChange(when (rec.durationType) {
+                                1 -> TestDuration.MINUTES_15
+                                2 -> TestDuration.MINUTES_30
+                                else -> TestDuration.MINUTES_5
+                            })
+                            onThreadingChange(StressThreadingType.entries.firstOrNull { it.value == rec.threadingType }
+                                ?: StressThreadingType.MULTI)
+                            onModeChange(StressMode.entries.firstOrNull { it.value == rec.stressMode }
+                                ?: StressMode.CPU)
+                            showPreTest = true
+                            preflightReport = null
+                        },
+                        onDismiss = { historyStore.dismiss(insight); historyTick++ }
+                    )
+                }
+            }
+            AnimatedVisibility(
                 visible = pendingCount > 0 && !state.isRunning,
                 enter = fadeIn(tween(300)) + expandVertically(tween(300)),
                 exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
@@ -429,6 +500,7 @@ private fun DiagnosticsScreenWrapper(
                     topology = engine.topology
                 )
             }
+            ThermalXRayCard(state)
             ThermalMonitoringPanel(state)
             Spacer(Modifier.height(16.dp))
         }
@@ -500,6 +572,8 @@ private fun DiagnosticsScreenWrapper(
                                 deviceManufacturer = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() },
                                 deviceModel = engine.getDeviceModel(), os = 2,
                                 osVersion = engine.getAndroidVersion(),
+                                osBuild = engine.getOsBuild().ifBlank { null },
+                                securityPatch = engine.getSecurityPatch().ifBlank { null },
                                 sessionId = session.id, hash = hash,
                                 schemaVersion = 2,
                                 baselineScore = card?.baselineIps?.toLong(),

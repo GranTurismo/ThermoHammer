@@ -44,7 +44,11 @@ data class PendingTestResult(
     val gpuBaselineFps: Double = 0.0,
     val gpuDeliveredCapacity: Float = 0f,
     val gpuSustainedRatio: Float = 0f,
-    val gpuName: String = ""
+    val gpuName: String = "",
+    // ── OS build the run was MEASURED on — captured at test time, not at upload time ──
+    // Nullable on purpose: results saved by older app versions have neither field.
+    val osBuild: String? = null,
+    val securityPatch: String? = null
 )
 
 class PendingResultStore(context: Context) {

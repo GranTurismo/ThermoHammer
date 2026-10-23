@@ -46,7 +46,10 @@ data class HammerPayload(
     @SerializedName("gpuBaselineFps") val gpuBaselineFps: Double? = null,
     @SerializedName("gpuDeliveredCapacity") val gpuDeliveredCapacity: Double? = null,
     @SerializedName("gpuSustainedRatio") val gpuSustainedRatio: Double? = null,
-    @SerializedName("gpuName") val gpuName: String? = null
+    @SerializedName("gpuName") val gpuName: String? = null,
+    // ── OS build identity — lets the server compare OS updates fairly ──
+    @SerializedName("osBuild") val osBuild: String? = null,
+    @SerializedName("securityPatch") val securityPatch: String? = null
 )
 
 /** Convert a StampV2 (recorded truth) to the wire stamp the server hashes/stores. */

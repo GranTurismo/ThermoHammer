@@ -1153,6 +1153,12 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     fun getAndroidVersion(): String = Build.VERSION.RELEASE
 
+    /** Exact build id (e.g. "BP4A.251205.006") — tells monthly updates apart; RELEASE alone cannot. */
+    fun getOsBuild(): String = Build.ID
+
+    /** Android security patch level (e.g. "2026-10-05"); may be blank on some builds. */
+    fun getSecurityPatch(): String = Build.VERSION.SECURITY_PATCH
+
     fun getSocModel(): String =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else ""
 

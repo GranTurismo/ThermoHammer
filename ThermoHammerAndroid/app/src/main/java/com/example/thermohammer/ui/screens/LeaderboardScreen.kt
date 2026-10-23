@@ -204,6 +204,8 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                                             deviceModel = pending.deviceModel,
                                             os = 2,
                                             osVersion = pending.osVersion,
+                                            osBuild = pending.osBuild?.ifBlank { null },
+                                            securityPatch = pending.securityPatch?.ifBlank { null },
                                             sessionId = session.id,
                                             hash = hash,
                                             schemaVersion = 2,
