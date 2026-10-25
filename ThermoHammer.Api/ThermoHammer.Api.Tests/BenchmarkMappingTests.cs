@@ -73,6 +73,10 @@ public class BenchmarkMappingTests
         return r;
     }
 
+    // fps that score exactly 6000 in each GPU test
+    private static readonly double F1 = 6000 / BenchmarkScoring.Test1Weight, F2 = 6000 / BenchmarkScoring.Test2Weight,
+        F3 = 6000 / BenchmarkScoring.Test3Weight;
+
     private static string Sign(string key, BenchmarkRequest r) =>
         Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(BenchmarkScoring.Canonical(r))));
 
@@ -105,13 +109,13 @@ public class BenchmarkMappingTests
     [Fact]
     public void ScoreIsRecomputedFromFps()
     {
-        var run = Request(r => { r.Test1Fps = 120; r.Test2Fps = 30; r.Test3Fps = 24; r.Test3LowFps = 20; }).ToDao();
+        var run = Request(r => { r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8; }).ToDao();
         Assert.Equal(6000, run.Test1Score);
         Assert.Equal(6000, run.Test2Score);
         Assert.Equal(6000, run.Test3Score);
         Assert.Equal(6000, run.Score);
 
-        var uneven = Request(r => { r.Test1Fps = 160; r.Test2Fps = 10; r.Test3Fps = 40; r.Test3LowFps = 30; }).ToDao();
+        var uneven = Request(r => { r.Test1Fps = F1 * 4 / 3; r.Test2Fps = F2 / 3; r.Test3Fps = F3 * 5 / 3; r.Test3LowFps = F3; }).ToDao();
         Assert.Equal(8000, uneven.Test1Score);
         Assert.Equal(2000, uneven.Test2Score);
         Assert.Equal(10000, uneven.Test3Score);
@@ -132,7 +136,7 @@ public class BenchmarkMappingTests
     [Fact]
     public void UxIsScoredFromRawResultsAndAddedToTheTotal()
     {
-        var reference = Request(r => { r.Test1Fps = 120; r.Test2Fps = 30; r.Test3Fps = 24; r.Test3LowFps = 20; ReferenceUx(r); }).ToDao();
+        var reference = Request(r => { r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8; ReferenceUx(r); }).ToDao();
         Assert.Equal(6000, reference.WebScore);
         Assert.Equal(6000, reference.ScrollScore);
         Assert.Equal(6000, reference.GalleryScore);
@@ -143,7 +147,7 @@ public class BenchmarkMappingTests
 
         var run = Request(r =>
         {
-            r.Test1Fps = 120; r.Test2Fps = 30; r.Test3Fps = 24; r.Test3LowFps = 20;   // GPU 6000
+            r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8;   // GPU 6000
             ReferenceUx(r);
             r.WebLayout = BenchmarkScoring.RefLayout * 32;                              // web 12000: 32^(1/5) = 2
             r.QrRate = 2000 / BenchmarkScoring.QrWeight; r.MlKitQrRate = 40;            // 2000 points; ML Kit unscored
@@ -280,7 +284,7 @@ public class BenchmarkMappingTests
     [Fact]
     public void PhoneWithoutRayTracingScoresZeroInTestThree()
     {
-        var r = Request(x => { x.Test1Fps = 120; x.Test2Fps = 30; x.RayTracing = false; x.Test3Fps = 0; x.Test3LowFps = 0; });
+        var r = Request(x => { x.Test1Fps = F1; x.Test2Fps = F2; x.RayTracing = false; x.Test3Fps = 0; x.Test3LowFps = 0; });
         Assert.Null(BenchmarkScoring.Problem(r));
         var run = r.ToDao();
         Assert.Equal(0, run.Test3Score);

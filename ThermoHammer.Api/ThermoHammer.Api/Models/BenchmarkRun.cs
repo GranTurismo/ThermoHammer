@@ -230,32 +230,34 @@ public static class BenchmarkScoring
 {
     /// <summary>Scene/scoring version the server accepts — matches BenchmarkScore.VERSION in the app.</summary>
     public const int CurrentVersion = 2;
-    public const double Test1Weight = 50;    // Lake Valley:  120 fps → 6000 points
-    public const double Test2Weight = 200;   // Neon City:     30 fps → 6000 points
-    public const double Test3Weight = 250;   // Neon City RT:  24 fps → 6000 points
+    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9, 2026-10-25) scores 6000 on each test —
+    // they must match engine/Benchmark.kt in the app.
+    public const double Test1Weight = 46.3;  // Lake Valley:  129.5 fps → 6000 points
+    public const double Test2Weight = 228;   // Neon City:     26.3 fps → 6000 points
+    public const double Test3Weight = 448;   // Neon City RT:  13.4 fps → 6000 points
 
-    // UX references, 6000 points each — must match UxScore in the app (engine/Benchmark.kt)
-    public const double RefLayout = 3700, RefCanvas = 2050, RefCss = 1200, RefSvg = 1340, RefJs = 3230;
-    public const double RefScroll = 7700;    // feed px/s held
-    public const double RefJpeg = 350, RefWebp = 215, RefAvif = 220;  // gallery MP/s per format
-    public const double RefPhoto = 210;      // MP/s through the editing chain
-    public const double RefVideo = 120;      // 4K frames/s per codec — twice real time
-    public const double QrWeight = 31;       // ZXing decodes/s → points
+    // UX references, 6000 points each
+    public const double RefLayout = 1320, RefCanvas = 2730, RefCss = 1980, RefSvg = 3130, RefJs = 2160;
+    public const double RefScroll = 66600;   // feed px/s held
+    public const double RefJpeg = 122, RefWebp = 99, RefAvif = 103;   // gallery MP/s per format
+    public const double RefPhoto = 397;      // MP/s through the editing chain
+    public const double RefVideo = 298;      // 4K frames/s, mean of the codecs
+    public const double QrWeight = 13.6;     // zxing-cpp decodes/s → points (440/s → 6000)
 
-    // CPU references (geometric-mean kernel ops/s), 6000 points each — must match CpuScore in the app
-    public const double RefCpuMath = 1790, RefCpuData = 358, RefCpuCrypto = 1180, RefCpuMulti = 6090;
+    // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), 6000 points each — provisional
+    public const double RefCpuMath = 1172, RefCpuData = 632, RefCpuCrypto = 595, RefCpuMulti = 6091;
     public const double MaxFps = 5000;
 
     // AI references: inferences/s worth 6000 points per model (classify, detect, segment, upscale, depth, sound)
-    // and accelerator — must match AiScore in the app. NPU: Snapdragon 8 Elite (Qualcomm AI Hub timings).
-    public static readonly double[] RefAiCpu = [480, 23, 7.3, 4.6, 60, 3400];
-    public static readonly double[] RefAiGpu = [600, 80, 25, 25, 150, 1500];
-    public static readonly double[] RefAiNpu = [4717, 858, 251, 1066, 1672, 9804];
+    // and accelerator (NPU through Qualcomm QNN).
+    public static readonly double[] RefAiCpu = [330, 18.2, 4.71, 2.65, 42, 2890];
+    public static readonly double[] RefAiGpu = [658, 85.5, 33.1, 92.8, 182, 1470];
+    public static readonly double[] RefAiNpu = [1690, 473, 229, 774, 993, 2100];
 
-    // MEM references, 6000 points each — must match MemScore in the app. PROVISIONAL (2026 flagship estimates).
-    public const double RefMemRead = 50, RefMemWrite = 40, RefMemCopy = 25, RefMemLatency = 150;     // GB/s, ns
-    public const double RefSeqRead = 3000, RefSeqWrite = 2000, RefRandomRead = 60000, RefRandomWrite = 50000; // MB/s, IOPS
-    public const double RefDbInsert = 800, RefDbUpdate = 800, RefDbQuery = 5000;                     // per second
+    // MEM references, 6000 points each
+    public const double RefMemRead = 57.8, RefMemWrite = 28.4, RefMemCopy = 18.7, RefMemLatency = 245;  // GB/s, ns
+    public const double RefSeqRead = 1750, RefSeqWrite = 1300, RefRandomRead = 29000, RefRandomWrite = 13400; // MB/s, IOPS
+    public const double RefDbInsert = 9700, RefDbUpdate = 36000, RefDbQuery = 20300;                  // per second
 
     /// <summary>The app's ValidityFlag.POWER_EVENT — a charger during the run lifts power limits.</summary>
     public const int PowerEventFlag = 1 << 2;
@@ -381,8 +383,8 @@ public static class BenchmarkScoring
         // UX: a WebView test that didn't finish submits zeros; anything else must be positive and sane
         double[] web = [r.WebLayout, r.WebCanvas, r.WebCss, r.WebSvg, r.WebJs];
         if (web.Any(v => !(v >= 0 && v < 1e7))) return "Implausible web result";
-        if (!(r.QrRate >= 0 && r.QrRate <= 2000)) return "Implausible QR rate";
-        if (r.MlKitQrRate is { } ml && !(ml >= 0 && ml <= 2000)) return "Implausible ML Kit rate";
+        if (!(r.QrRate >= 0 && r.QrRate <= 5000)) return "Implausible QR rate";
+        if (r.MlKitQrRate is { } ml && !(ml >= 0 && ml <= 5000)) return "Implausible ML Kit rate";
         double[] cpu = [r.CpuMath, r.CpuData, r.CpuCrypto, r.CpuMulti];
         if (cpu.Any(v => !(v >= 0 && v < 1e7))) return "Implausible CPU result";
         if (!(r.ScrollSpeed >= 0 && r.ScrollSpeed <= 1e6) || !(r.ScrollDropped >= 0 && r.ScrollDropped <= 100))
