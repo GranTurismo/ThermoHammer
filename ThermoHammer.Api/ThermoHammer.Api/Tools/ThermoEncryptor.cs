@@ -45,6 +45,17 @@ public class ThermoEncryptor
         return CryptographicOperations.FixedTimeEquals(generatedBytes, providedBytes);
     }
 
+    /// <summary>Benchmark runs: HMAC-SHA256 (Base64) over BenchmarkScoring.Canonical with the session key.</summary>
+    public bool IsValidBenchmark(string encryptionKey, BenchmarkRequest request)
+    {
+        if (string.IsNullOrEmpty(encryptionKey) || string.IsNullOrEmpty(request.Hash))
+            return false;
+        byte[] mac = HMACSHA256.HashData(Encoding.UTF8.GetBytes(encryptionKey),
+            Encoding.UTF8.GetBytes(BenchmarkScoring.Canonical(request)));
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(Convert.ToBase64String(mac)), Encoding.UTF8.GetBytes(request.Hash));
+    }
+
     private string Baseize(string txt)
     {
         return Convert.ToBase64String(Encoding.UTF32.GetBytes(txt));

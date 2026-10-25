@@ -65,6 +65,44 @@ public static class ThermoEndpointsMapper
             return Results.Ok(hammer.Stamps);
         });
 
+        // ── GPU benchmark ───────────────────────────────────────────────────
+
+        app.MapPost("/benchmark", async (BenchmarkRequest request, ThermoDbContext db, ThermoEncryptor encryptor, DeviceModelResolver modelResolver) =>
+        {
+            var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == request.SessionId);
+            if (session is null)
+                return Results.NotFound("Session not found");
+            if (session.State == SessionState.Closed)
+                return Results.BadRequest("Session already used");
+            if (!encryptor.IsValidBenchmark(session.EncryptionKey, request))
+                return Results.BadRequest("Invalid data");
+            if (BenchmarkScoring.Problem(request) is { } problem)
+                return Results.BadRequest(problem);
+
+            session.State = SessionState.Closed;
+            request.DeviceModel = await modelResolver.ResolveModelAsync(request.Os, request.DeviceModel);
+            var run = request.ToDao();
+            await db.BenchmarkRuns.AddAsync(run);
+            await db.SaveChangesAsync();
+
+            // rank among phones: devices whose best ranked run beats this one, plus one
+            int better = await db.BenchmarkRuns
+                .Where(r => r.BenchmarkVersion == run.BenchmarkVersion
+                         && (r.ValidityFlags & BenchmarkScoring.PowerEventFlag) == 0
+                         && r.TotalScore > run.TotalScore && r.DeviceModel != run.DeviceModel)
+                .Select(r => r.DeviceModel).Distinct().CountAsync();
+            return Results.Ok(new { id = run.Id, score = run.TotalScore, rank = better + 1 });
+        });
+
+        app.MapGet("/benchmark/leaderboard", async (ThermoDbContext db) =>
+        {
+            var runs = await db.BenchmarkRuns
+                .Where(r => r.BenchmarkVersion == BenchmarkScoring.CurrentVersion
+                         && (r.ValidityFlags & BenchmarkScoring.PowerEventFlag) == 0)
+                .ToListAsync();
+            return Results.Ok(BenchmarkScoring.Leaderboard(runs).Take(500));
+        });
+
         app.MapGet("modelfix", async (ThermoDbContext db, DeviceModelResolver modelResolver) =>
         {
             var models = db.Hammers;

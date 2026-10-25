@@ -7,6 +7,7 @@ public class ThermoDbContext(DbContextOptions<ThermoDbContext> options) : DbCont
 {
     public DbSet<ThermoSession> Sessions => Set<ThermoSession>();
     public DbSet<Hammer> Hammers => Set<Hammer>();
+    public DbSet<BenchmarkRun> BenchmarkRuns => Set<BenchmarkRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,5 +28,13 @@ public class ThermoDbContext(DbContextOptions<ThermoDbContext> options) : DbCont
         .WithOne()
         .HasForeignKey<Hammer>(o => o.SessionId)
         .HasPrincipalKey<ThermoSession>(o => o.Id);
+
+        var bench = modelBuilder.Entity<BenchmarkRun>();
+        bench.HasOne(o => o.Session).WithMany().HasForeignKey(o => o.SessionId).OnDelete(DeleteBehavior.NoAction);
+        foreach (var p in new[] { nameof(BenchmarkRun.DeviceManufacturer), nameof(BenchmarkRun.DeviceModel),
+                     nameof(BenchmarkRun.OsVersion), nameof(BenchmarkRun.OsBuild), nameof(BenchmarkRun.SocModel),
+                     nameof(BenchmarkRun.GpuName), nameof(BenchmarkRun.AppVersion) })
+            bench.Property(p).HasMaxLength(BenchmarkRun.MaxText);
+        bench.HasIndex(o => new { o.BenchmarkVersion, o.TotalScore });
     }
 }
