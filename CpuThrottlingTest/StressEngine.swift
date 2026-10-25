@@ -273,7 +273,7 @@ final class StressEngine: ObservableObject {
     private var currentAttribution: Attribution = .none
 
     // cooldown
-    private static let cooldownMaxS: TimeInterval = 120
+    private static let cooldownMaxS: TimeInterval = 30
     private static let cooldownStallS: TimeInterval = 45
     private static let warmupS: TimeInterval = 12
     private static let calibrationS: TimeInterval = 20
@@ -394,6 +394,11 @@ final class StressEngine: ObservableObject {
         gates.append(GateResult(id: "battery", title: "BATTERY", blocking: true,
                                 passed: battOK,
                                 detail: level < 0 ? "level unknown" : "\(Int(level * 100))% \(battOK ? "" : "— charge first")"))
+        // Mobile data blocks the start: a busy modem sits next to the SoC and heats it (Wi-Fi or airplane mode don't)
+        let mobile = NetworkMonitor.shared.onMobileData
+        gates.append(GateResult(id: "cellular", title: "MOBILE DATA", blocking: true,
+                                passed: !mobile,
+                                detail: mobile ? "on mobile data — switch to Wi-Fi or airplane mode" : "not in use"))
         // Thermal state
         let ts = ProcessInfo.processInfo.thermalState
         // Informational only — cooldown handles elevated states, never blocks.

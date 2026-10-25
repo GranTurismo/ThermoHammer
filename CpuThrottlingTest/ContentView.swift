@@ -10,6 +10,8 @@ struct ContentView: View {
     @StateObject private var networkMonitor = NetworkMonitor.shared
     @StateObject private var pendingStore = PendingResultStore.shared
     @StateObject private var runHistory = RunHistoryStore.shared
+    @StateObject private var bench = BenchmarkEngine.shared
+    @State private var runBenchmark = false            // the run kind picked: stress test or benchmark
 
     @State private var selectedDuration: TestDuration = .minutes5
     @State private var selectedThreadingType: StressThreadingType = .multi
@@ -74,7 +76,7 @@ struct ContentView: View {
                     diagnosticsTab
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else {
-                    LeaderboardView()
+                    LeaderboardTab()
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
@@ -86,7 +88,8 @@ struct ContentView: View {
                     engine: engine,
                     onProceed: {
                         withAnimation(.easeOut(duration: 0.2)) { showPreflight = false }
-                        engine.startTest(duration: selectedDuration, threadingType: selectedThreadingType)
+                        if runBenchmark { bench.start() }
+                        else { engine.startTest(duration: selectedDuration, threadingType: selectedThreadingType) }
                     },
                     onCancel: { withAnimation(.easeOut(duration: 0.2)) { showPreflight = false } }
                 )
@@ -135,10 +138,47 @@ struct ContentView: View {
             }
         }
         .forgeGrain()
+        .overlay { benchmarkLayer }   // above the grain: the stage is clean black
         .preferredColorScheme(.dark)
         .onChange(of: engine.isRunning) { running in
             if !running { handleRunEnd() }
         }
+        .onAppear {   // simulator checks: `simctl launch … -autoBenchmark` runs the benchmark without the launch checks
+            if ProcessInfo.processInfo.arguments.contains("-autoBenchmark") { runBenchmark = true; bench.start() }
+        }
+    }
+
+    /** The benchmark: the stage while it runs, then the result. */
+    @ViewBuilder private var benchmarkLayer: some View {
+        ZStack {
+            if bench.isRunning {
+                BenchmarkStageView(engine: bench)
+                    .transition(.opacity)
+                    .zIndex(20)
+            }
+            if bench.phase == .done, let result = bench.result {
+                BenchmarkResultView(result: result, record: bench.record) {
+                    withAnimation(.easeOut(duration: 0.2)) { bench.dismissResult() }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(21)
+            }
+            if bench.phase == .done, bench.result == nil, let error = bench.error {
+                ForgeOverlayScrim {
+                    ForgeCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("BENCHMARK STOPPED").font(ThermoFont.mono(12, weight: .black)).foregroundColor(Ramp.at(0.85))
+                            Text(error).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1)
+                            Button("DISMISS") { bench.dismissResult() }.font(ThermoFont.mono(11, weight: .bold))
+                        }
+                    }
+                    .padding(24)
+                }
+                .zIndex(21)
+            }
+
+        }
+        .animation(.easeOut(duration: 0.25), value: bench.phase)
     }
 
     // MARK: header
@@ -287,7 +327,28 @@ struct ContentView: View {
     private var controlArea: some View {
         VStack(spacing: 10) {
             if !engine.isRunning {
+                // run kind: the sustained stress test, or the five-section benchmark
+                HStack(spacing: 10) {
+                    ForEach([false, true], id: \.self) { bench in
+                        Button {
+                            runBenchmark = bench
+                            ThermoHaptics.tap()
+                        } label: {
+                            Text(bench ? "BENCHMARK" : "STRESS TEST")
+                                .font(ThermoFont.mono(10, weight: .bold))
+                                .foregroundColor(runBenchmark == bench ? Forge.bg : Forge.ink1)
+                                .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                .background(runBenchmark == bench ? Forge.phasePreFlight : Forge.interact)
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+                if runBenchmark {
+                    Text("CPU + MEM + GPU + UX + AI · the same tests as on Android")
+                        .font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
+                }
                 // pickers — animated away during run
+                if !runBenchmark {
                 HStack(spacing: 10) {
                     ForEach([TestDuration.minutes5, .minutes15, .minutes30], id: \.self) { d in
                         Button {
@@ -318,6 +379,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                }
 
                 Button {
                     showPreflight = true
@@ -325,7 +387,7 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "bolt.fill")
-                        Text("INITIATE STRESS")
+                        Text(runBenchmark ? "RUN BENCHMARK" : "INITIATE STRESS")
                             .font(ThermoFont.mono(13, weight: .black)).tracking(1.5)
                     }
                     .foregroundColor(Forge.bg)

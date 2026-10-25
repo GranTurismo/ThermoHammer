@@ -47,3 +47,10 @@ obj/
 *.key
 *.p12
 *.developerprofile
+
+## TensorFlow Lite for iOS (Vendor/fetch_tflite.sh)
+Vendor/TensorFlowLiteC/
+
+## Python caches and Blender backups
+__pycache__/
+*.blend1

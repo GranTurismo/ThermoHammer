@@ -7,61 +7,383 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		010523425199F7D4F8009770 /* QRBitMatrixParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A973BE264B142F1ADE50C5FC /* QRBitMatrixParser.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		035BC1F400D8F1768D6519CA /* ComparisonModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9608B3D2047ADE4532990BD7 /* ComparisonModels.swift */; };
 		05701C2CB46B4DC6EBBE6599 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E61339A94C4606A3CBEE8AF /* ContentView.swift */; };
+		0691B35BE888AF323F8AE87E /* QRFormatInformation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A0936F20EC9B2A53ACB70025 /* QRFormatInformation.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		07DECA7E970EF6E2255F37C4 /* PhotoEditScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = B12B336D9579A08C71CCAD0A /* PhotoEditScene.swift */; };
 		08CFC0B25FAF186D4D5ABA4B /* jetbrainsmono_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F640603DC088FDF28A30FD36 /* jetbrainsmono_medium.ttf */; };
+		0B3C8A67B7F5D6731D5E928C /* web in Resources */ = {isa = PBXBuildFile; fileRef = 5D8BA3A790DED0C9AEBACCD0 /* web */; };
+		128CC6DA3187F8AC9C5BBD0E /* qr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04AA52F12959F9C339B17965 /* qr.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		16C2FB538E1824283D5E11CC /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */; };
+		19A7315ECBCA5D6DE3443BA7 /* TensorFlowLiteCMetal.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2C433F680247C7E9BE6CBA9 /* TensorFlowLiteCMetal.xcframework */; };
 		1C27089C0110F943DC74725E /* LeaderboardService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329D81879CF186B50E3D88C3 /* LeaderboardService.swift */; };
+		1CCB273594A963BB93BADDA6 /* ResultPoint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3A83DC6C6354ADEE2396C95F /* ResultPoint.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		295F4F17AB77A4C79749B26F /* QRDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 62147F55D540D69324110F76 /* QRDecoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		2A77EF6190DD33FE6CB11BDD /* BenchmarkReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D9603AED6EA84CA742CD0E6 /* BenchmarkReport.swift */; };
+		2C2C990CC170F118FBCAD7E7 /* GlobalHistogramBinarizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 21FE9561D979BC1EE9F31AE0 /* GlobalHistogramBinarizer.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		2DD6478AB37C44C35AA342DB /* GenericGFPoly.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2D0F574CE7E8CBC12B27B605 /* GenericGFPoly.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		2E2606F20A1CC67AB1CF9E82 /* QRDataBlock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B334A7A6C4FE0F0881FFD741 /* QRDataBlock.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		2E556600ECE6B5B8526E79FA /* jetbrainsmono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BD2F472D58B9D9A79B16AFFA /* jetbrainsmono_regular.ttf */; };
+		32C4C19114D33352F3C13DB7 /* BenchmarkUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE14A5DA42D63ADD66D0F40 /* BenchmarkUpload.swift */; };
+		3460A743E41FDE9662DA3BF6 /* LakeValleyAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E9023D796CAE9DF6BB82E3 /* LakeValleyAsset.swift */; };
+		3652D7711068141F72E01177 /* BenchmarkBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C351D8CFE88EEC4201B631 /* BenchmarkBoardView.swift */; };
+		3736E009FD975FDAD77778DF /* BenchmarkStageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08F7DB4C9C80F8D29FF7C86 /* BenchmarkStageView.swift */; };
 		3AEF1EBEFCCE4FE01814563C /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */; };
+		3EC6E38219FACDBA7D00CC93 /* ffnet_40s.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 29D71E3D149CF4486D960223 /* ffnet_40s.mlpackage */; };
 		40E6B8511235571431538EB1 /* spacegrotesk_700.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0A7D533896E044F5A337B9B9 /* spacegrotesk_700.ttf */; };
+		41158AAFDE050E523C149A71 /* neon_city.bin in Resources */ = {isa = PBXBuildFile; fileRef = D97424AF0EBE742E70F15587 /* neon_city.bin */; };
+		419C4131BA9F6D6B4BF646DB /* QRDetector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7EDCBEAC9A1269B17C4E6B37 /* QRDetector.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		41DC5FAF664B841BFB7FCFD8 /* kernels_data.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9432213FADCA16B1A733F593 /* kernels_data.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		439D16D629555BEE7195AFB4 /* QRReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4BF4B540EC5C1EB31C62D5B8 /* QRReader.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		468321DB6B5F77A23B0A7549 /* GTIN.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A9A12E18821455C179AC8C67 /* GTIN.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		47E986032A246D224C3A3819 /* PendingResultStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */; };
+		4C179CB92BF814EEE196747D /* NeonCitySim.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBEE485D7FDE160FEA84D5C /* NeonCitySim.swift */; };
+		55E39EA208690C4129D1B1A6 /* LakeValleyRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3580515D37B446766CF91DAE /* LakeValleyRenderer.swift */; };
+		56D1E82941357AE4294A0E1E /* WebBenchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D6C00025ACC00004DFAD11 /* WebBenchView.swift */; };
+		5DD4D57FEAA7E8B02474E829 /* HRI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DE57A21C6A398760018CF25F /* HRI.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		5F63C0FBC9DB5F4BA7BD6343 /* Barcode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 43F77CC5BB0BF945A194B97D /* Barcode.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		60B7EAAF866A32B864C196F2 /* QRMatrixUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40596119E2FD8B94656BFF91 /* QRMatrixUtil.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		6423A7B97420291981252877 /* Content.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3B8A1AF0FF04521ADA3F262E /* Content.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		64C1D64F3AB9CAD2742871E3 /* PhotoEdit.metal in Sources */ = {isa = PBXBuildFile; fileRef = 2486945E45EBFAE81DDAD4F9 /* PhotoEdit.metal */; };
+		657436EE3E19C44CA65B63F2 /* WhiteRectDetector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		6A1E63F30C48B8AAF84DDE3A /* midas.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A6DB3ABC0FE17887AD36F998 /* midas.mlpackage */; };
+		6B64A4E79DAB43FEAB2CA137 /* BenchmarkResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 274715EEA45FCD2E818FA57E /* BenchmarkResultView.swift */; };
+		6FF1C328ECDB9679F293795B /* lake_valley.bin in Resources */ = {isa = PBXBuildFile; fileRef = C48F07A94F9893B4B62D9300 /* lake_valley.bin */; };
 		7300C25E2DA6E7B88D56EEF9 /* StressEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F40CC95B1045168CA386E8 /* StressEngine.swift */; };
+		7301D0F6C124D768F096B49F /* BitArray.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9A7AE39644A891E7ADBBF882 /* BitArray.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		75E9DAA2F14107D814A27F44 /* AiStageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5420332ECD512AB7B3611D6 /* AiStageView.swift */; };
+		76FC089A89D6EA138ED7549D /* QRMaskUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D70D8055A8D1AF706392F63F /* QRMaskUtil.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		79441CDB61D395CA37E00810 /* ThermalXRay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 226B2C15F04FAA9C36F84124 /* ThermalXRay.swift */; };
+		7AF4D5D66333EF3779DBA3A5 /* ReedSolomonDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 955A0D5AD795FC7E3D1A1AC2 /* ReedSolomonDecoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		7C04286E055B1820CCD6450F /* Present.metal in Sources */ = {isa = PBXBuildFile; fileRef = DC815853BE3F6387B5857444 /* Present.metal */; };
+		7EBB51A05FB20FD5F933E3A4 /* QRVersion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 95D7479CF380E892C159D1F9 /* QRVersion.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		800D5F4180B9EFF3AF40226D /* CpuThrottlingTestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */; };
+		80A1DF8E6EE76F329690B2CA /* ECI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F29EA8963CB2C943C3C4DCA8 /* ECI.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		81371D8BB9DE0F7D5704AF22 /* AiInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3870E9176FBD9A15ABB91D71 /* AiInputs.swift */; };
+		8145E1154CFEF6953B30961A /* CpuBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E134F5A19DBEF362D8A76 /* CpuBench.swift */; };
+		836AB8351A68127A2BB0E764 /* BitMatrix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A489A8FCFC83663A329D2FE8 /* BitMatrix.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		837A547E4FE6564E62067939 /* ReedSolomonEncoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 20101E13981EDEE521F7612D /* ReedSolomonEncoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		854936A37549CE03C18A4BD7 /* NeonLightGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A751B8C970C0DEB2704F088 /* NeonLightGrid.swift */; };
+		88DB8914B652AA23194AFD04 /* zueci.c in Sources */ = {isa = PBXBuildFile; fileRef = C88AC8322C64FACB71A535F0 /* zueci.c */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		8BD77CEAA6A6AC9E9C2F1213 /* Error.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8F42B5E73D8A3F6243E5082F /* Error.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		8E6BDBD347D2AFED42F64C8C /* spacegrotesk_500.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7782EB40720DE12E08044DC7 /* spacegrotesk_500.ttf */; };
+		8F69EB42845FAD99A7C0DA38 /* AiSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76BF3F785A36EDF796FEBB52 /* AiSection.swift */; };
+		8FD9373030572FDB8E724CE6 /* kernels_crypto.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D39E99FDAA487107CBCA5437 /* kernels_crypto.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		9006359BE38E7BF3E2958632 /* kernels_math.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F069BD9BCEAB83C698A9046D /* kernels_math.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		95187CF7DC77D623009014EC /* QRErrorCorrectionLevel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B31B6515323D458E18D53BBF /* QRErrorCorrectionLevel.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		9697F8572D49C0D9BB5C0390 /* ForgeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0145D8CB99485ABB0E23DC58 /* ForgeComponents.swift */; };
+		9B453DA9CC7F8470048E7A87 /* yolox.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = E38FF2CB990420080C02444E /* yolox.mlpackage */; };
+		9C28918741C1749FE9E1217C /* BenchmarkModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADE6806A0DF2FCFAD47092E9 /* BenchmarkModels.swift */; };
+		9CE39DA8CAC2916EB389339E /* mobilenet_v2.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A8BC14CF93D1D5F405916DEC /* mobilenet_v2.mlpackage */; };
+		9EE011BD4A05C5817A6846A4 /* ai in Resources */ = {isa = PBXBuildFile; fileRef = D0DC6C6954E3419F24944C18 /* ai */; };
+		A1D661B8850E0C2820158343 /* BenchmarkEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760E779BE0685479EC6806BA /* BenchmarkEngine.swift */; };
+		A260978CF589950122FABF67 /* PerspectiveTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 97C808C91C93F15094EF8FB3 /* PerspectiveTransform.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		A613B76EA08F807C4F184A2B /* BitMatrixIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7FDA215C07F6EB459FDDCCDB /* BitMatrixIO.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		A6977053DB6D5783519ED6F4 /* TextUtfEncoding.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4FCAF867756EE56FB8065CBB /* TextUtfEncoding.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		A849BF5B344BE9A75ADA4AC8 /* VideoBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = A250D38D1CB5DF71D5A1FEBE /* VideoBench.swift */; };
 		AF35AF2AF30760735A0A05EF /* ComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E4099E6624D1B717D9A9E26 /* ComparisonView.swift */; };
+		B3EA813FF52811D732F083E4 /* GpuMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44C42DE7EBE792D689D5156A /* GpuMath.swift */; };
+		B4E5B5B2DDAEAD89FA70972E /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F21DDF40F20FA4E35B3F34C /* Metal.framework */; };
+		B6B41710980E2833B2E5A2E2 /* GenericGF.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8945CE4DC35C5748FD5A0EC0 /* GenericGF.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		B7A34B479FC258D84218BD6E /* TextEncoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = ACBCEF733950002AF22A744C /* TextEncoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		B9E775C3A8516AC54AFF7F46 /* jetbrainsmono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 663F65BAE880188293A520A3 /* jetbrainsmono_bold.ttf */; };
 		B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7DD55569A14DD3A42D804BF7 /* Assets.xcassets */; };
 		BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B3232B3AD29924355737D0 /* StabilityChart.swift */; };
+		C009678D94D9473927807FEF /* LakeValley.metal in Sources */ = {isa = PBXBuildFile; fileRef = BA2AA68DB5802370BFCC2601 /* LakeValley.metal */; };
+		C3D4621462DC8075C5E5DDD7 /* GpuSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E161CD6C4F5F923CA79878ED /* GpuSection.swift */; };
+		C6EE9B6FC8858ED1EF54E5DE /* CoreML.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC9A5D8AF21E9693D0E843BE /* CoreML.framework */; };
+		C8EA4A1772F1827FCA007E40 /* QREncoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D6DE37437FB7C80764352B7F /* QREncoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		C91FDF2EAA2ACB69BE58AB3E /* BinaryBitmap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 451A0B92D698FFD31B4D25D4 /* BinaryBitmap.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		CD8709790D84EFE1673E73FB /* AiBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = D267338ACEB6C755CDE9F06C /* AiBench.swift */; };
+		D045CA56256E779AE5F986CA /* BitSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BBD61277ABECF9654ECFABED /* BitSource.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		D0EBDDD016B904BF73B1198E /* RunHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF49F5F3B8940186267F33B /* RunHistoryStore.swift */; };
+		D3D429FDDCAE629C98561AC4 /* MemBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A4C04A5775909EF39CEF3B /* MemBench.swift */; };
 		D419247625F51322181363F1 /* jetbrainsmono_extrabold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 05DCE6AD4D1ADA13547F35A2 /* jetbrainsmono_extrabold.ttf */; };
 		D653C0CD5097FB9A5D67270E /* UpdateImpactCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C437528A9670AAD4AA86D5 /* UpdateImpactCard.swift */; };
 		D6D30306DCC5257CE0EE9E8A /* UpdateImpact.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82AA5172C65278C235126B08 /* UpdateImpact.swift */; };
+		DB2EE108325632FE972C6EB7 /* UxSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4984BB4820CBA600627E27FE /* UxSection.swift */; };
+		DBFDFC909BF48CC37B8E458C /* crypto_arm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D5489199479B80ECCD209569 /* crypto_arm.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		DCABF38983A5D21026133054 /* ForgeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92E0097DE242FBE65093E7E /* ForgeTheme.swift */; };
+		DD2FCA94B8942E383281CB0C /* media in Resources */ = {isa = PBXBuildFile; fileRef = 15DE7B261F900C41BD5AA14F /* media */; };
+		DF5FBB02001D119B10D91E92 /* CharacterSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40892998CFE24E5382AC9B7C /* CharacterSet.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		E0E08E6139D4ECE582D3986F /* TensorFlowLiteC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F5D53923F8DD3B06CBC4FCF9 /* TensorFlowLiteC.xcframework */; };
+		E371EEB7563C6B489B9277B8 /* mem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 73CA043AF3361EBD6E01083B /* mem.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		E3C1996E27674081BC28BA40 /* real_esrgan_general_x4v3.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 4E46D17787CC166BE8DFFA81 /* real_esrgan_general_x4v3.mlpackage */; };
+		E55218D36EE2F5B62719C740 /* Utf.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A7AA162551506BBAEB225F9 /* Utf.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		E5D07E69F208B0FE3976F70E /* QRWriter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E054E1D1519FAB8F7E779014 /* QRWriter.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		E5D36B7175A9A489BCDA7C60 /* yamnet.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 74AE1B92FB2085A94CFCA8C4 /* yamnet.mlpackage */; };
+		EA228CFB5EC516EB52046842 /* ConcentricFinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 115A9CEB3AAD3E0E0932F683 /* ConcentricFinder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		EA48CC6A8CD7FA61AA6547B8 /* QRCodecMode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E17BF1B904431557617F5B6E /* QRCodecMode.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		EA863C7FFC1F67B64DCF282F /* HybridBinarizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F6CAC53495ABD98E5F686A05 /* HybridBinarizer.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		ED1564D73AB3D33B1CE4DC2C /* bench_core.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 113BB4CCBBD259771C8B8339 /* bench_core.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		ED72609C7C9E6AC57AC0B421 /* GpuBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95279C57CB6277CBBAA36C5B /* GpuBench.swift */; };
+		ED987C2A5A2BAD33C028E353 /* NeonCityRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08245AFD2423604DAA970981 /* NeonCityRenderer.swift */; };
+		F1035D2E8F2028F19187F9D7 /* TextDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00ADE275F3E63400413BC8FA /* TextDecoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		F3D82800A1E29EBEFBEBE88C /* GridSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93BBDBDF1608168284DCA9AD /* GridSampler.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		F823E5EA3ECE2D1797CDBA85 /* NeonCity.metal in Sources */ = {isa = PBXBuildFile; fileRef = 6EE57DEDB8BFA93072739D29 /* NeonCity.metal */; };
+		FA857D283B0A59A7241A8AA0 /* QrBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88B2E70A67BFD27532F7E369 /* QrBench.swift */; };
 		FFD85D02A52E05F574C08C1F /* ForgeOverlays.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CA1DA9A1EA746B9BD9685B /* ForgeOverlays.swift */; };
+		FFEB1AA8C7E55713EEF33439 /* BarcodeFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3F886D7D137C975308FC5FDE /* BarcodeFormat.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		00939EB3CF3E5AC1D8600492 /* HRI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HRI.h; sourceTree = "<group>"; };
+		00ADE275F3E63400413BC8FA /* TextDecoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TextDecoder.cpp; sourceTree = "<group>"; };
 		0145D8CB99485ABB0E23DC58 /* ForgeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgeComponents.swift; sourceTree = "<group>"; };
+		042288C132E155E4CAAB4151 /* GenericGFPoly.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GenericGFPoly.h; sourceTree = "<group>"; };
+		04AA52F12959F9C339B17965 /* qr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = qr.cpp; sourceTree = "<group>"; };
+		054E314F0C3F4C8E9B066F16 /* zueci.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci.h; sourceTree = "<group>"; };
 		05DCE6AD4D1ADA13547F35A2 /* jetbrainsmono_extrabold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrainsmono_extrabold.ttf; sourceTree = "<group>"; };
+		08245AFD2423604DAA970981 /* NeonCityRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeonCityRenderer.swift; sourceTree = "<group>"; };
+		0835FF3898A2A4D1573F1C3F /* CharacterSet.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CharacterSet.h; sourceTree = "<group>"; };
 		08CA1DA9A1EA746B9BD9685B /* ForgeOverlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgeOverlays.swift; sourceTree = "<group>"; };
+		08F285184EC145F744496157 /* Quadrilateral.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Quadrilateral.h; sourceTree = "<group>"; };
 		0A7D533896E044F5A337B9B9 /* spacegrotesk_700.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = spacegrotesk_700.ttf; sourceTree = "<group>"; };
+		0DE14A5DA42D63ADD66D0F40 /* BenchmarkUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkUpload.swift; sourceTree = "<group>"; };
+		0E0B92D6DBD26121EF30FD4A /* ECI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ECI.h; sourceTree = "<group>"; };
 		10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
+		113BB4CCBBD259771C8B8339 /* bench_core.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = bench_core.cpp; sourceTree = "<group>"; };
+		115A9CEB3AAD3E0E0932F683 /* ConcentricFinder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ConcentricFinder.cpp; sourceTree = "<group>"; };
+		12799CD2E8BAAD3E9E397E00 /* Utf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Utf.h; sourceTree = "<group>"; };
+		127A5D8D45F72615183DB7A5 /* ImageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ImageView.h; sourceTree = "<group>"; };
+		15DE7B261F900C41BD5AA14F /* media */ = {isa = PBXFileReference; lastKnownFileType = folder; name = media; path = ThermoHammerAndroid/app/src/main/assets/media; sourceTree = SOURCE_ROOT; };
+		17DB00A0AFEE080333A169BE /* zueci_gbk.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_gbk.h; sourceTree = "<group>"; };
 		1AF49F5F3B8940186267F33B /* RunHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunHistoryStore.swift; sourceTree = "<group>"; };
+		1D9603AED6EA84CA742CD0E6 /* BenchmarkReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkReport.swift; sourceTree = "<group>"; };
+		1DA33E75018A989487419F8A /* zueci_ksx1001.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_ksx1001.h; sourceTree = "<group>"; };
+		20101E13981EDEE521F7612D /* ReedSolomonEncoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ReedSolomonEncoder.cpp; sourceTree = "<group>"; };
+		21FE9561D979BC1EE9F31AE0 /* GlobalHistogramBinarizer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GlobalHistogramBinarizer.cpp; sourceTree = "<group>"; };
 		226B2C15F04FAA9C36F84124 /* ThermalXRay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalXRay.swift; sourceTree = "<group>"; };
+		2486945E45EBFAE81DDAD4F9 /* PhotoEdit.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = PhotoEdit.metal; sourceTree = "<group>"; };
+		274715EEA45FCD2E818FA57E /* BenchmarkResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkResultView.swift; sourceTree = "<group>"; };
+		276078C30422D1316BDC5114 /* Content.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Content.h; sourceTree = "<group>"; };
+		29D71E3D149CF4486D960223 /* ffnet_40s.mlpackage */ = {isa = PBXFileReference; path = ffnet_40s.mlpackage; sourceTree = "<group>"; };
+		2B3DB2749C53980E590E7361 /* BitMatrixIO.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitMatrixIO.h; sourceTree = "<group>"; };
+		2D0F574CE7E8CBC12B27B605 /* GenericGFPoly.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GenericGFPoly.cpp; sourceTree = "<group>"; };
+		3136A2B80761C75097358A25 /* QREncodeResult.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QREncodeResult.h; sourceTree = "<group>"; };
+		32467E90016D91168E2216A1 /* LogMatrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LogMatrix.h; sourceTree = "<group>"; };
 		329D81879CF186B50E3D88C3 /* LeaderboardService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardService.swift; sourceTree = "<group>"; };
+		337DEC9D67885703E52E0D5C /* ResultPoint.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ResultPoint.h; sourceTree = "<group>"; };
+		33D6C00025ACC00004DFAD11 /* WebBenchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebBenchView.swift; sourceTree = "<group>"; };
+		34824575672BF9D40136EF23 /* BitHacks.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitHacks.h; sourceTree = "<group>"; };
+		3580515D37B446766CF91DAE /* LakeValleyRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LakeValleyRenderer.swift; sourceTree = "<group>"; };
+		362E134F5A19DBEF362D8A76 /* CpuBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuBench.swift; sourceTree = "<group>"; };
+		36FFF5BA636269280EF54B66 /* zueci_gb18030.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_gb18030.h; sourceTree = "<group>"; };
+		3870E9176FBD9A15ABB91D71 /* AiInputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiInputs.swift; sourceTree = "<group>"; };
+		38CE9A27271879A6992B8DDF /* DecoderResult.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DecoderResult.h; sourceTree = "<group>"; };
+		3A83DC6C6354ADEE2396C95F /* ResultPoint.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ResultPoint.cpp; sourceTree = "<group>"; };
+		3B8A1AF0FF04521ADA3F262E /* Content.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Content.cpp; sourceTree = "<group>"; };
+		3C2B31629C2277DC2D4B772B /* TextUtfEncoding.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TextUtfEncoding.h; sourceTree = "<group>"; };
 		3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CpuThrottlingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3DF82A9BB4A3515FD7EEE4D9 /* Result.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Result.h; sourceTree = "<group>"; };
+		3F1977094C639F3D7CCCEC33 /* TextDecoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TextDecoder.h; sourceTree = "<group>"; };
+		3F886D7D137C975308FC5FDE /* BarcodeFormat.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BarcodeFormat.cpp; sourceTree = "<group>"; };
+		3FFA109EF0E09B54926241CF /* HybridBinarizer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HybridBinarizer.h; sourceTree = "<group>"; };
+		40596119E2FD8B94656BFF91 /* QRMatrixUtil.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRMatrixUtil.cpp; sourceTree = "<group>"; };
+		40892998CFE24E5382AC9B7C /* CharacterSet.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterSet.cpp; sourceTree = "<group>"; };
+		4199B3D3B603C83A78F9DD7D /* Version.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Version.h; sourceTree = "<group>"; };
+		43F77CC5BB0BF945A194B97D /* Barcode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Barcode.cpp; sourceTree = "<group>"; };
+		44C42DE7EBE792D689D5156A /* GpuMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuMath.swift; sourceTree = "<group>"; };
+		451A0B92D698FFD31B4D25D4 /* BinaryBitmap.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BinaryBitmap.cpp; sourceTree = "<group>"; };
+		46DED66B60FD4CAF0E74E09C /* BarcodeFormat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BarcodeFormat.h; sourceTree = "<group>"; };
+		4984BB4820CBA600627E27FE /* UxSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UxSection.swift; sourceTree = "<group>"; };
+		4A751B8C970C0DEB2704F088 /* NeonLightGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeonLightGrid.swift; sourceTree = "<group>"; };
+		4A7AA162551506BBAEB225F9 /* Utf.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Utf.cpp; sourceTree = "<group>"; };
+		4BF4B540EC5C1EB31C62D5B8 /* QRReader.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRReader.cpp; sourceTree = "<group>"; };
+		4C31AAB3D19CD973D711F132 /* BitArray.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitArray.h; sourceTree = "<group>"; };
+		4E46D17787CC166BE8DFFA81 /* real_esrgan_general_x4v3.mlpackage */ = {isa = PBXFileReference; path = real_esrgan_general_x4v3.mlpackage; sourceTree = "<group>"; };
 		4E61339A94C4606A3CBEE8AF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		4FCAF867756EE56FB8065CBB /* TextUtfEncoding.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TextUtfEncoding.cpp; sourceTree = "<group>"; };
+		50E725B9AACB2C72567D9873 /* ThresholdBinarizer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ThresholdBinarizer.h; sourceTree = "<group>"; };
+		574799F6874013DDB9A4C7B5 /* ZXTestSupport.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ZXTestSupport.h; sourceTree = "<group>"; };
+		58E4F035A9D63D5EB91AC8FD /* QRBitMatrixParser.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRBitMatrixParser.h; sourceTree = "<group>"; };
+		59DB097861216D141D52A0DD /* ReedSolomonEncoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReedSolomonEncoder.h; sourceTree = "<group>"; };
+		5CE951C4AE111D540D119FC0 /* GTIN.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GTIN.h; sourceTree = "<group>"; };
+		5D8BA3A790DED0C9AEBACCD0 /* web */ = {isa = PBXFileReference; lastKnownFileType = folder; name = web; path = ThermoHammerAndroid/app/src/main/assets/web; sourceTree = SOURCE_ROOT; };
+		620F1229683231CE96AA39C5 /* ConcentricFinder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ConcentricFinder.h; sourceTree = "<group>"; };
+		62147F55D540D69324110F76 /* QRDecoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRDecoder.cpp; sourceTree = "<group>"; };
+		63B44909D6DCFEA31C63CAEB /* Scope.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Scope.h; sourceTree = "<group>"; };
+		6425D5465A368EB6097A4D2F /* ZXAlgorithms.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ZXAlgorithms.h; sourceTree = "<group>"; };
 		663F65BAE880188293A520A3 /* jetbrainsmono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrainsmono_bold.ttf; sourceTree = "<group>"; };
+		6C19A7ED546C1013EEC97C1D /* ReedSolomonDecoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReedSolomonDecoder.h; sourceTree = "<group>"; };
+		6CEFA77418A7EABCABF72FFD /* DetectorResult.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DetectorResult.h; sourceTree = "<group>"; };
+		6EE57DEDB8BFA93072739D29 /* NeonCity.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = NeonCity.metal; sourceTree = "<group>"; };
+		73CA043AF3361EBD6E01083B /* mem.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mem.cpp; sourceTree = "<group>"; };
+		744A4A04B7D2B3499F5E239C /* core.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = core.hpp; sourceTree = "<group>"; };
+		7492042211D189830BD73179 /* Reader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Reader.h; sourceTree = "<group>"; };
+		74AE1B92FB2085A94CFCA8C4 /* yamnet.mlpackage */ = {isa = PBXFileReference; path = yamnet.mlpackage; sourceTree = "<group>"; };
+		760E779BE0685479EC6806BA /* BenchmarkEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkEngine.swift; sourceTree = "<group>"; };
+		76BF3F785A36EDF796FEBB52 /* AiSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiSection.swift; sourceTree = "<group>"; };
+		76C351D8CFE88EEC4201B631 /* BenchmarkBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkBoardView.swift; sourceTree = "<group>"; };
+		76D0F8359AB92667A0CD5771 /* QRECB.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRECB.h; sourceTree = "<group>"; };
 		7782EB40720DE12E08044DC7 /* spacegrotesk_500.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = spacegrotesk_500.ttf; sourceTree = "<group>"; };
+		7888009AE36BAD1E1C47822D /* zueci_gb2312.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_gb2312.h; sourceTree = "<group>"; };
+		7C4BC19EAEAFB6F310F62B7B /* bench_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bench_core.h; sourceTree = "<group>"; };
 		7DD55569A14DD3A42D804BF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7DE5857E0F2126BCEAB4EBFB /* QRMaskUtil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRMaskUtil.h; sourceTree = "<group>"; };
+		7EDCBEAC9A1269B17C4E6B37 /* QRDetector.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRDetector.cpp; sourceTree = "<group>"; };
+		7F21DDF40F20FA4E35B3F34C /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		7FDA215C07F6EB459FDDCCDB /* BitMatrixIO.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BitMatrixIO.cpp; sourceTree = "<group>"; };
+		8177DFA242E7ABC353DD3CEF /* Pattern.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Pattern.h; sourceTree = "<group>"; };
 		82AA5172C65278C235126B08 /* UpdateImpact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateImpact.swift; sourceTree = "<group>"; };
+		8490F2BF7C46DBFB56B5C3D5 /* QRFormatInformation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRFormatInformation.h; sourceTree = "<group>"; };
+		854895309BEC2DE9FF97FE5D /* ByteArray.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ByteArray.h; sourceTree = "<group>"; };
 		85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuThrottlingTestApp.swift; sourceTree = "<group>"; };
+		8731D43369C35A7CFBB50C1F /* Point.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Point.h; sourceTree = "<group>"; };
+		88B2E70A67BFD27532F7E369 /* QrBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrBench.swift; sourceTree = "<group>"; };
+		8945CE4DC35C5748FD5A0EC0 /* GenericGF.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GenericGF.cpp; sourceTree = "<group>"; };
+		8950C643D0C0EAB12FE47428 /* QRWriter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRWriter.h; sourceTree = "<group>"; };
+		8B61ACB2E2AABFD614D45BEE /* QRDecoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRDecoder.h; sourceTree = "<group>"; };
+		8C235455C51018750D3F7380 /* QRDataMask.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRDataMask.h; sourceTree = "<group>"; };
+		8E39B26CC970E2A774EE3CA0 /* RegressionLine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RegressionLine.h; sourceTree = "<group>"; };
 		8E4099E6624D1B717D9A9E26 /* ComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComparisonView.swift; sourceTree = "<group>"; };
+		8F42B5E73D8A3F6243E5082F /* Error.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Error.cpp; sourceTree = "<group>"; };
+		8FBEBB585B9FC41B23B34DAF /* PerspectiveTransform.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PerspectiveTransform.h; sourceTree = "<group>"; };
+		93794C9DBB07C9F716CF9923 /* TextEncoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TextEncoder.h; sourceTree = "<group>"; };
+		93BBDBDF1608168284DCA9AD /* GridSampler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GridSampler.cpp; sourceTree = "<group>"; };
+		9432213FADCA16B1A733F593 /* kernels_data.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kernels_data.cpp; sourceTree = "<group>"; };
+		95279C57CB6277CBBAA36C5B /* GpuBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuBench.swift; sourceTree = "<group>"; };
+		955A0D5AD795FC7E3D1A1AC2 /* ReedSolomonDecoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ReedSolomonDecoder.cpp; sourceTree = "<group>"; };
+		958A9D263ECF24010C0731AA /* zueci_sjis.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_sjis.h; sourceTree = "<group>"; };
+		95D7479CF380E892C159D1F9 /* QRVersion.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRVersion.cpp; sourceTree = "<group>"; };
 		9608B3D2047ADE4532990BD7 /* ComparisonModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComparisonModels.swift; sourceTree = "<group>"; };
+		961C2B2C11F274B9C8C92088 /* Range.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Range.h; sourceTree = "<group>"; };
+		97C808C91C93F15094EF8FB3 /* PerspectiveTransform.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PerspectiveTransform.cpp; sourceTree = "<group>"; };
+		99A4C04A5775909EF39CEF3B /* MemBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemBench.swift; sourceTree = "<group>"; };
+		9A7907FA49DD090F111FF2BB /* ZXConfig.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ZXConfig.h; sourceTree = "<group>"; };
+		9A7AE39644A891E7ADBBF882 /* BitArray.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BitArray.cpp; sourceTree = "<group>"; };
 		9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
+		A0936F20EC9B2A53ACB70025 /* QRFormatInformation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRFormatInformation.cpp; sourceTree = "<group>"; };
+		A250D38D1CB5DF71D5A1FEBE /* VideoBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoBench.swift; sourceTree = "<group>"; };
+		A3192AB79F9532E64BC70889 /* ByteMatrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ByteMatrix.h; sourceTree = "<group>"; };
+		A489A8FCFC83663A329D2FE8 /* BitMatrix.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BitMatrix.cpp; sourceTree = "<group>"; };
+		A5148DF297D895A7A33268A6 /* Flags.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Flags.h; sourceTree = "<group>"; };
+		A6DB3ABC0FE17887AD36F998 /* midas.mlpackage */ = {isa = PBXFileReference; path = midas.mlpackage; sourceTree = "<group>"; };
+		A8810B8D67FFD48C46D74D41 /* QRCodecMode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRCodecMode.h; sourceTree = "<group>"; };
+		A8BC14CF93D1D5F405916DEC /* mobilenet_v2.mlpackage */ = {isa = PBXFileReference; path = mobilenet_v2.mlpackage; sourceTree = "<group>"; };
 		A92E0097DE242FBE65093E7E /* ForgeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgeTheme.swift; sourceTree = "<group>"; };
+		A973BE264B142F1ADE50C5FC /* QRBitMatrixParser.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRBitMatrixParser.cpp; sourceTree = "<group>"; };
+		A98ACEE0A59056530B02546B /* ZXVersion.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ZXVersion.h; sourceTree = "<group>"; };
+		A9A12E18821455C179AC8C67 /* GTIN.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GTIN.cpp; sourceTree = "<group>"; };
+		AA4D1E132162F5969AB58412 /* QRVersion.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRVersion.h; sourceTree = "<group>"; };
+		AB9F28E1C81D744E44B1F5D9 /* Error.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Error.h; sourceTree = "<group>"; };
+		ACBCEF733950002AF22A744C /* TextEncoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TextEncoder.cpp; sourceTree = "<group>"; };
+		ADE6806A0DF2FCFAD47092E9 /* BenchmarkModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkModels.swift; sourceTree = "<group>"; };
+		B12B336D9579A08C71CCAD0A /* PhotoEditScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoEditScene.swift; sourceTree = "<group>"; };
 		B1B3232B3AD29924355737D0 /* StabilityChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StabilityChart.swift; sourceTree = "<group>"; };
 		B1C437528A9670AAD4AA86D5 /* UpdateImpactCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateImpactCard.swift; sourceTree = "<group>"; };
+		B2240D6D2EECE97A228F09B0 /* QRDataBlock.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRDataBlock.h; sourceTree = "<group>"; };
+		B2A6426975F29A8DE0C8DD7F /* BitMatrixCursor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitMatrixCursor.h; sourceTree = "<group>"; };
+		B31B6515323D458E18D53BBF /* QRErrorCorrectionLevel.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRErrorCorrectionLevel.cpp; sourceTree = "<group>"; };
+		B334A7A6C4FE0F0881FFD741 /* QRDataBlock.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRDataBlock.cpp; sourceTree = "<group>"; };
+		B389E10D9CE23C0F8D174105 /* GenericGF.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GenericGF.h; sourceTree = "<group>"; };
+		B4D8A5AB068A44ED95F4A8A7 /* BinaryBitmap.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BinaryBitmap.h; sourceTree = "<group>"; };
 		B4F40CC95B1045168CA386E8 /* StressEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressEngine.swift; sourceTree = "<group>"; };
+		B605084CC9E5B0EBA91639EC /* Generator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Generator.h; sourceTree = "<group>"; };
+		B8E9023D796CAE9DF6BB82E3 /* LakeValleyAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LakeValleyAsset.swift; sourceTree = "<group>"; };
+		BA2AA68DB5802370BFCC2601 /* LakeValley.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = LakeValley.metal; sourceTree = "<group>"; };
+		BBCCA82108C0ADF8B876EBE9 /* WhiteRectDetector.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WhiteRectDetector.h; sourceTree = "<group>"; };
+		BBD61277ABECF9654ECFABED /* BitSource.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BitSource.cpp; sourceTree = "<group>"; };
+		BC9A5D8AF21E9693D0E843BE /* CoreML.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework; path = System/Library/Frameworks/CoreML.framework; sourceTree = SDKROOT; };
 		BD2F472D58B9D9A79B16AFFA /* jetbrainsmono_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrainsmono_regular.ttf; sourceTree = "<group>"; };
+		BE0601568C4D0E610C3C22CD /* BenchCore-Bridging.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "BenchCore-Bridging.h"; sourceTree = "<group>"; };
+		C369EDBDBF963DC8BA1E5469 /* Matrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Matrix.h; sourceTree = "<group>"; };
+		C48F07A94F9893B4B62D9300 /* lake_valley.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = lake_valley.bin; sourceTree = "<group>"; };
+		C70C8746509132A998055639 /* BitMatrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitMatrix.h; sourceTree = "<group>"; };
+		C88AC8322C64FACB71A535F0 /* zueci.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = zueci.c; sourceTree = "<group>"; };
+		C8C308310DB479A8D8D09A2A /* QRErrorCorrectionLevel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRErrorCorrectionLevel.h; sourceTree = "<group>"; };
+		C98D8FD290D586714A2379C6 /* QRMatrixUtil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRMatrixUtil.h; sourceTree = "<group>"; };
+		CB67F42D5CDAFACEDC621BE0 /* zueci_common.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_common.h; sourceTree = "<group>"; };
+		D08F7DB4C9C80F8D29FF7C86 /* BenchmarkStageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkStageView.swift; sourceTree = "<group>"; };
+		D0DC6C6954E3419F24944C18 /* ai */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ai; path = ThermoHammerAndroid/app/src/main/assets/ai; sourceTree = SOURCE_ROOT; };
+		D267338ACEB6C755CDE9F06C /* AiBench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiBench.swift; sourceTree = "<group>"; };
+		D2C433F680247C7E9BE6CBA9 /* TensorFlowLiteCMetal.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TensorFlowLiteCMetal.xcframework; path = Vendor/TensorFlowLiteC/TensorFlowLiteCMetal.xcframework; sourceTree = "<group>"; };
+		D2FD923BAB3DDA87BAA101C8 /* GridSampler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GridSampler.h; sourceTree = "<group>"; };
+		D39E99FDAA487107CBCA5437 /* kernels_crypto.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kernels_crypto.cpp; sourceTree = "<group>"; };
+		D5489199479B80ECCD209569 /* crypto_arm.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = crypto_arm.cpp; sourceTree = "<group>"; };
+		D66FEBFD2F82C9C2E3FF5A46 /* StructuredAppend.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StructuredAppend.h; sourceTree = "<group>"; };
+		D6DE37437FB7C80764352B7F /* QREncoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QREncoder.cpp; sourceTree = "<group>"; };
+		D70D8055A8D1AF706392F63F /* QRMaskUtil.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRMaskUtil.cpp; sourceTree = "<group>"; };
+		D97424AF0EBE742E70F15587 /* neon_city.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = neon_city.bin; sourceTree = "<group>"; };
+		D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = WhiteRectDetector.cpp; sourceTree = "<group>"; };
+		DC815853BE3F6387B5857444 /* Present.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Present.metal; sourceTree = "<group>"; };
+		DCA9B0EF865383BA4E13129C /* GlobalHistogramBinarizer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GlobalHistogramBinarizer.h; sourceTree = "<group>"; };
+		DCC511AB6D9558053259029B /* zueci_sb.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_sb.h; sourceTree = "<group>"; };
+		DE57A21C6A398760018CF25F /* HRI.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HRI.cpp; sourceTree = "<group>"; };
+		E054E1D1519FAB8F7E779014 /* QRWriter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRWriter.cpp; sourceTree = "<group>"; };
+		E161CD6C4F5F923CA79878ED /* GpuSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpuSection.swift; sourceTree = "<group>"; };
+		E17BF1B904431557617F5B6E /* QRCodecMode.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRCodecMode.cpp; sourceTree = "<group>"; };
+		E38FF2CB990420080C02444E /* yolox.mlpackage */ = {isa = PBXFileReference; path = yolox.mlpackage; sourceTree = "<group>"; };
+		E5420332ECD512AB7B3611D6 /* AiStageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiStageView.swift; sourceTree = "<group>"; };
+		E75AFE7856D8BC75B6833994 /* BitSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitSource.h; sourceTree = "<group>"; };
+		EEF7370A3693E941E39D09F6 /* zueci_big5.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_big5.h; sourceTree = "<group>"; };
+		EF1004CCF979001C8BB0DFC3 /* ReaderOptions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReaderOptions.h; sourceTree = "<group>"; };
+		EF1C9DA9BF9CB2B10DDF4AD2 /* Barcode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Barcode.h; sourceTree = "<group>"; };
+		F01A3BA0AC0C34B0BA0D73B6 /* QRDetector.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRDetector.h; sourceTree = "<group>"; };
+		F069BD9BCEAB83C698A9046D /* kernels_math.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = kernels_math.cpp; sourceTree = "<group>"; };
+		F29EA8963CB2C943C3C4DCA8 /* ECI.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ECI.cpp; sourceTree = "<group>"; };
+		F5D53923F8DD3B06CBC4FCF9 /* TensorFlowLiteC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = TensorFlowLiteC.xcframework; path = Vendor/TensorFlowLiteC/TensorFlowLiteC.xcframework; sourceTree = "<group>"; };
 		F640603DC088FDF28A30FD36 /* jetbrainsmono_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrainsmono_medium.ttf; sourceTree = "<group>"; };
+		F6CAC53495ABD98E5F686A05 /* HybridBinarizer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HybridBinarizer.cpp; sourceTree = "<group>"; };
+		F950B52614D92F534489CB96 /* DecodeHints.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DecodeHints.h; sourceTree = "<group>"; };
+		FA1F035ED1F44FD16929752E /* QREncoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QREncoder.h; sourceTree = "<group>"; };
 		FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResultStore.swift; sourceTree = "<group>"; };
+		FDDE3D4C708D7DA24D31B026 /* QRReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRReader.h; sourceTree = "<group>"; };
+		FEEA76557BED25EF380D49D4 /* TritMatrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TritMatrix.h; sourceTree = "<group>"; };
+		FFBEE485D7FDE160FEA84D5C /* NeonCitySim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeonCitySim.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		0C92B359D535856A9F865293 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E0E08E6139D4ECE582D3986F /* TensorFlowLiteC.xcframework in Frameworks */,
+				19A7315ECBCA5D6DE3443BA7 /* TensorFlowLiteCMetal.xcframework in Frameworks */,
+				C6EE9B6FC8858ED1EF54E5DE /* CoreML.framework in Frameworks */,
+				B4E5B5B2DDAEAD89FA70972E /* Metal.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
+		293512AC33A481F52E2DC200 /* libzueci */ = {
+			isa = PBXGroup;
+			children = (
+				EEF7370A3693E941E39D09F6 /* zueci_big5.h */,
+				CB67F42D5CDAFACEDC621BE0 /* zueci_common.h */,
+				7888009AE36BAD1E1C47822D /* zueci_gb2312.h */,
+				36FFF5BA636269280EF54B66 /* zueci_gb18030.h */,
+				17DB00A0AFEE080333A169BE /* zueci_gbk.h */,
+				1DA33E75018A989487419F8A /* zueci_ksx1001.h */,
+				DCC511AB6D9558053259029B /* zueci_sb.h */,
+				958A9D263ECF24010C0731AA /* zueci_sjis.h */,
+				C88AC8322C64FACB71A535F0 /* zueci.c */,
+				054E314F0C3F4C8E9B066F16 /* zueci.h */,
+			);
+			path = libzueci;
+			sourceTree = "<group>";
+		};
+		35951ADABA48296A8A849296 /* GPU */ = {
+			isa = PBXGroup;
+			children = (
+				95279C57CB6277CBBAA36C5B /* GpuBench.swift */,
+				44C42DE7EBE792D689D5156A /* GpuMath.swift */,
+				E161CD6C4F5F923CA79878ED /* GpuSection.swift */,
+				BA2AA68DB5802370BFCC2601 /* LakeValley.metal */,
+				B8E9023D796CAE9DF6BB82E3 /* LakeValleyAsset.swift */,
+				3580515D37B446766CF91DAE /* LakeValleyRenderer.swift */,
+				6EE57DEDB8BFA93072739D29 /* NeonCity.metal */,
+				08245AFD2423604DAA970981 /* NeonCityRenderer.swift */,
+				FFBEE485D7FDE160FEA84D5C /* NeonCitySim.swift */,
+				4A751B8C970C0DEB2704F088 /* NeonLightGrid.swift */,
+				DC815853BE3F6387B5857444 /* Present.metal */,
+			);
+			path = GPU;
+			sourceTree = "<group>";
+		};
 		400004CC2FB39BE1D04BF8C9 /* CpuThrottlingTest */ = {
 			isa = PBXGroup;
 			children = (
@@ -83,9 +405,29 @@
 				226B2C15F04FAA9C36F84124 /* ThermalXRay.swift */,
 				82AA5172C65278C235126B08 /* UpdateImpact.swift */,
 				B1C437528A9670AAD4AA86D5 /* UpdateImpactCard.swift */,
+				EDEE142C671F1DDCB5388FA6 /* Benchmark */,
 				9693DB0B7F42A19903C949F7 /* Fonts */,
 			);
 			path = CpuThrottlingTest;
+			sourceTree = "<group>";
+		};
+		590D82ACA2C219CF503ADD7C /* include */ = {
+			isa = PBXGroup;
+			children = (
+				7C4BC19EAEAFB6F310F62B7B /* bench_core.h */,
+			);
+			name = include;
+			path = BenchCore/include;
+			sourceTree = "<group>";
+		};
+		742028DA43F88E725A5A8225 /* assets */ = {
+			isa = PBXGroup;
+			children = (
+				C48F07A94F9893B4B62D9300 /* lake_valley.bin */,
+				D97424AF0EBE742E70F15587 /* neon_city.bin */,
+			);
+			name = assets;
+			path = ThermoHammerAndroid/app/src/main/assets;
 			sourceTree = "<group>";
 		};
 		9063FA31A56D86581429BB19 /* Products */ = {
@@ -94,6 +436,22 @@
 				3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		949852A96186A4A5E400553F /* src */ = {
+			isa = PBXGroup;
+			children = (
+				113BB4CCBBD259771C8B8339 /* bench_core.cpp */,
+				744A4A04B7D2B3499F5E239C /* core.hpp */,
+				D5489199479B80ECCD209569 /* crypto_arm.cpp */,
+				D39E99FDAA487107CBCA5437 /* kernels_crypto.cpp */,
+				9432213FADCA16B1A733F593 /* kernels_data.cpp */,
+				F069BD9BCEAB83C698A9046D /* kernels_math.cpp */,
+				73CA043AF3361EBD6E01083B /* mem.cpp */,
+				04AA52F12959F9C339B17965 /* qr.cpp */,
+			);
+			name = src;
+			path = BenchCore/src;
 			sourceTree = "<group>";
 		};
 		9693DB0B7F42A19903C949F7 /* Fonts */ = {
@@ -109,12 +467,220 @@
 			path = Fonts;
 			sourceTree = "<group>";
 		};
+		9BB2B16DC142DA2C2F5E7D02 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				43F77CC5BB0BF945A194B97D /* Barcode.cpp */,
+				EF1C9DA9BF9CB2B10DDF4AD2 /* Barcode.h */,
+				3F886D7D137C975308FC5FDE /* BarcodeFormat.cpp */,
+				46DED66B60FD4CAF0E74E09C /* BarcodeFormat.h */,
+				451A0B92D698FFD31B4D25D4 /* BinaryBitmap.cpp */,
+				B4D8A5AB068A44ED95F4A8A7 /* BinaryBitmap.h */,
+				9A7AE39644A891E7ADBBF882 /* BitArray.cpp */,
+				4C31AAB3D19CD973D711F132 /* BitArray.h */,
+				34824575672BF9D40136EF23 /* BitHacks.h */,
+				A489A8FCFC83663A329D2FE8 /* BitMatrix.cpp */,
+				C70C8746509132A998055639 /* BitMatrix.h */,
+				B2A6426975F29A8DE0C8DD7F /* BitMatrixCursor.h */,
+				7FDA215C07F6EB459FDDCCDB /* BitMatrixIO.cpp */,
+				2B3DB2749C53980E590E7361 /* BitMatrixIO.h */,
+				BBD61277ABECF9654ECFABED /* BitSource.cpp */,
+				E75AFE7856D8BC75B6833994 /* BitSource.h */,
+				854895309BEC2DE9FF97FE5D /* ByteArray.h */,
+				A3192AB79F9532E64BC70889 /* ByteMatrix.h */,
+				40892998CFE24E5382AC9B7C /* CharacterSet.cpp */,
+				0835FF3898A2A4D1573F1C3F /* CharacterSet.h */,
+				115A9CEB3AAD3E0E0932F683 /* ConcentricFinder.cpp */,
+				620F1229683231CE96AA39C5 /* ConcentricFinder.h */,
+				3B8A1AF0FF04521ADA3F262E /* Content.cpp */,
+				276078C30422D1316BDC5114 /* Content.h */,
+				F950B52614D92F534489CB96 /* DecodeHints.h */,
+				38CE9A27271879A6992B8DDF /* DecoderResult.h */,
+				6CEFA77418A7EABCABF72FFD /* DetectorResult.h */,
+				F29EA8963CB2C943C3C4DCA8 /* ECI.cpp */,
+				0E0B92D6DBD26121EF30FD4A /* ECI.h */,
+				8F42B5E73D8A3F6243E5082F /* Error.cpp */,
+				AB9F28E1C81D744E44B1F5D9 /* Error.h */,
+				A5148DF297D895A7A33268A6 /* Flags.h */,
+				B605084CC9E5B0EBA91639EC /* Generator.h */,
+				8945CE4DC35C5748FD5A0EC0 /* GenericGF.cpp */,
+				B389E10D9CE23C0F8D174105 /* GenericGF.h */,
+				2D0F574CE7E8CBC12B27B605 /* GenericGFPoly.cpp */,
+				042288C132E155E4CAAB4151 /* GenericGFPoly.h */,
+				21FE9561D979BC1EE9F31AE0 /* GlobalHistogramBinarizer.cpp */,
+				DCA9B0EF865383BA4E13129C /* GlobalHistogramBinarizer.h */,
+				93BBDBDF1608168284DCA9AD /* GridSampler.cpp */,
+				D2FD923BAB3DDA87BAA101C8 /* GridSampler.h */,
+				A9A12E18821455C179AC8C67 /* GTIN.cpp */,
+				5CE951C4AE111D540D119FC0 /* GTIN.h */,
+				DE57A21C6A398760018CF25F /* HRI.cpp */,
+				00939EB3CF3E5AC1D8600492 /* HRI.h */,
+				F6CAC53495ABD98E5F686A05 /* HybridBinarizer.cpp */,
+				3FFA109EF0E09B54926241CF /* HybridBinarizer.h */,
+				127A5D8D45F72615183DB7A5 /* ImageView.h */,
+				32467E90016D91168E2216A1 /* LogMatrix.h */,
+				C369EDBDBF963DC8BA1E5469 /* Matrix.h */,
+				8177DFA242E7ABC353DD3CEF /* Pattern.h */,
+				97C808C91C93F15094EF8FB3 /* PerspectiveTransform.cpp */,
+				8FBEBB585B9FC41B23B34DAF /* PerspectiveTransform.h */,
+				8731D43369C35A7CFBB50C1F /* Point.h */,
+				08F285184EC145F744496157 /* Quadrilateral.h */,
+				961C2B2C11F274B9C8C92088 /* Range.h */,
+				7492042211D189830BD73179 /* Reader.h */,
+				EF1004CCF979001C8BB0DFC3 /* ReaderOptions.h */,
+				955A0D5AD795FC7E3D1A1AC2 /* ReedSolomonDecoder.cpp */,
+				6C19A7ED546C1013EEC97C1D /* ReedSolomonDecoder.h */,
+				20101E13981EDEE521F7612D /* ReedSolomonEncoder.cpp */,
+				59DB097861216D141D52A0DD /* ReedSolomonEncoder.h */,
+				8E39B26CC970E2A774EE3CA0 /* RegressionLine.h */,
+				3DF82A9BB4A3515FD7EEE4D9 /* Result.h */,
+				3A83DC6C6354ADEE2396C95F /* ResultPoint.cpp */,
+				337DEC9D67885703E52E0D5C /* ResultPoint.h */,
+				63B44909D6DCFEA31C63CAEB /* Scope.h */,
+				D66FEBFD2F82C9C2E3FF5A46 /* StructuredAppend.h */,
+				00ADE275F3E63400413BC8FA /* TextDecoder.cpp */,
+				3F1977094C639F3D7CCCEC33 /* TextDecoder.h */,
+				ACBCEF733950002AF22A744C /* TextEncoder.cpp */,
+				93794C9DBB07C9F716CF9923 /* TextEncoder.h */,
+				4FCAF867756EE56FB8065CBB /* TextUtfEncoding.cpp */,
+				3C2B31629C2277DC2D4B772B /* TextUtfEncoding.h */,
+				50E725B9AACB2C72567D9873 /* ThresholdBinarizer.h */,
+				FEEA76557BED25EF380D49D4 /* TritMatrix.h */,
+				4A7AA162551506BBAEB225F9 /* Utf.cpp */,
+				12799CD2E8BAAD3E9E397E00 /* Utf.h */,
+				4199B3D3B603C83A78F9DD7D /* Version.h */,
+				D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */,
+				BBCCA82108C0ADF8B876EBE9 /* WhiteRectDetector.h */,
+				6425D5465A368EB6097A4D2F /* ZXAlgorithms.h */,
+				9A7907FA49DD090F111FF2BB /* ZXConfig.h */,
+				574799F6874013DDB9A4C7B5 /* ZXTestSupport.h */,
+				A98ACEE0A59056530B02546B /* ZXVersion.h */,
+				293512AC33A481F52E2DC200 /* libzueci */,
+				A8E997F4989A2DE8D4327605 /* qrcode */,
+			);
+			name = src;
+			path = "BenchCore/third_party/zxing-cpp/src";
+			sourceTree = "<group>";
+		};
+		9EF13051CF02952A5E0E776D /* NeuralEngine */ = {
+			isa = PBXGroup;
+			children = (
+				29D71E3D149CF4486D960223 /* ffnet_40s.mlpackage */,
+				A6DB3ABC0FE17887AD36F998 /* midas.mlpackage */,
+				A8BC14CF93D1D5F405916DEC /* mobilenet_v2.mlpackage */,
+				4E46D17787CC166BE8DFFA81 /* real_esrgan_general_x4v3.mlpackage */,
+				74AE1B92FB2085A94CFCA8C4 /* yamnet.mlpackage */,
+				E38FF2CB990420080C02444E /* yolox.mlpackage */,
+			);
+			path = NeuralEngine;
+			sourceTree = "<group>";
+		};
+		A8E997F4989A2DE8D4327605 /* qrcode */ = {
+			isa = PBXGroup;
+			children = (
+				A973BE264B142F1ADE50C5FC /* QRBitMatrixParser.cpp */,
+				58E4F035A9D63D5EB91AC8FD /* QRBitMatrixParser.h */,
+				E17BF1B904431557617F5B6E /* QRCodecMode.cpp */,
+				A8810B8D67FFD48C46D74D41 /* QRCodecMode.h */,
+				B334A7A6C4FE0F0881FFD741 /* QRDataBlock.cpp */,
+				B2240D6D2EECE97A228F09B0 /* QRDataBlock.h */,
+				8C235455C51018750D3F7380 /* QRDataMask.h */,
+				62147F55D540D69324110F76 /* QRDecoder.cpp */,
+				8B61ACB2E2AABFD614D45BEE /* QRDecoder.h */,
+				7EDCBEAC9A1269B17C4E6B37 /* QRDetector.cpp */,
+				F01A3BA0AC0C34B0BA0D73B6 /* QRDetector.h */,
+				76D0F8359AB92667A0CD5771 /* QRECB.h */,
+				D6DE37437FB7C80764352B7F /* QREncoder.cpp */,
+				FA1F035ED1F44FD16929752E /* QREncoder.h */,
+				3136A2B80761C75097358A25 /* QREncodeResult.h */,
+				B31B6515323D458E18D53BBF /* QRErrorCorrectionLevel.cpp */,
+				C8C308310DB479A8D8D09A2A /* QRErrorCorrectionLevel.h */,
+				A0936F20EC9B2A53ACB70025 /* QRFormatInformation.cpp */,
+				8490F2BF7C46DBFB56B5C3D5 /* QRFormatInformation.h */,
+				D70D8055A8D1AF706392F63F /* QRMaskUtil.cpp */,
+				7DE5857E0F2126BCEAB4EBFB /* QRMaskUtil.h */,
+				40596119E2FD8B94656BFF91 /* QRMatrixUtil.cpp */,
+				C98D8FD290D586714A2379C6 /* QRMatrixUtil.h */,
+				4BF4B540EC5C1EB31C62D5B8 /* QRReader.cpp */,
+				FDDE3D4C708D7DA24D31B026 /* QRReader.h */,
+				95D7479CF380E892C159D1F9 /* QRVersion.cpp */,
+				AA4D1E132162F5969AB58412 /* QRVersion.h */,
+				E054E1D1519FAB8F7E779014 /* QRWriter.cpp */,
+				8950C643D0C0EAB12FE47428 /* QRWriter.h */,
+			);
+			path = qrcode;
+			sourceTree = "<group>";
+		};
 		AB5DB8F11AF56FEDBAE0C5E4 = {
 			isa = PBXGroup;
 			children = (
+				D0DC6C6954E3419F24944C18 /* ai */,
+				15DE7B261F900C41BD5AA14F /* media */,
+				5D8BA3A790DED0C9AEBACCD0 /* web */,
+				742028DA43F88E725A5A8225 /* assets */,
 				400004CC2FB39BE1D04BF8C9 /* CpuThrottlingTest */,
+				590D82ACA2C219CF503ADD7C /* include */,
+				949852A96186A4A5E400553F /* src */,
+				9BB2B16DC142DA2C2F5E7D02 /* src */,
+				E4973149760B09B844AACE82 /* Frameworks */,
 				9063FA31A56D86581429BB19 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D4322DB020C671F1BBD2F3C2 /* UX */ = {
+			isa = PBXGroup;
+			children = (
+				2486945E45EBFAE81DDAD4F9 /* PhotoEdit.metal */,
+				B12B336D9579A08C71CCAD0A /* PhotoEditScene.swift */,
+				88B2E70A67BFD27532F7E369 /* QrBench.swift */,
+				4984BB4820CBA600627E27FE /* UxSection.swift */,
+				A250D38D1CB5DF71D5A1FEBE /* VideoBench.swift */,
+				33D6C00025ACC00004DFAD11 /* WebBenchView.swift */,
+			);
+			path = UX;
+			sourceTree = "<group>";
+		};
+		DF4D41A1321DED5E61F46159 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				D267338ACEB6C755CDE9F06C /* AiBench.swift */,
+				3870E9176FBD9A15ABB91D71 /* AiInputs.swift */,
+				76BF3F785A36EDF796FEBB52 /* AiSection.swift */,
+				E5420332ECD512AB7B3611D6 /* AiStageView.swift */,
+				9EF13051CF02952A5E0E776D /* NeuralEngine */,
+			);
+			path = AI;
+			sourceTree = "<group>";
+		};
+		E4973149760B09B844AACE82 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BC9A5D8AF21E9693D0E843BE /* CoreML.framework */,
+				7F21DDF40F20FA4E35B3F34C /* Metal.framework */,
+				F5D53923F8DD3B06CBC4FCF9 /* TensorFlowLiteC.xcframework */,
+				D2C433F680247C7E9BE6CBA9 /* TensorFlowLiteCMetal.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		EDEE142C671F1DDCB5388FA6 /* Benchmark */ = {
+			isa = PBXGroup;
+			children = (
+				BE0601568C4D0E610C3C22CD /* BenchCore-Bridging.h */,
+				76C351D8CFE88EEC4201B631 /* BenchmarkBoardView.swift */,
+				760E779BE0685479EC6806BA /* BenchmarkEngine.swift */,
+				ADE6806A0DF2FCFAD47092E9 /* BenchmarkModels.swift */,
+				1D9603AED6EA84CA742CD0E6 /* BenchmarkReport.swift */,
+				274715EEA45FCD2E818FA57E /* BenchmarkResultView.swift */,
+				D08F7DB4C9C80F8D29FF7C86 /* BenchmarkStageView.swift */,
+				0DE14A5DA42D63ADD66D0F40 /* BenchmarkUpload.swift */,
+				362E134F5A19DBEF362D8A76 /* CpuBench.swift */,
+				99A4C04A5775909EF39CEF3B /* MemBench.swift */,
+				DF4D41A1321DED5E61F46159 /* AI */,
+				35951ADABA48296A8A849296 /* GPU */,
+				D4322DB020C671F1BBD2F3C2 /* UX */,
+			);
+			path = Benchmark;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -126,6 +692,7 @@
 			buildPhases = (
 				D94475EBDD458BFE01675F52 /* Sources */,
 				80EA9387E8DD830D74D2C2EE /* Resources */,
+				0C92B359D535856A9F865293 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -178,12 +745,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */,
+				9EE011BD4A05C5817A6846A4 /* ai in Resources */,
 				B9E775C3A8516AC54AFF7F46 /* jetbrainsmono_bold.ttf in Resources */,
 				D419247625F51322181363F1 /* jetbrainsmono_extrabold.ttf in Resources */,
 				08CFC0B25FAF186D4D5ABA4B /* jetbrainsmono_medium.ttf in Resources */,
 				2E556600ECE6B5B8526E79FA /* jetbrainsmono_regular.ttf in Resources */,
+				6FF1C328ECDB9679F293795B /* lake_valley.bin in Resources */,
+				DD2FCA94B8942E383281CB0C /* media in Resources */,
+				41158AAFDE050E523C149A71 /* neon_city.bin in Resources */,
 				8E6BDBD347D2AFED42F64C8C /* spacegrotesk_500.ttf in Resources */,
 				40E6B8511235571431538EB1 /* spacegrotesk_700.ttf in Resources */,
+				0B3C8A67B7F5D6731D5E928C /* web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -194,23 +766,108 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CD8709790D84EFE1673E73FB /* AiBench.swift in Sources */,
+				81371D8BB9DE0F7D5704AF22 /* AiInputs.swift in Sources */,
+				8F69EB42845FAD99A7C0DA38 /* AiSection.swift in Sources */,
+				75E9DAA2F14107D814A27F44 /* AiStageView.swift in Sources */,
+				5F63C0FBC9DB5F4BA7BD6343 /* Barcode.cpp in Sources */,
+				FFEB1AA8C7E55713EEF33439 /* BarcodeFormat.cpp in Sources */,
+				3652D7711068141F72E01177 /* BenchmarkBoardView.swift in Sources */,
+				A1D661B8850E0C2820158343 /* BenchmarkEngine.swift in Sources */,
+				9C28918741C1749FE9E1217C /* BenchmarkModels.swift in Sources */,
+				2A77EF6190DD33FE6CB11BDD /* BenchmarkReport.swift in Sources */,
+				6B64A4E79DAB43FEAB2CA137 /* BenchmarkResultView.swift in Sources */,
+				3736E009FD975FDAD77778DF /* BenchmarkStageView.swift in Sources */,
+				32C4C19114D33352F3C13DB7 /* BenchmarkUpload.swift in Sources */,
+				C91FDF2EAA2ACB69BE58AB3E /* BinaryBitmap.cpp in Sources */,
+				7301D0F6C124D768F096B49F /* BitArray.cpp in Sources */,
+				836AB8351A68127A2BB0E764 /* BitMatrix.cpp in Sources */,
+				A613B76EA08F807C4F184A2B /* BitMatrixIO.cpp in Sources */,
+				D045CA56256E779AE5F986CA /* BitSource.cpp in Sources */,
+				DF5FBB02001D119B10D91E92 /* CharacterSet.cpp in Sources */,
 				035BC1F400D8F1768D6519CA /* ComparisonModels.swift in Sources */,
 				AF35AF2AF30760735A0A05EF /* ComparisonView.swift in Sources */,
+				EA228CFB5EC516EB52046842 /* ConcentricFinder.cpp in Sources */,
+				6423A7B97420291981252877 /* Content.cpp in Sources */,
 				05701C2CB46B4DC6EBBE6599 /* ContentView.swift in Sources */,
+				8145E1154CFEF6953B30961A /* CpuBench.swift in Sources */,
 				800D5F4180B9EFF3AF40226D /* CpuThrottlingTestApp.swift in Sources */,
+				80A1DF8E6EE76F329690B2CA /* ECI.cpp in Sources */,
+				8BD77CEAA6A6AC9E9C2F1213 /* Error.cpp in Sources */,
 				9697F8572D49C0D9BB5C0390 /* ForgeComponents.swift in Sources */,
 				FFD85D02A52E05F574C08C1F /* ForgeOverlays.swift in Sources */,
 				DCABF38983A5D21026133054 /* ForgeTheme.swift in Sources */,
+				468321DB6B5F77A23B0A7549 /* GTIN.cpp in Sources */,
+				B6B41710980E2833B2E5A2E2 /* GenericGF.cpp in Sources */,
+				2DD6478AB37C44C35AA342DB /* GenericGFPoly.cpp in Sources */,
+				2C2C990CC170F118FBCAD7E7 /* GlobalHistogramBinarizer.cpp in Sources */,
+				ED72609C7C9E6AC57AC0B421 /* GpuBench.swift in Sources */,
+				B3EA813FF52811D732F083E4 /* GpuMath.swift in Sources */,
+				C3D4621462DC8075C5E5DDD7 /* GpuSection.swift in Sources */,
+				F3D82800A1E29EBEFBEBE88C /* GridSampler.cpp in Sources */,
+				5DD4D57FEAA7E8B02474E829 /* HRI.cpp in Sources */,
+				EA863C7FFC1F67B64DCF282F /* HybridBinarizer.cpp in Sources */,
+				C009678D94D9473927807FEF /* LakeValley.metal in Sources */,
+				3460A743E41FDE9662DA3BF6 /* LakeValleyAsset.swift in Sources */,
+				55E39EA208690C4129D1B1A6 /* LakeValleyRenderer.swift in Sources */,
 				1C27089C0110F943DC74725E /* LeaderboardService.swift in Sources */,
 				3AEF1EBEFCCE4FE01814563C /* LeaderboardView.swift in Sources */,
+				D3D429FDDCAE629C98561AC4 /* MemBench.swift in Sources */,
+				F823E5EA3ECE2D1797CDBA85 /* NeonCity.metal in Sources */,
+				ED987C2A5A2BAD33C028E353 /* NeonCityRenderer.swift in Sources */,
+				4C179CB92BF814EEE196747D /* NeonCitySim.swift in Sources */,
+				854936A37549CE03C18A4BD7 /* NeonLightGrid.swift in Sources */,
 				16C2FB538E1824283D5E11CC /* NetworkMonitor.swift in Sources */,
 				47E986032A246D224C3A3819 /* PendingResultStore.swift in Sources */,
+				A260978CF589950122FABF67 /* PerspectiveTransform.cpp in Sources */,
+				64C1D64F3AB9CAD2742871E3 /* PhotoEdit.metal in Sources */,
+				07DECA7E970EF6E2255F37C4 /* PhotoEditScene.swift in Sources */,
+				7C04286E055B1820CCD6450F /* Present.metal in Sources */,
+				010523425199F7D4F8009770 /* QRBitMatrixParser.cpp in Sources */,
+				EA48CC6A8CD7FA61AA6547B8 /* QRCodecMode.cpp in Sources */,
+				2E2606F20A1CC67AB1CF9E82 /* QRDataBlock.cpp in Sources */,
+				295F4F17AB77A4C79749B26F /* QRDecoder.cpp in Sources */,
+				419C4131BA9F6D6B4BF646DB /* QRDetector.cpp in Sources */,
+				C8EA4A1772F1827FCA007E40 /* QREncoder.cpp in Sources */,
+				95187CF7DC77D623009014EC /* QRErrorCorrectionLevel.cpp in Sources */,
+				0691B35BE888AF323F8AE87E /* QRFormatInformation.cpp in Sources */,
+				76FC089A89D6EA138ED7549D /* QRMaskUtil.cpp in Sources */,
+				60B7EAAF866A32B864C196F2 /* QRMatrixUtil.cpp in Sources */,
+				439D16D629555BEE7195AFB4 /* QRReader.cpp in Sources */,
+				7EBB51A05FB20FD5F933E3A4 /* QRVersion.cpp in Sources */,
+				E5D07E69F208B0FE3976F70E /* QRWriter.cpp in Sources */,
+				FA857D283B0A59A7241A8AA0 /* QrBench.swift in Sources */,
+				7AF4D5D66333EF3779DBA3A5 /* ReedSolomonDecoder.cpp in Sources */,
+				837A547E4FE6564E62067939 /* ReedSolomonEncoder.cpp in Sources */,
+				1CCB273594A963BB93BADDA6 /* ResultPoint.cpp in Sources */,
 				D0EBDDD016B904BF73B1198E /* RunHistoryStore.swift in Sources */,
 				BC4008F3AB53B519AEFF31F7 /* StabilityChart.swift in Sources */,
 				7300C25E2DA6E7B88D56EEF9 /* StressEngine.swift in Sources */,
+				F1035D2E8F2028F19187F9D7 /* TextDecoder.cpp in Sources */,
+				B7A34B479FC258D84218BD6E /* TextEncoder.cpp in Sources */,
+				A6977053DB6D5783519ED6F4 /* TextUtfEncoding.cpp in Sources */,
 				79441CDB61D395CA37E00810 /* ThermalXRay.swift in Sources */,
 				D6D30306DCC5257CE0EE9E8A /* UpdateImpact.swift in Sources */,
 				D653C0CD5097FB9A5D67270E /* UpdateImpactCard.swift in Sources */,
+				E55218D36EE2F5B62719C740 /* Utf.cpp in Sources */,
+				DB2EE108325632FE972C6EB7 /* UxSection.swift in Sources */,
+				A849BF5B344BE9A75ADA4AC8 /* VideoBench.swift in Sources */,
+				56D1E82941357AE4294A0E1E /* WebBenchView.swift in Sources */,
+				657436EE3E19C44CA65B63F2 /* WhiteRectDetector.cpp in Sources */,
+				ED1564D73AB3D33B1CE4DC2C /* bench_core.cpp in Sources */,
+				DBFDFC909BF48CC37B8E458C /* crypto_arm.cpp in Sources */,
+				3EC6E38219FACDBA7D00CC93 /* ffnet_40s.mlpackage in Sources */,
+				8FD9373030572FDB8E724CE6 /* kernels_crypto.cpp in Sources */,
+				41DC5FAF664B841BFB7FCFD8 /* kernels_data.cpp in Sources */,
+				9006359BE38E7BF3E2958632 /* kernels_math.cpp in Sources */,
+				E371EEB7563C6B489B9277B8 /* mem.cpp in Sources */,
+				6A1E63F30C48B8AAF84DDE3A /* midas.mlpackage in Sources */,
+				9CE39DA8CAC2916EB389339E /* mobilenet_v2.mlpackage in Sources */,
+				128CC6DA3187F8AC9C5BBD0E /* qr.cpp in Sources */,
+				E3C1996E27674081BC28BA40 /* real_esrgan_general_x4v3.mlpackage in Sources */,
+				E5D36B7175A9A489BCDA7C60 /* yamnet.mlpackage in Sources */,
+				9B453DA9CC7F8470048E7A87 /* yolox.mlpackage in Sources */,
+				88DB8914B652AA23194AFD04 /* zueci.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -221,12 +878,22 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				COREML_CODEGEN_LANGUAGE = None;
 				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = C58ABB3474;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Vendor/TensorFlowLiteC\"",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/BenchCore/include",
+					"$(SRCROOT)/BenchCore/third_party/zxing-cpp/src",
+				);
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -250,8 +917,13 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.8;
+				OTHER_LDFLAGS = (
+					"-lz",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CpuThrottlingTest/Benchmark/BenchCore-Bridging.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -315,12 +987,22 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				COREML_CODEGEN_LANGUAGE = None;
 				CURRENT_PROJECT_VERSION = 36;
 				DEVELOPMENT_TEAM = C58ABB3474;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Vendor/TensorFlowLiteC\"",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/BenchCore/include",
+					"$(SRCROOT)/BenchCore/third_party/zxing-cpp/src",
+				);
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -344,8 +1026,13 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.8;
+				OTHER_LDFLAGS = (
+					"-lz",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CpuThrottlingTest/Benchmark/BenchCore-Bridging.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;

@@ -8,7 +8,42 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: CpuThrottlingTest
+      # the benchmark's CPU and MEM tests: the same C++ as the Android app, optimised in debug builds too
+      - path: BenchCore/src
+        compilerFlags: ["-O3"]
+      - path: BenchCore/include
+      # zxing-cpp for the QR test (third-party code, so its warnings are off)
+      - path: BenchCore/third_party/zxing-cpp/src
+        compilerFlags: ["-O3", "-w"]
+      # the benchmark's scenes, pages, media and models: the Android app's own assets, shared
+      - path: ThermoHammerAndroid/app/src/main/assets/lake_valley.bin
+        buildPhase: resources
+      - path: ThermoHammerAndroid/app/src/main/assets/neon_city.bin
+        buildPhase: resources
+      - path: ThermoHammerAndroid/app/src/main/assets/web
+        type: folder
+        buildPhase: resources
+      - path: ThermoHammerAndroid/app/src/main/assets/media
+        type: folder
+        buildPhase: resources
+      - path: ThermoHammerAndroid/app/src/main/assets/ai
+        type: folder
+        buildPhase: resources
+    # the AI test's CPU and GPU runs: TensorFlow Lite 2.17 (static; fetched by Vendor/fetch_tflite.sh)
+    dependencies:
+      - framework: Vendor/TensorFlowLiteC/TensorFlowLiteC.xcframework
+        embed: false
+      - framework: Vendor/TensorFlowLiteC/TensorFlowLiteCMetal.xcframework
+        embed: false
+      - sdk: CoreML.framework
+      - sdk: Metal.framework
     settings:
+      SWIFT_OBJC_BRIDGING_HEADER: CpuThrottlingTest/Benchmark/BenchCore-Bridging.h
+      HEADER_SEARCH_PATHS: ["$(SRCROOT)/BenchCore/include", "$(SRCROOT)/BenchCore/third_party/zxing-cpp/src"]
+      CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+      OTHER_LDFLAGS: ["-lz", "-lc++"]
+      # the Neural Engine models (Benchmark/AI/NeuralEngine) are loaded by name, no generated classes
+      COREML_CODEGEN_LANGUAGE: None
       PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.thermohammer
       CODE_SIGN_STYLE: Automatic
       DEVELOPMENT_TEAM: C58ABB3474
