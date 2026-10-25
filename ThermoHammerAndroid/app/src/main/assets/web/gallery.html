@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  ThermoHammer UX Test 3 — photo gallery.
+  Two 12-megapixel photos (4000×3000: Lake Valley by day, Neon City by night) in JPEG, WebP and AVIF are
+  decoded in full and drawn into a gallery grid, three at a time, for a few seconds per format — what a photo
+  site or a cloud gallery does. The WebP and AVIF files ship with the app (assets/media); the JPEGs are encoded
+  here first. Result per format: megapixels decoded and shown per second. Results go to the app through
+  window.ThermoBench. Fully offline.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, user-scalable=no">
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #0b0e12;
+    font-family: system-ui, -apple-system, Roboto, sans-serif; color: #e8edf2; }
+  #head { height: 64px; display: flex; align-items: center; gap: 16px; padding: 0 28px; }
+  #head b { font-size: 20px; } #head span { font-size: 13px; color: #7c8da0; }
+  #wall { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="head"><b>Gallery</b><span id="sub">preparing photos…</span></div>
+<canvas id="wall" width="1224" height="640"></canvas>
+<script>
+'use strict';
+const bridge = window.ThermoBench || { progress() {}, done(j) { console.log(j); }, fail(m) { console.error(m); } };
+const SECONDS_EACH = 4.2;
+const PARALLEL = 3;                 // decodes in flight, like a gallery page loading a row of photos
+const COLS = 4, ROWS = 3, TILE_W = 300, TILE_H = 205, GAP = 8;
+const wall = document.getElementById('wall');
+const g = wall.getContext('2d');
+const sub = document.getElementById('sub');
+let tile = 0;
+
+async function load(name) {
+  const r = await fetch('media/' + name);
+  if (!r.ok) throw new Error(name + ': HTTP ' + r.status);
+  return r.blob();
+}
+
+async function toJpeg(blob) {
+  const bmp = await createImageBitmap(blob);
+  const c = new OffscreenCanvas(bmp.width, bmp.height);
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  bmp.close();
+  return c.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+}
+
+function show(bmp, label) {
+  const x = (tile % COLS) * (TILE_W + GAP), y = ((tile / COLS | 0) % ROWS) * (TILE_H + GAP);
+  // cover-fit the 4:3 photo into the tile
+  const s = Math.max(TILE_W / bmp.width, TILE_H / bmp.height);
+  const sw = TILE_W / s, sh = TILE_H / s;
+  g.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, x, y, TILE_W, TILE_H);
+  g.fillStyle = 'rgba(11,14,18,.72)'; g.fillRect(x, y + TILE_H - 24, 74, 24);
+  g.fillStyle = '#e8edf2'; g.font = 'bold 12px system-ui'; g.fillText(label, x + 8, y + TILE_H - 8);
+  tile++;
+}
+
+async function measure(label, blobs, index) {
+  let count = 0, mp = 0, next = 0;
+  const t0 = performance.now(), end = t0 + SECONDS_EACH * 1000;
+  let lastReport = t0;
+  async function worker() {
+    while (performance.now() < end) {
+      const bmp = await createImageBitmap(blobs[next++ % blobs.length]);      // a full decode every time
+      show(bmp, label);
+      mp += bmp.width * bmp.height / 1e6; count++;
+      bmp.close();
+      const now = performance.now();
+      if (now - lastReport > 150) {
+        lastReport = now;
+        const rate = mp / ((now - t0) / 1000);
+        bridge.progress(`${label} · ${count} PHOTOS · 12 MP`, (index + (now - t0) / (SECONDS_EACH * 1000)) / 3, count, rate, index);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
+  return mp / ((performance.now() - t0) / 1000);
+}
+
+async function run() {
+  try {
+    g.fillStyle = '#121821';
+    for (let i = 0; i < COLS * ROWS; i++) g.fillRect((i % COLS) * (TILE_W + GAP), (i / COLS | 0) * (TILE_H + GAP), TILE_W, TILE_H);
+    bridge.progress('PREPARING PHOTOS', 0, 0, 0, 0);
+    const webp = [await load('photo_lake.webp'), await load('photo_city.webp')];
+    const avif = [await load('photo_lake.avif'), await load('photo_city.avif')];
+    const jpeg = [await toJpeg(webp[0]), await toJpeg(webp[1])];
+    sub.textContent = 'two 12 MP photos · JPEG ' + Math.round((jpeg[0].size + jpeg[1].size) / 2e4) / 100 +
+      ' MB · WebP ' + Math.round((webp[0].size + webp[1].size) / 2e4) / 100 + ' MB · AVIF ' +
+      Math.round((avif[0].size + avif[1].size) / 2e4) / 100 + ' MB';
+    const results = {};
+    results.jpeg = await measure('JPEG', jpeg, 0);
+    results.webp = await measure('WEBP', webp, 1);
+    results.avif = await measure('AVIF', avif, 2);
+    bridge.done(JSON.stringify(results));
+  } catch (e) {
+    bridge.fail(String(e && e.stack || e));
+  }
+}
+run();
+</script>
+</body>
+</html>

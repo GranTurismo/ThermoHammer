@@ -1,5 +1,6 @@
 package com.example.thermohammer.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -286,7 +287,7 @@ internal fun AppHeader(state: StressState, isNetworkConnected: Boolean) {
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                "cpu stress & thermal-efficiency instrument",
+                "gpu benchmark · cpu/gpu thermal stress instrument",
                 style = ThermoType.annotation(8f, if (state.isRunning) phaseColor(state.phase) else Forge.ink2)
             )
         }
@@ -531,8 +532,218 @@ fun ThreadingPicker(
     }
 }
 
+/** BENCHMARK (default, ~2 min, scored) or the long sustained STRESS TEST. */
 @Composable
-internal fun ControlButton(state: StressState, onStart: () -> Unit, onStop: () -> Unit) {
+fun RunKindPicker(selected: RunKind, onSelect: (RunKind) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Forge.surface)
+            .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        for ((kind, title, sub) in listOf(
+            Triple(RunKind.BENCHMARK, "BENCHMARK", "CPU + MEM + GPU + UX + AI · SCORE"),
+            Triple(RunKind.STRESS, "STRESS TEST", "5–30 MIN · THROTTLING")
+        )) {
+            val isSelected = selected == kind
+            val bg by animateColorAsState(if (isSelected) Forge.phaseMeasured else Color.Transparent,
+                tween(250), label = "kind_bg")
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(bg)
+                    .clickable { onSelect(kind) }
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(title, style = TextStyle(color = if (isSelected) Forge.bg else Forge.ink0, fontSize = 12.sp,
+                    fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.sp))
+                Text(sub, style = TextStyle(color = if (isSelected) Forge.bg.copy(alpha = 0.7f) else Forge.ink2,
+                    fontSize = 7.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+            }
+        }
+    }
+}
+
+/** What the benchmark runs, and this phone's best / last score (with a submit for an offline run). */
+@Composable
+fun BenchmarkInfoCard(
+    rayTracingProblem: String?,
+    rayTracingChecked: Boolean,
+    best: com.example.thermohammer.data.BenchmarkRecord?,
+    last: com.example.thermohammer.data.BenchmarkRecord?,
+    canSubmitLast: Boolean,
+    submitting: Boolean,
+    onSubmitLast: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Forge.surface)
+            .border(1.dp, Forge.hairline, RoundedCornerShape(14.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        for (t in com.example.thermohammer.engine.cpu.CpuTest.entries) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val color = cpuColor()
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("C${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("CPU · ${t.title}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                    Text(t.labels.joinToString(" · ").lowercase().replaceFirstChar { it.uppercase() } +
+                        if (t.multiCore) " — on every core" else "",
+                        style = ThermoType.annotation(8f, Forge.ink2), maxLines = 1)
+                }
+                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+            }
+        }
+        for (t in com.example.thermohammer.engine.MemTest.entries) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val color = memColor()
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("M${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("MEM · ${t.title}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                    Text(
+                        when (t) {
+                            com.example.thermohammer.engine.MemTest.RAM -> "Read, write and copy on every core · random-access latency"
+                            com.example.thermohammer.engine.MemTest.STORAGE -> "Sequential and random 4 KB reads and writes · temp file, deleted after"
+                            com.example.thermohammer.engine.MemTest.DATABASE -> "SQLite like a messaging app · save, mark read, open chats"
+                        },
+                        style = ThermoType.annotation(8f, Forge.ink2), maxLines = 1)
+                }
+                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+            }
+        }
+        for (t in BenchmarkTest.entries) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val color = benchmarkColor(t)
+                val skipped = t.rayTracing && rayTracingChecked && rayTracingProblem != null
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("${t.number}", style = TextStyle(color = color,
+                        fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, style = ThermoType.data(12f, if (skipped) Forge.ink2 else Forge.ink0, FontWeight.Bold))
+                    Text(
+                        when (t) {
+                            BenchmarkTest.LAKE_VALLEY -> "Forest lake in daylight · sun shadows, water reflections"
+                            BenchmarkTest.NEON_CITY -> "Rainy neon city at night · 800+ lights, fog, wet streets"
+                            BenchmarkTest.NEON_CITY_RT -> if (skipped) (if (rayTracingProblem?.startsWith("Skipped") == true)
+                                    "Crashed here last time — skipped (0 points) until the app updates"
+                                else "Needs Vulkan ray tracing — not on this phone (0 points)")
+                                else "Neon City with ray-traced reflections and shadows · Vulkan"
+                        },
+                        style = ThermoType.annotation(8f, if (skipped) Ramp.at(0.5f) else Forge.ink2)
+                    )
+                }
+                Text(if (skipped) "—" else "${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+            }
+        }
+        for (t in UxTest.entries) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val color = uxColor(t)
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("U${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                    Text(
+                        when (t) {
+                            UxTest.WEB -> "WebView · page layout, Canvas, CSS and SVG animation, JavaScript"
+                            UxTest.SCROLL -> "Endless social feed built as it scrolls ever faster · no dropped frames"
+                            UxTest.GALLERY -> "12 MP JPEG, WebP and AVIF photos decoded and shown in a web page"
+                            UxTest.PHOTO -> "GPU edits of a 12 MP photo · fisheye, blur, bokeh, sharpen, colour grade"
+                            UxTest.VIDEO -> "4K60 H.264, HEVC 10-bit, VP9, AV1 · decoded flat out (0 if unsupported)"
+                            UxTest.QR -> "32 camera frames · ZXing scored, Google ML Kit reported"
+                        },
+                        style = ThermoType.annotation(8f, Forge.ink2)
+                    )
+                }
+                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+            }
+        }
+        for (t in com.example.thermohammer.engine.AiTest.entries) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val color = aiColor()
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("A${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                    Text("${t.model} · CPU, GPU and NPU", style = ThermoType.annotation(8f, Forge.ink2))
+                }
+                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+            }
+        }
+        Text("AI runs open 8-bit models through LiteRT. The NPU counts where the phone has a supported one " +
+            "(Snapdragon in this test build, MediaTek, Google Tensor); elsewhere it scores 0.",
+            style = ThermoType.annotation(8f, Forge.ink2))
+        if (best != null || last != null) {
+            HorizontalDivider(color = Forge.hairline)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (best != null) Column(Modifier.weight(1f)) {
+                    Text("%,d".format(best.score), style = ThermoType.data(18f, Forge.phaseMeasured, FontWeight.Black))
+                    Text("BEST ON THIS PHONE", style = ThermoType.annotation(7f, Forge.ink2))
+                }
+                if (last != null && last.id != best?.id) Column(Modifier.weight(1f)) {
+                    Text("%,d".format(last.score), style = ThermoType.data(18f, Forge.ink0, FontWeight.Black))
+                    Text("LAST RUN", style = ThermoType.annotation(7f, Forge.ink2))
+                }
+                if (canSubmitLast) {
+                    if (submitting) CircularProgressIndicator(Modifier.size(16.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)
+                    else Text(
+                        "SUBMIT ↑",
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Forge.phasePreFlight.copy(alpha = 0.15f))
+                            .clickable(onClick = onSubmitLast).padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = TextStyle(color = Forge.phasePreFlight, fontSize = 9.sp, fontFamily = InstrumentMono,
+                            fontWeight = FontWeight.Black)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ControlButton(
+    state: StressState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    startLabel: String = "INITIATE STRESS TEST"
+) {
     val isRunning = state.isRunning
     if (!isRunning) {
         // INITIATE — ramp-teal edge-to-edge CTA
@@ -548,7 +759,7 @@ internal fun ControlButton(state: StressState, onStart: () -> Unit, onStop: () -
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("▸", color = Forge.bg, fontSize = 16.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "INITIATE STRESS TEST",
+                    startLabel,
                     style = TextStyle(color = Forge.bg, fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
                 )
             }

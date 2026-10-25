@@ -46,7 +46,8 @@ fun ThermalReactor(
         targetValue = state.overallStability,
         animationSpec = tween(280, easing = FastOutSlowInEasing), label = "reactor_value"
     )
-    val headroom = (state.thermalHeadroom ?: 1f).coerceIn(0f, 1f)
+    // getThermalHeadroom() rises with heat (1.0 = severe throttling): the coolant left is 1 − it
+    val headroom = (1f - (state.thermalHeadroom ?: 0f)).coerceIn(0f, 1f)
     val headroomAnim by animateFloatAsState(headroom, tween(400), label = "reactor_headroom")
 
     // Per-cluster average freq ratio (cur / hw max) — lerped so arcs sweep
@@ -248,7 +249,9 @@ fun ThermalReactor(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         when (state.phase) {
-                            RunPhase.COOLDOWN -> {
+                            RunPhase.COOLDOWN -> if (state.busyWait) {
+                                "getting ready · %ds".format(state.cooldownElapsedSec)
+                            } else {
                                 val t = if (state.cpuTemp > 0f) "%.1f".format(state.cpuTemp) else "--"
                                 "$t° → %.0f° · %ds".format(state.cooldownTargetC, state.cooldownElapsedSec)
                             }

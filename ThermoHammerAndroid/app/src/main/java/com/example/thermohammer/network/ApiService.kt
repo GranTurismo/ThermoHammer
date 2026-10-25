@@ -79,6 +79,136 @@ data class HammerDto(
     @SerializedName("testThreadingType") val testThreadingType: Int? = 1
 )
 
+// ── GPU benchmark ──────────────────────────────────────────────────────────────
+
+/** A benchmark run as submitted. The server recomputes points and score from the fps. */
+data class BenchmarkPayload(
+    @SerializedName("sessionId") val sessionId: Int,
+    @SerializedName("hash") val hash: String,                 // HMAC over canonical() with the session key
+    @SerializedName("benchmarkVersion") val benchmarkVersion: Int,
+    @SerializedName("deviceManufacturer") val deviceManufacturer: String,
+    @SerializedName("deviceModel") val deviceModel: String,
+    @SerializedName("os") val os: Int = 2,
+    @SerializedName("osVersion") val osVersion: String,
+    @SerializedName("osBuild") val osBuild: String? = null,
+    @SerializedName("socModel") val socModel: String? = null,
+    @SerializedName("gpuName") val gpuName: String,
+    @SerializedName("test1Fps") val test1Fps: Double,
+    @SerializedName("test1LowFps") val test1LowFps: Double,
+    @SerializedName("test2Fps") val test2Fps: Double,
+    @SerializedName("test2LowFps") val test2LowFps: Double,
+    @SerializedName("test3Fps") val test3Fps: Double,             // 0 when the phone has no ray tracing
+    @SerializedName("test3LowFps") val test3LowFps: Double,
+    @SerializedName("rayTracing") val rayTracing: Boolean,         // Test 3 ran
+    // UX: WebView scene complexities at ≥ 28 fps, JavaScript ops/s, QR scans/s
+    @SerializedName("webLayout") val webLayout: Double,
+    @SerializedName("webCanvas") val webCanvas: Double,
+    @SerializedName("webCss") val webCss: Double,
+    @SerializedName("webSvg") val webSvg: Double,
+    @SerializedName("webJs") val webJs: Double,
+    @SerializedName("qrRate") val qrRate: Double,                  // ZXing (scored)
+    @SerializedName("mlkitQrRate") val mlkitQrRate: Double?,       // ML Kit (reported)
+    // CPU: geometric-mean kernel ops/s of each test
+    @SerializedName("cpuMath") val cpuMath: Double,
+    @SerializedName("cpuData") val cpuData: Double,
+    @SerializedName("cpuCrypto") val cpuCrypto: Double,
+    @SerializedName("cpuMulti") val cpuMulti: Double,
+    // UX 2–5: scroll px/s held (+ % dropped), gallery MP/s per format, editing MP/s, 4K decode fps per codec
+    @SerializedName("scrollSpeed") val scrollSpeed: Double,
+    @SerializedName("scrollDropped") val scrollDropped: Double,
+    @SerializedName("galleryJpeg") val galleryJpeg: Double,
+    @SerializedName("galleryWebp") val galleryWebp: Double,
+    @SerializedName("galleryAvif") val galleryAvif: Double,
+    @SerializedName("photoEdit") val photoEdit: Double,
+    @SerializedName("videoAvc") val videoAvc: Double,
+    @SerializedName("videoHevc") val videoHevc: Double,
+    @SerializedName("videoVp9") val videoVp9: Double,
+    @SerializedName("videoAv1") val videoAv1: Double,
+    @SerializedName("videoHardware") val videoHardware: Int,        // bit per codec decoded in hardware
+    // AI: inferences/s per model (classify, detect, segment, upscale, depth, sound) × accelerator (CPU, GPU, NPU)
+    @SerializedName("aiClassifyCpu") val aiClassifyCpu: Double,
+    @SerializedName("aiClassifyGpu") val aiClassifyGpu: Double,
+    @SerializedName("aiClassifyNpu") val aiClassifyNpu: Double,
+    @SerializedName("aiDetectCpu") val aiDetectCpu: Double,
+    @SerializedName("aiDetectGpu") val aiDetectGpu: Double,
+    @SerializedName("aiDetectNpu") val aiDetectNpu: Double,
+    @SerializedName("aiSegmentCpu") val aiSegmentCpu: Double,
+    @SerializedName("aiSegmentGpu") val aiSegmentGpu: Double,
+    @SerializedName("aiSegmentNpu") val aiSegmentNpu: Double,
+    @SerializedName("aiUpscaleCpu") val aiUpscaleCpu: Double,
+    @SerializedName("aiUpscaleGpu") val aiUpscaleGpu: Double,
+    @SerializedName("aiUpscaleNpu") val aiUpscaleNpu: Double,
+    @SerializedName("aiDepthCpu") val aiDepthCpu: Double,
+    @SerializedName("aiDepthGpu") val aiDepthGpu: Double,
+    @SerializedName("aiDepthNpu") val aiDepthNpu: Double,
+    @SerializedName("aiSoundCpu") val aiSoundCpu: Double,
+    @SerializedName("aiSoundGpu") val aiSoundGpu: Double,
+    @SerializedName("aiSoundNpu") val aiSoundNpu: Double,
+    @SerializedName("aiNpuRuntime") val aiNpuRuntime: String?,
+    // MEM: RAM GB/s (read, write, copy) and latency ns; storage MB/s (sequential) and 4 KB IOPS (random); SQLite per second
+    @SerializedName("memRead") val memRead: Double,
+    @SerializedName("memWrite") val memWrite: Double,
+    @SerializedName("memCopy") val memCopy: Double,
+    @SerializedName("memLatency") val memLatency: Double,
+    @SerializedName("storageSeqRead") val storageSeqRead: Double,
+    @SerializedName("storageSeqWrite") val storageSeqWrite: Double,
+    @SerializedName("storageRandomRead") val storageRandomRead: Double,
+    @SerializedName("storageRandomWrite") val storageRandomWrite: Double,
+    @SerializedName("storageDirect") val storageDirect: Boolean,  // reported
+    @SerializedName("dbInsert") val dbInsert: Double,
+    @SerializedName("dbUpdate") val dbUpdate: Double,
+    @SerializedName("dbQuery") val dbQuery: Double,
+    @SerializedName("validityFlags") val validityFlags: Int,
+    @SerializedName("appVersion") val appVersion: String? = null
+) {
+    /** Exactly what the server re-derives and verifies: fps at 2 decimals, invariant format. */
+    fun canonical(): String = listOf("bench", benchmarkVersion, deviceManufacturer, deviceModel, osVersion, gpuName,
+        f2(test1Fps), f2(test1LowFps), f2(test2Fps), f2(test2LowFps), f2(test3Fps), f2(test3LowFps),
+        if (rayTracing) 1 else 0, f2(webLayout), f2(webCanvas), f2(webCss), f2(webSvg), f2(webJs), f2(qrRate),
+        f2(mlkitQrRate ?: 0.0), f2(cpuMath), f2(cpuData), f2(cpuCrypto), f2(cpuMulti), f2(scrollSpeed), f2(scrollDropped),
+        f2(galleryJpeg), f2(galleryWebp), f2(galleryAvif), f2(photoEdit), f2(videoAvc), f2(videoHevc), f2(videoVp9),
+        f2(videoAv1), videoHardware, f2(aiClassifyCpu), f2(aiClassifyGpu), f2(aiClassifyNpu), f2(aiDetectCpu), f2(aiDetectGpu), f2(aiDetectNpu), f2(aiSegmentCpu), f2(aiSegmentGpu), f2(aiSegmentNpu), f2(aiUpscaleCpu), f2(aiUpscaleGpu), f2(aiUpscaleNpu), f2(aiDepthCpu), f2(aiDepthGpu), f2(aiDepthNpu), f2(aiSoundCpu), f2(aiSoundGpu), f2(aiSoundNpu), aiNpuRuntime ?: "",
+        f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
+        f2(storageRandomRead), f2(storageRandomWrite), if (storageDirect) 1 else 0, f2(dbInsert), f2(dbUpdate), f2(dbQuery),
+        validityFlags).joinToString("|")
+
+    companion object {
+        fun f2(v: Double): String = "%.2f".format(java.util.Locale.US, v)
+        /** Rounds to the 2 decimals that are hashed, so the JSON number and the hash agree. */
+        fun round2(v: Double): Double = Math.round(v * 100.0) / 100.0
+    }
+}
+
+data class BenchmarkSubmitResponse(
+    @SerializedName("id") val id: Int,
+    @SerializedName("score") val score: Int,
+    @SerializedName("rank") val rank: Int
+)
+
+data class BenchmarkDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("deviceManufacturer") val deviceManufacturer: String,
+    @SerializedName("deviceModel") val deviceModel: String,
+    @SerializedName("socModel") val socModel: String?,
+    @SerializedName("gpuName") val gpuName: String?,
+    @SerializedName("os") val os: Int,
+    @SerializedName("osVersion") val osVersion: String,
+    @SerializedName("score") val score: Int,                      // GPU
+    @SerializedName("uxScore") val uxScore: Int,
+    @SerializedName("cpuScore") val cpuScore: Int,
+    @SerializedName("aiScore") val aiScore: Int = 0,
+    @SerializedName("memScore") val memScore: Int = 0,
+    @SerializedName("totalScore") val totalScore: Int,
+    @SerializedName("test1Score") val test1Score: Int,
+    @SerializedName("test2Score") val test2Score: Int,
+    @SerializedName("test3Score") val test3Score: Int,
+    @SerializedName("test1Fps") val test1Fps: Double,
+    @SerializedName("test2Fps") val test2Fps: Double,
+    @SerializedName("test3Fps") val test3Fps: Double,
+    @SerializedName("rayTracing") val rayTracing: Boolean,
+    @SerializedName("runs") val runs: Int
+)
+
 // ── Retrofit Interface ─────────────────────────────────────────────────────────
 
 interface ThermoApi {
@@ -93,6 +223,12 @@ interface ThermoApi {
 
     @GET("stamps/{id}")
     suspend fun fetchStamps(@Path("id") hammerId: Int): List<DeviceHammerStamp>
+
+    @POST("benchmark")
+    suspend fun submitBenchmark(@Body payload: BenchmarkPayload): BenchmarkSubmitResponse
+
+    @GET("benchmark/leaderboard")
+    suspend fun fetchBenchmarkLeaderboard(): List<BenchmarkDto>
 }
 
 // ── Singleton Client ───────────────────────────────────────────────────────────

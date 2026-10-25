@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.example.thermohammer.data.PendingResultStore
 import com.example.thermohammer.data.PendingTestResult
 import com.example.thermohammer.network.ApiClient
+import com.example.thermohammer.network.BenchmarkDto
 import com.example.thermohammer.network.DeviceHammerStamp
 import com.example.thermohammer.network.HammerDto
 import com.example.thermohammer.network.HammerPayload
@@ -39,8 +40,172 @@ import kotlinx.coroutines.launch
 
 data class RankedEntry(val entry: HammerDto, val rank: Int, val stability: Double)
 
+/** Leaderboard tab: the GPU benchmark board (default) or the sustained stress board. */
 @Composable
 fun LeaderboardScreen(isNetworkConnected: Boolean) {
+    var board by remember { mutableIntStateOf(0) }       // 0 benchmark · 1 stress
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)
+                .clip(RoundedCornerShape(12.dp)).background(Forge.surface)
+                .border(1.dp, Forge.hairline, RoundedCornerShape(12.dp)).padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            for ((i, label) in listOf("GPU BENCHMARK", "STRESS TEST").withIndex()) {
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
+                        .background(if (board == i) Forge.phaseMeasured else Color.Transparent)
+                        .clickable { board = i }.padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, style = TextStyle(color = if (board == i) Forge.bg else Forge.ink1, fontSize = 10.sp,
+                        fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.sp))
+                }
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            if (board == 0) BenchmarkBoard(isNetworkConnected) else StressBoard(isNetworkConnected)
+        }
+    }
+}
+
+/** Best benchmark score per device model, highest first. */
+@Composable
+private fun BenchmarkBoard(isNetworkConnected: Boolean) {
+    var entries by remember { mutableStateOf<List<BenchmarkDto>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var searchText by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+    val myModel = android.os.Build.MODEL
+
+    fun load() {
+        if (!isNetworkConnected) { errorMsg = "Offline"; return }
+        coroutineScope.launch {
+            isLoading = true; errorMsg = null
+            try {
+                entries = ApiClient.api.fetchBenchmarkLeaderboard().sortedByDescending { it.totalScore }
+            } catch (e: Exception) {
+                errorMsg = e.message ?: "Failed to load leaderboard"
+            }
+            isLoading = false
+        }
+    }
+    LaunchedEffect(isNetworkConnected) { load() }
+
+    val top = entries.firstOrNull()?.totalScore?.coerceAtLeast(1) ?: 1
+    val shown = remember(entries, searchText) {
+        entries.withIndex().filter { (_, e) ->
+            searchText.isEmpty() || e.deviceModel.contains(searchText, true) ||
+                e.deviceManufacturer.contains(searchText, true) || (e.gpuName?.contains(searchText, true) == true)
+        }
+    }
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("GPU BENCHMARK", style = TextStyle(color = Forge.ink0, fontSize = 18.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black, letterSpacing = 1.5.sp))
+                    Text("CPU + MEM + GPU + UX + AI · best run per phone",
+                        style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = InstrumentMono))
+                }
+                IconButton(onClick = { load() }, enabled = !isLoading) {
+                    Text("↻", color = Forge.ink0, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        item {
+            BasicTextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                textStyle = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono),
+                singleLine = true,
+                decorationBox = { inner ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Forge.ink0.copy(alpha = 0.04f))
+                            .border(1.dp, Forge.ink0.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🔍 ", fontSize = 12.sp)
+                        Box(Modifier.weight(1f)) {
+                            if (searchText.isEmpty()) Text("Search phone or GPU…", style = TextStyle(
+                                color = Forge.ink0.copy(alpha = 0.3f), fontSize = 11.sp, fontFamily = InstrumentMono))
+                            inner()
+                        }
+                    }
+                }
+            )
+        }
+        when {
+            isLoading -> item {
+                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Forge.phasePreFlight, strokeWidth = 3.dp)
+                }
+            }
+            errorMsg != null -> item {
+                Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("⚠ $errorMsg", style = TextStyle(color = Ramp.at(0.85f), fontSize = 12.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Bold))
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { load() }, colors = ButtonDefaults.buttonColors(containerColor = Forge.ink0.copy(alpha = 0.1f))) {
+                        Text("RETRY", color = Forge.ink0, fontSize = 10.sp, fontFamily = InstrumentMono)
+                    }
+                }
+            }
+            shown.isEmpty() -> item {
+                Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                    Text(if (entries.isEmpty()) "No benchmark runs yet — be the first." else "No phones match.",
+                        style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = InstrumentMono))
+                }
+            }
+            else -> items(shown, key = { it.value.id }) { (i, e) ->
+                BenchmarkRow(rank = i + 1, entry = e, fraction = e.totalScore.toFloat() / top,
+                    mine = e.deviceModel.contains(myModel, ignoreCase = true))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: Boolean) {
+    val name = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) entry.deviceModel
+        else "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.surface)
+            .border(1.dp, if (mine) Forge.phaseMeasured.copy(alpha = 0.6f) else Forge.ink0.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("#$rank", style = TextStyle(color = if (rank <= 3) Ramp.at(1f - (rank - 1) * 0.2f) else Forge.ink2,
+                fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black), modifier = Modifier.width(38.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Bold), maxLines = 1)
+                Text(listOfNotNull(entry.gpuName, "Android ${entry.osVersion}".takeIf { entry.os == 2 }).joinToString(" · "),
+                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono), maxLines = 1)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("%,d".format(entry.totalScore), style = TextStyle(color = Forge.ink0, fontSize = 15.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Black))
+                Text("CPU %,d · MEM %,d · GPU %,d · UX %,d · AI %,d · %s".format(entry.cpuScore, entry.memScore, entry.score, entry.uxScore, entry.aiScore,
+                        if (entry.rayTracing) "RT %.0f FPS".format(entry.test3Fps) else "NO RT"),
+                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Forge.ink0.copy(alpha = 0.06f))) {
+            Box(Modifier.fillMaxWidth(fraction.coerceIn(0.02f, 1f)).fillMaxHeight().clip(RoundedCornerShape(2.dp))
+                .background(Brush.horizontalGradient(listOf(Forge.phaseCalibration, Ramp.at(0.85f)))))
+        }
+    }
+}
+
+@Composable
+private fun StressBoard(isNetworkConnected: Boolean) {
     val context = LocalContext.current
     val store = remember { PendingResultStore(context) }
     var pendingList by remember { mutableStateOf(store.getAllResults()) }

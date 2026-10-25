@@ -1,0 +1,45 @@
+#version 460
+// Half-resolution ray march through the rain mist, lit by the light grid. With RT the searchlight
+// beam is shadowed by ray queries at every step — the cars and buildings cut shafts into it.
+#ifdef RT
+#extension GL_EXT_ray_query : require
+#endif
+layout(local_size_x = 8, local_size_y = 8) in;
+#include "common.glsl"
+#include "lights.glsl"
+#include "post.glsl"
+layout(set = 0, binding = 8) uniform sampler2D depthTex;
+layout(set = 1, binding = 2, rgba16f) uniform writeonly image2D dst;
+
+const float FOG_MAX = 170.0;
+const float FOG_DENSITY = 0.011;
+const int FOG_LIGHTS = 6;
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(dst);
+    if (id.x >= size.x || id.y >= size.y) return;
+    vec2 uv = (vec2(id) + 0.5) / vec2(size);
+    ivec2 dsize = textureSize(depthTex, 0);
+    float d = texelFetch(depthTex, clamp(ivec2(uv * vec2(dsize)), ivec2(0), dsize - 1), 0).r;
+    vec4 e = F.invViewProj * vec4(uv * 2.0 - 1.0, d, 1.0);
+    vec3 end = e.xyz / e.w;
+    vec3 rd = normalize(end - uCamPos);
+    float tEnd = min(length(end - uCamPos), FOG_MAX);
+    float j = fract(52.9829189 * fract(dot(vec2(id) + 0.5, vec2(0.06711056, 0.00583715))) + pp.p0 * 0.618034);
+    int steps = int(F.params.z);
+    float T = 1.0;
+    vec3 S = vec3(0.0);
+    for (int i = 0; i < steps; i++) {
+        float u = (float(i) + j) / float(steps);
+        float t = tEnd * u * u;
+        float dt = tEnd * 2.0 * u / float(steps);
+        vec3 p = uCamPos + rd * t;
+        float dens = FOG_DENSITY * exp(-max(p.z, 0.0) * 0.025)
+                   * (0.5 + vnoise3(p * vec3(0.06, 0.06, 0.03) + vec3(0.3, 0.1, 0.5) * uTime));
+        vec3 li = HAZE + scatterLights(p, rd, FOG_LIGHTS, true, true);
+        S += T * dens * dt * li;
+        T *= exp(-dens * dt);
+    }
+    imageStore(dst, id, vec4(safeHdr(S), T));
+}

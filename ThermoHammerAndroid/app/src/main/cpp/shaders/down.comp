@@ -1,0 +1,24 @@
+#version 460
+// 13-tap bloom downsample; p0 = 1 keeps only highlights (first level).
+layout(local_size_x = 8, local_size_y = 8) in;
+#include "post.glsl"
+layout(set = 1, binding = 2, rgba16f) uniform writeonly image2D dst;
+vec3 tap(vec2 uv, vec2 o) { return textureLod(srcA, uv + pp.texel * o, 0.0).rgb; }
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(dst);
+    if (id.x >= size.x || id.y >= size.y) return;
+    vec2 uv = (vec2(id) + 0.5) / vec2(size);
+    vec3 s = (tap(uv, vec2(-1, -1)) + tap(uv, vec2(1, -1)) + tap(uv, vec2(-1, 1)) + tap(uv, vec2(1, 1))) * 0.125
+           + (tap(uv, vec2(-2, -2)) + tap(uv, vec2(2, -2)) + tap(uv, vec2(-2, 2)) + tap(uv, vec2(2, 2))) * 0.03125
+           + (tap(uv, vec2(0, -2)) + tap(uv, vec2(-2, 0)) + tap(uv, vec2(2, 0)) + tap(uv, vec2(0, 2))) * 0.0625
+           + tap(uv, vec2(0, 0)) * 0.125;
+    if (pp.p0 > 0.5) {
+        if (!(s.r < 1e20 && s.g < 1e20 && s.b < 1e20 && s.r >= 0.0 && s.g >= 0.0 && s.b >= 0.0)) s = vec3(0.0);
+        float br = max(max(s.r, s.g), s.b);
+        float soft = clamp(br - 0.6, 0.0, 1.2);
+        soft = soft * soft / 4.8;
+        s *= max(soft, br - 1.2) / max(br, 1e-4);
+    }
+    imageStore(dst, id, vec4(s, 1.0));
+}

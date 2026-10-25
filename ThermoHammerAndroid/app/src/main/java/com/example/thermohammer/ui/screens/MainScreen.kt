@@ -23,13 +23,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.thermohammer.engine.Attribution
+import com.example.thermohammer.engine.RunKind
 import com.example.thermohammer.engine.RunPhase
 import com.example.thermohammer.engine.StressEngine
 import com.example.thermohammer.engine.StressEngineFactory
 import com.example.thermohammer.engine.StressMode
 import com.example.thermohammer.engine.StressThreadingType
 import com.example.thermohammer.engine.TestDuration
+import com.example.thermohammer.data.BenchmarkHistoryStore
+import com.example.thermohammer.data.BenchmarkRecord
 import com.example.thermohammer.data.RunHistoryStore
+import com.example.thermohammer.network.BenchmarkUpload
 import com.example.thermohammer.data.RunRecord
 import com.example.thermohammer.data.UpdateImpact
 import com.example.thermohammer.ui.components.UpdateImpactCard
@@ -71,6 +75,7 @@ fun MainScreen() {
     var selectedDuration by remember { mutableStateOf(TestDuration.MINUTES_5) }
     var selectedThreadingType by remember { mutableStateOf(com.example.thermohammer.engine.StressThreadingType.MULTI) }
     var selectedMode by remember { mutableStateOf(com.example.thermohammer.engine.StressMode.CPU) }
+    var selectedKind by remember { mutableStateOf(RunKind.BENCHMARK) }
 
     Box(
         modifier = Modifier
@@ -88,6 +93,8 @@ fun MainScreen() {
                             selectedDuration = selectedDuration,
                             selectedThreadingType = selectedThreadingType,
                             selectedMode = selectedMode,
+                            selectedKind = selectedKind,
+                            onKindChange = { selectedKind = it },
                             onDurationChange = { selectedDuration = it },
                             onThreadingChange = { selectedThreadingType = it },
                             onModeChange = { selectedMode = it },
@@ -118,6 +125,8 @@ private fun DiagnosticsScreenWrapper(
     selectedDuration: TestDuration,
     selectedThreadingType: com.example.thermohammer.engine.StressThreadingType,
     selectedMode: com.example.thermohammer.engine.StressMode,
+    selectedKind: RunKind,
+    onKindChange: (RunKind) -> Unit,
     onDurationChange: (TestDuration) -> Unit,
     onThreadingChange: (com.example.thermohammer.engine.StressThreadingType) -> Unit,
     onModeChange: (com.example.thermohammer.engine.StressMode) -> Unit,
@@ -144,12 +153,48 @@ private fun DiagnosticsScreenWrapper(
     var showConnectionRequest by remember { mutableStateOf(false) }
     var showComparison by remember { mutableStateOf(false) }
 
+    // ── GPU benchmark: result card, local history, submission ──
+    var showBenchResult by remember { mutableStateOf(false) }
+    var benchErrorMsg by remember { mutableStateOf<String?>(null) }
+    var benchSubmitting by remember { mutableStateOf(false) }
+    var benchSubmitMsg by remember { mutableStateOf<String?>(null) }
+    var benchSubmitErr by remember { mutableStateOf<String?>(null) }
+    var benchRecordId by remember { mutableStateOf<String?>(null) }
+
     val context = LocalContext.current
     val store = remember { com.example.thermohammer.data.PendingResultStore(context) }
     var pendingCount by remember { mutableIntStateOf(0) }
 
     // ── Update impact: this phone compared with itself across an OS update ──
     val historyStore = remember { RunHistoryStore(context) }
+    val benchStore = remember { BenchmarkHistoryStore(context) }
+    // Test 3 needs Vulkan ray tracing — probed once off the main thread (creates a Vulkan instance)
+    var rtProblem by remember { mutableStateOf<String?>(null) }
+    var rtChecked by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        rtProblem = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { engine.rayTracingSkipReason() }
+        rtChecked = true
+    }
+    var benchRecords by remember { mutableStateOf<List<BenchmarkRecord>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        benchRecords = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.current() }
+    }
+    fun submitBenchmark(record: BenchmarkRecord) {
+        benchSubmitting = true; benchSubmitErr = null
+        coroutineScope.launch {
+            try {
+                val res = BenchmarkUpload.submit(context, record, engine.getSocModel())
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.markSubmitted(record.id) }
+                benchRecords = benchStore.current()
+                benchSubmitMsg = "SUBMITTED · RANK #${res.rank}"
+                if (!showBenchResult) Toast.makeText(context, "Benchmark submitted — rank #${res.rank}", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                benchSubmitErr = e.message ?: "Submission failed"
+                if (!showBenchResult) Toast.makeText(context, "Submit failed: $benchSubmitErr", Toast.LENGTH_SHORT).show()
+            }
+            benchSubmitting = false
+        }
+    }
     var historyTick by remember { mutableIntStateOf(0) }
     var updateInsight by remember { mutableStateOf<UpdateImpact.Insight?>(null) }
     LaunchedEffect(historyTick) {
@@ -182,10 +227,13 @@ private fun DiagnosticsScreenWrapper(
 
     // ── Back stack: overlays → run-guard → double-tap exit ─────────────────────
     val anyOverlay = showPreTest || showSummary || showConnectionRequest || showComparison ||
-            showBackgroundAborted || showManualCancelled || showServerInit || showServerError
+            showBackgroundAborted || showManualCancelled || showServerInit || showServerError ||
+            showBenchResult || benchErrorMsg != null
 
     BackHandler(enabled = anyOverlay) {
         when {
+            showBenchResult -> { showBenchResult = false; engine.resetTestResult() }
+            benchErrorMsg != null -> { benchErrorMsg = null; engine.resetTestResult() }
             showSummary -> { showSummary = false; engine.resetTestResult() }
             showConnectionRequest -> showConnectionRequest = false
             showComparison -> showComparison = false
@@ -248,6 +296,23 @@ private fun DiagnosticsScreenWrapper(
     }
 
     LaunchedEffect(state.isRunning) {
+        if (!state.isRunning && state.elapsedSeconds > 0 && state.runKind == RunKind.BENCHMARK) {
+            val result = state.benchResult
+            when {
+                state.wasCompleted && result != null -> {
+                    val record = BenchmarkRecord.of(result, java.util.UUID.randomUUID().toString(), System.currentTimeMillis())
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.add(record) }
+                    benchRecords = benchStore.current()
+                    benchRecordId = record.id
+                    benchSubmitting = false; benchSubmitMsg = null; benchSubmitErr = null
+                    showBenchResult = true
+                }
+                state.benchError != null -> benchErrorMsg = state.benchError
+                state.wasCancelledByBackground -> showBackgroundAborted = true
+                else -> showManualCancelled = true
+            }
+            return@LaunchedEffect
+        }
         if (!state.isRunning && state.elapsedSeconds > 0) {
             isSubmitting = false; submitSuccess = null; submitError = null
             if (state.wasCompleted) {
@@ -367,6 +432,11 @@ private fun DiagnosticsScreenWrapper(
             val railLabel: String
             when {
                 state.wasCompleted -> { railProgress = 1f; railLabel = "DONE" }
+                state.phase == RunPhase.COOLDOWN && state.busyWait -> {
+                    railProgress = (state.cooldownElapsedSec /
+                            ((StressEngine.COOLDOWN_MAX_MS + StressEngine.QUIET_MAX_MS) / 1000f)).coerceIn(0f, 1f)
+                    railLabel = "getting ready"
+                }
                 state.phase == RunPhase.COOLDOWN -> {
                     railProgress = (state.cooldownElapsedSec /
                             (StressEngine.COOLDOWN_MAX_MS / 1000f)).coerceIn(0f, 1f)
@@ -435,6 +505,7 @@ private fun DiagnosticsScreenWrapper(
                         insight = insight,
                         onRetest = { rec ->
                             // Repeat exactly the test the old result came from, then open pre-flight.
+                            onKindChange(RunKind.STRESS)
                             onDurationChange(when (rec.durationType) {
                                 1 -> TestDuration.MINUTES_15
                                 2 -> TestDuration.MINUTES_30
@@ -464,10 +535,25 @@ private fun DiagnosticsScreenWrapper(
                 exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
-                    ModePicker(selected = selectedMode, onSelect = onModeChange)
-                    if (selectedMode.usesCpu) {
-                        ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
+                    RunKindPicker(selected = selectedKind, onSelect = onKindChange)
+                    if (selectedKind == RunKind.BENCHMARK) {
+                        val best = benchRecords.maxByOrNull { it.score }
+                        val last = benchRecords.lastOrNull()
+                        BenchmarkInfoCard(
+                            rayTracingProblem = rtProblem,
+                            rayTracingChecked = rtChecked,
+                            best = best,
+                            last = last,
+                            canSubmitLast = last != null && !last.submitted && isNetworkConnected,
+                            submitting = benchSubmitting && !showBenchResult,
+                            onSubmitLast = { last?.let { submitBenchmark(it) } }
+                        )
+                    } else {
+                        DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
+                        ModePicker(selected = selectedMode, onSelect = onModeChange)
+                        if (selectedMode.usesCpu) {
+                            ThreadingPicker(selected = selectedThreadingType, onSelect = onThreadingChange)
+                        }
                     }
                 }
             }
@@ -477,9 +563,10 @@ private fun DiagnosticsScreenWrapper(
                     showPreTest = true
                     preflightReport = null
                 },
-                onStop = { engine.stopTest() }
+                onStop = { engine.stopTest() },
+                startLabel = if (selectedKind == RunKind.BENCHMARK) "RUN BENCHMARK" else "INITIATE STRESS TEST"
             )
-            StabilityChart(
+            if (selectedKind == RunKind.STRESS) StabilityChart(
                 points = state.chartPoints,
                 events = state.thermalEvents,
                 stamps = state.recordedStamps,
@@ -490,7 +577,7 @@ private fun DiagnosticsScreenWrapper(
                 preRunGpuFps = state.preRunGpuFps
             )
             AnimatedVisibility(
-                visible = state.coreImpacts.isNotEmpty(),
+                visible = state.coreImpacts.isNotEmpty() && selectedKind == RunKind.STRESS,
                 enter = fadeIn(tween(400)) + expandVertically(tween(400)),
                 exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
             ) {
@@ -517,7 +604,8 @@ private fun DiagnosticsScreenWrapper(
                 onProceed = {
                     showPreTest = false
                     engine.clearSession()
-                    engine.startTest(selectedDuration, selectedThreadingType, selectedMode)
+                    if (selectedKind == RunKind.BENCHMARK) engine.startBenchmark()
+                    else engine.startTest(selectedDuration, selectedThreadingType, selectedMode)
                 }
             )
         }
@@ -609,6 +697,37 @@ private fun DiagnosticsScreenWrapper(
                 onDismiss = { showSummary = false; engine.resetTestResult() }
             )
         }
+        AnimatedVisibility(showBenchResult, enter = overlayEnter, exit = overlayExit) {
+            state.benchResult?.let { result ->
+                com.example.thermohammer.ui.overlays.BenchmarkResultOverlay(
+                    result = result,
+                    deviceName = engine.getDeviceModel(),
+                    isNetworkConnected = isNetworkConnected,
+                    isSubmitting = benchSubmitting,
+                    submitMessage = benchSubmitMsg,
+                    submitError = benchSubmitErr,
+                    onSubmit = { benchRecords.firstOrNull { it.id == benchRecordId }?.let { submitBenchmark(it) } },
+                    onCopyReport = {
+                        val version = try {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+                        } catch (_: Exception) { "?" }
+                        val text = com.example.thermohammer.engine.BenchmarkReport.text(
+                            result, engine.getDeviceModel(), "${engine.getAndroidVersion()} (${engine.getOsBuild()})",
+                            engine.getSocModel().ifBlank { "?" }, version,
+                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date()))
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("ThermoHammer benchmark report", text))
+                        Toast.makeText(context, "Report copied — paste it anywhere", Toast.LENGTH_SHORT).show()
+                    },
+                    onDismiss = { showBenchResult = false; engine.resetTestResult() }
+                )
+            }
+        }
+        AnimatedVisibility(benchErrorMsg != null, enter = overlayEnter, exit = overlayExit) {
+            com.example.thermohammer.ui.overlays.BenchmarkErrorOverlay(benchErrorMsg ?: "") {
+                benchErrorMsg = null; engine.resetTestResult()
+            }
+        }
         AnimatedVisibility(showConnectionRequest, enter = overlayEnter, exit = overlayExit) {
             com.example.thermohammer.ui.overlays.ConnectionRequestOverlay(
                 onTurnedOn = {
@@ -652,7 +771,10 @@ private fun DiagnosticsScreenWrapper(
                 state = state,
                 onSurfaceReady = { engine.gpuAttachSurface(it) },
                 onSurfaceGone = { engine.gpuDetachSurface() },
-                onStop = { engine.stopTest() }
+                onStop = { engine.stopTest() },
+                onWebProgress = engine::webProgress,
+                onWebDone = engine::webDone,
+                onWebFailed = engine::webFailed
             )
         }
     }
@@ -674,7 +796,10 @@ private fun CooldownChip(state: com.example.thermohammer.engine.StressState) {
     ) {
         Text("❄", color = color, fontSize = 9.sp)
         Text(
-            "COOLING %s° → %.0f°  ·  %ds".format(
+            // Busy: Android is still at work in the background (e.g. optimizing a just-installed
+            // app) — part of the cooldown; the benchmark starts by itself once the phone is quiet.
+            if (state.busyWait) "GETTING READY  ·  %ds".format(state.cooldownElapsedSec)
+            else "COOLING %s° → %.0f°  ·  %ds".format(
                 if (state.cpuTemp > 0f) "%.1f".format(state.cpuTemp) else "--",
                 state.cooldownTargetC,
                 state.cooldownElapsedSec

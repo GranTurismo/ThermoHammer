@@ -1,0 +1,18 @@
+#version 460
+// 9-tap tent upsample of the lower level (srcA) added to this level's downsample (srcB).
+layout(local_size_x = 8, local_size_y = 8) in;
+#include "post.glsl"
+layout(set = 1, binding = 2, rgba16f) uniform writeonly image2D dst;
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(dst);
+    if (id.x >= size.x || id.y >= size.y) return;
+    vec2 uv = (vec2(id) + 0.5) / vec2(size);
+    vec2 t = pp.texel;
+    vec3 s = textureLod(srcA, uv, 0.0).rgb * 4.0
+           + (textureLod(srcA, uv + vec2(t.x, 0.0), 0.0).rgb + textureLod(srcA, uv - vec2(t.x, 0.0), 0.0).rgb
+            + textureLod(srcA, uv + vec2(0.0, t.y), 0.0).rgb + textureLod(srcA, uv - vec2(0.0, t.y), 0.0).rgb) * 2.0
+           + textureLod(srcA, uv + t, 0.0).rgb + textureLod(srcA, uv - t, 0.0).rgb
+           + textureLod(srcA, uv + vec2(t.x, -t.y), 0.0).rgb + textureLod(srcA, uv + vec2(-t.x, t.y), 0.0).rgb;
+    imageStore(dst, id, vec4(s / 16.0 + textureLod(srcB, uv, 0.0).rgb, 1.0));
+}

@@ -211,8 +211,8 @@ fun PreTestOverlay(
                             else GateRow("✓", "BATTERY SAVER OFF", "Clocks are not externally capped.", Ramp.at(0.05f), GateState.PASS)
                             if (isCharging == true) GateRow("⛔", "CHARGER CONNECTED", "Unplug — charging heat forces throttling.", Ramp.at(0.85f), GateState.FAIL)
                             else GateRow("✓", "ON BATTERY", "No charger heat injection.", Ramp.at(0.05f), GateState.PASS)
-                            if (isCellularActive == true) GateRow("⚠", "CELLULAR ACTIVE", "Airplane mode recommended.", Ramp.at(0.5f), GateState.WARN)
-                            else GateRow("✓", "RADIO OFFLINE", "No cellular background heat.", Ramp.at(0.05f), GateState.PASS)
+                            if (isCellularActive == true) GateRow("⛔", "MOBILE DATA", "Switch to Wi-Fi or airplane mode — the modem heats the chip.", Ramp.at(0.85f), GateState.FAIL)
+                            else GateRow("✓", "MOBILE DATA OFF", "No modem heat.", Ramp.at(0.05f), GateState.PASS)
                         }
                         GateRow("⌖", "STAY IN FOREGROUND", "Minimizing aborts the run automatically.", Forge.phasePreFlight, GateState.ADVISORY)
                     }

@@ -1,0 +1,207 @@
+<!doctype html>
+<!--
+  ThermoHammer UX test — WebView rendering.
+  Four rendering scenes ramp their complexity (MotionMark-style) to find the most work the WebView can
+  keep at ≥ 28 fps — independent of the display's refresh rate — then a fixed JavaScript suite runs.
+  Results go to the app through window.ThermoBench (see engine/ux/WebBench.kt). Fully offline.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, user-scalable=no">
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #0b0e12;
+    font-family: system-ui, -apple-system, Roboto, sans-serif; color: #e8edf2; }
+  #stage { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; overflow: hidden; }
+  /* layout scene: a news feed that reflows every frame */
+  .feed { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; box-sizing: border-box; align-content: flex-start;
+    height: 720px; overflow: hidden; }
+  .card { flex: 1 1 260px; max-width: 300px; background: #151b23; border-radius: 12px; padding: 10px 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.4); border: 1px solid #222b36; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; line-height: 1.25; }
+  .card p { margin: 0 0 8px; font-size: 12px; line-height: 1.45; color: #9fb0c2; }
+  .card .thumb { height: 54px; border-radius: 8px; margin-bottom: 8px; }
+  .card .meta { display: flex; gap: 6px; flex-wrap: wrap; }
+  .card .tag { font-size: 10px; padding: 2px 7px; border-radius: 9px; background: #1f2a37; color: #7fd6c2; }
+  /* CSS scene: animated UI tiles */
+  /* CSS animation the way UIs do it: each tile is its own GPU layer and only its transform changes, so this
+     measures style + compositing. Small tiles and the MAX_N cap keep layer memory near 50 MB. */
+  .tile { position: absolute; left: 0; top: 0; width: 36px; height: 36px; border-radius: 10px; box-sizing: border-box;
+    border: 2px solid rgba(255,255,255,.22); will-change: transform; }
+  canvas, svg { position: absolute; left: 0; top: 0; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+'use strict';
+const W = 1280, H = 720;
+const TARGET_MS = 1000 / 28;     // a scene "keeps up" while frames come at least every ~35.7 ms
+const MAX_N = { 'Layout': 30000, 'Canvas 2D': 200000, 'CSS animation': 4000, 'SVG': 30000 };    // memory guard
+const stage = document.getElementById('stage');
+const bridge = window.ThermoBench || { progress() {}, done(j) { console.log(j); }, fail(m) { console.error(m); } };
+
+// deterministic content
+let seed = 1234567;
+function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+const WORDS = 'storm city light rain neon market metro night signal glass tower river street harbor bridge cafe ramen hotel avenue lantern traffic window phone battery thermal benchmark render frame pixel shadow'.split(' ');
+function sentence(n) { let s = []; for (let i = 0; i < n; i++) s.push(WORDS[Math.floor(rnd() * WORDS.length)]); s[0] = s[0][0].toUpperCase() + s[0].slice(1); return s.join(' ') + '.'; }
+function hue(i) { return (i * 47) % 360; }
+function nextFrame() { return new Promise(r => requestAnimationFrame(r)); }
+
+// ── scenes: setup(), setComplexity(n), frame(t), teardown() ─────────────────
+
+const scenes = [
+  { name: 'Layout', unit: 'cards', start: 40,
+    setup() { this.el = document.createElement('div'); this.el.className = 'feed'; stage.appendChild(this.el); this.n = 0; },
+    setComplexity(n) {
+      while (this.n < n) {
+        const c = document.createElement('div'); c.className = 'card';
+        const h = hue(this.n);
+        c.innerHTML = '<div class="thumb" style="background:linear-gradient(135deg,hsl(' + h + ',70%,45%),hsl(' + (h + 60) % 360 + ',70%,25%))"></div>' +
+          '<h3>' + sentence(5) + '</h3><p>' + sentence(16) + ' ' + sentence(12) + '</p>' +
+          '<div class="meta"><span class="tag">' + WORDS[this.n % WORDS.length] + '</span><span class="tag">' + (this.n % 97) + ' min</span><span class="tag">#' + this.n + '</span></div>';
+        this.el.appendChild(c); this.n++;
+      }
+      while (this.n > n) { this.el.removeChild(this.el.lastChild); this.n--; }
+    },
+    frame(t) {
+      // the column width breathes, so every card's text re-wraps — full style + layout each frame
+      // (the feed is clipped to one screen, so only layout grows with the card count, not raster memory)
+      this.el.style.width = (1180 + 90 * Math.sin(t / 260)) + 'px';
+      const c = this.el.children[Math.floor(t / 50) % Math.max(1, this.n)];
+      if (c) c.querySelector('h3').textContent = sentence(4 + Math.floor(t) % 4);
+    },
+    teardown() { stage.removeChild(this.el); } },
+
+  { name: 'Canvas 2D', unit: 'shapes', start: 200,
+    setup() { this.c = document.createElement('canvas'); this.c.width = W; this.c.height = H; stage.appendChild(this.c); this.g = this.c.getContext('2d'); this.n = 0; },
+    setComplexity(n) { this.n = n; },
+    frame(t) {
+      const g = this.g;
+      g.fillStyle = '#0b0e12'; g.fillRect(0, 0, W, H);
+      for (let i = 0; i < this.n; i++) {
+        const a = t / 900 + i * 0.37, r = 18 + (i % 7) * 4;
+        const x = (W / 2 + Math.cos(a * (1 + i % 3 * 0.2)) * (120 + (i * 37) % 520)) % W;
+        const y = (H / 2 + Math.sin(a * 1.3) * (60 + (i * 53) % 300)) % H;
+        const grad = g.createRadialGradient(x, y, 2, x, y, r);
+        grad.addColorStop(0, 'hsla(' + hue(i) + ',90%,65%,0.95)'); grad.addColorStop(1, 'hsla(' + hue(i) + ',80%,30%,0)');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.moveTo(x + r, y);
+        g.bezierCurveTo(x + r, y + r * 1.2, x - r, y + r * 1.2, x - r, y);
+        g.bezierCurveTo(x - r, y - r * 1.2, x + r, y - r * 1.2, x + r, y);
+        g.fill();
+        if (i % 12 === 0) { g.fillStyle = '#e8edf2'; g.font = '12px sans-serif'; g.fillText(String(i), x, y); }
+      }
+    },
+    teardown() { stage.removeChild(this.c); } },
+
+  { name: 'CSS animation', unit: 'tiles', start: 60,
+    setup() { this.el = document.createElement('div'); stage.appendChild(this.el); this.tiles = []; },
+    setComplexity(n) {
+      while (this.tiles.length < n) {
+        const d = document.createElement('div'); d.className = 'tile'; const i = this.tiles.length;
+        d.style.background = 'linear-gradient(160deg,hsl(' + hue(i) + ',85%,62%),hsl(' + (hue(i) + 40) % 360 + ',75%,38%))';
+        d.style.opacity = (0.55 + 0.45 * ((i * 0.37) % 1)).toFixed(2);
+        this.el.appendChild(d); this.tiles.push(d);
+      }
+      while (this.tiles.length > n) this.el.removeChild(this.tiles.pop());
+    },
+    frame(t) {
+      for (let i = 0; i < this.tiles.length; i++) {
+        const a = t / 700 + i * 0.61;
+        const x = 600 + Math.cos(a) * (80 + (i * 29) % 520), y = 330 + Math.sin(a * 1.17) * (40 + (i * 17) % 290);
+        const s = 0.6 + 0.4 * Math.sin(a * 2.1);
+        this.tiles[i].style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + (a * 40) % 360 + 'deg) scale(' + s + ')';
+      }
+    },
+    teardown() { stage.removeChild(this.el); } },
+
+  { name: 'SVG', unit: 'paths', start: 80,
+    setup() {
+      this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      this.svg.setAttribute('width', W); this.svg.setAttribute('height', H); stage.appendChild(this.svg); this.paths = [];
+    },
+    setComplexity(n) {
+      while (this.paths.length < n) {
+        const i = this.paths.length, p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        let d = '';
+        for (let k = 0; k < 10; k++) { const r = k % 2 ? 9 : 22, a = k * Math.PI / 5; d += (k ? 'L' : 'M') + (Math.cos(a) * r).toFixed(1) + ' ' + (Math.sin(a) * r).toFixed(1); }
+        p.setAttribute('d', d + 'Z'); p.setAttribute('fill', 'hsl(' + hue(i) + ',80%,60%)');
+        p.setAttribute('stroke', '#0b0e12'); p.setAttribute('stroke-width', '2');
+        this.svg.appendChild(p); this.paths.push(p);
+      }
+      while (this.paths.length > n) this.svg.removeChild(this.paths.pop());
+    },
+    frame(t) {
+      for (let i = 0; i < this.paths.length; i++) {
+        const a = t / 800 + i * 0.29;
+        const x = 640 + Math.cos(a * 0.9) * (60 + (i * 41) % 560), y = 360 + Math.sin(a) * (30 + (i * 23) % 320);
+        this.paths[i].setAttribute('transform', 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') rotate(' + ((a * 57) % 360).toFixed(1) + ')');
+      }
+    },
+    teardown() { stage.removeChild(this.svg); } }
+];
+
+// ── ramp: find the most complexity that still runs at ≥ 28 fps ──────────────
+
+async function ramp(scene, seconds, index) {
+  scene.setup();
+  let n = scene.start, lo = 0, hi = 0, lastInterval = TARGET_MS;
+  const t0 = performance.now();
+  while (performance.now() - t0 < seconds * 1000) {
+    scene.setComplexity(Math.max(1, Math.round(n)));
+    for (let k = 0; k < 2; k++) scene.frame(await nextFrame());      // settle after the change
+    let start = await nextFrame(); scene.frame(start);
+    let frames = 0, ts = start;
+    while (ts - start < 450 || frames < 4) { ts = await nextFrame(); scene.frame(ts); frames++; }
+    const interval = (ts - start) / frames;
+    lastInterval = interval;
+    if (interval <= TARGET_MS) { lo = Math.max(lo, n); n = Math.min(hi ? (n + hi) / 2 : n * 1.8, MAX_N[scene.name]); }
+    else { hi = n; n = lo ? (lo + n) / 2 : n / 2; }
+    if (hi && lo && hi - lo < Math.max(2, lo * 0.03)) n = lo;          // converged: hold the answer
+    bridge.progress(scene.name, Math.min(1, (performance.now() - t0) / (seconds * 1000)), Math.round(n), 1000 / interval, index);
+  }
+  scene.teardown();
+  // a phone that can't keep even the starting load scores by how far it fell short
+  return lo > 0 ? lo : scene.start * TARGET_MS / lastInterval;
+}
+
+// ── JavaScript: a fixed suite, operations per second ────────────────────────
+
+function jsSuite(secondsEach) {
+  const text = Array.from({ length: 400 }, () => sentence(12)).join(' ');
+  const tasks = [
+    () => { const o = []; for (let i = 0; i < 400; i++) o.push({ id: i, name: sentence(3), tags: [i % 7, i % 11], v: i * 1.5 }); return JSON.parse(JSON.stringify(o)).length; },
+    () => (text.match(/\b[a-z]{5,}\b/g) || []).length + text.replace(/[aeiou]/g, '*').length,
+    () => { const a = new Float64Array(20000); for (let i = 0; i < a.length; i++) a[i] = Math.sin(i * 12.9898) * 43758.5453 % 1; a.sort(); return a[100]; },
+    () => { let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); } return h; },
+    () => { const d = document.createElement('div'); for (let i = 0; i < 300; i++) { const s = document.createElement('span'); s.className = 'x' + (i % 5); s.textContent = i; d.appendChild(s); } return d.querySelectorAll('.x3').length; }
+  ];
+  let logSum = 0, sink = 0;
+  tasks.forEach((task, i) => {
+    let n = 0; const t0 = performance.now();
+    while (performance.now() - t0 < secondsEach * 1000) { sink += task() ? 1 : 0; n++; }
+    logSum += Math.log(n / ((performance.now() - t0) / 1000));
+    bridge.progress('JavaScript', (i + 1) / tasks.length, n, 0, scenes.length);
+  });
+  if (sink < 0) console.log(sink);
+  return Math.exp(logSum / tasks.length);    // geometric mean of operations per second
+}
+
+async function run() {
+  try {
+    await nextFrame(); await nextFrame();
+    const results = {};
+    for (let i = 0; i < scenes.length; i++) results[['layout', 'canvas', 'css', 'svg'][i]] = await ramp(scenes[i], 7.5, i);
+    results.js = jsSuite(1.0);
+    bridge.done(JSON.stringify(results));
+  } catch (e) {
+    bridge.fail(String(e && e.stack || e));
+  }
+}
+run();
+</script>
+</body>
+</html>

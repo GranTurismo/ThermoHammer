@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.thermohammer.R
 import com.example.thermohammer.engine.Attribution
+import com.example.thermohammer.engine.BenchmarkTest
 import com.example.thermohammer.engine.RunPhase
 import com.example.thermohammer.engine.ThermalState
 import com.example.thermohammer.engine.ValidityFlag
@@ -96,6 +97,32 @@ fun phaseColor(phase: RunPhase): Color = when (phase) {
     RunPhase.WARMUP      -> Forge.phaseWarmup
     RunPhase.CALIBRATION -> Forge.phaseCalibration
     RunPhase.MEASURED    -> Forge.phaseMeasured
+}
+
+/** Accent of each GPU benchmark test: lake violet, neon red, ray-traced ice blue. */
+fun benchmarkColor(test: BenchmarkTest?): Color = when (test) {
+    BenchmarkTest.NEON_CITY -> Ramp.at(0.85f)
+    BenchmarkTest.NEON_CITY_RT -> Forge.phaseCooldown
+    else -> Forge.phaseCalibration
+}
+
+/** Accent of the CPU tests: gold. */
+fun cpuColor(): Color = Color(0xFFE8C547)
+
+/** Accent of the MEM tests: copper. */
+fun memColor(): Color = Color(0xFFF2A65A)
+
+/** Accent of the AI tests: lavender. */
+fun aiColor(): Color = Color(0xFFC792EA)
+
+/** Accent of each UX test: browser teals, photo rose, video sky, QR amber. */
+fun uxColor(test: com.example.thermohammer.engine.UxTest?): Color = when (test) {
+    com.example.thermohammer.engine.UxTest.SCROLL -> Color(0xFF6FE3A0)
+    com.example.thermohammer.engine.UxTest.GALLERY -> Color(0xFF7FD6E8)
+    com.example.thermohammer.engine.UxTest.PHOTO -> Color(0xFFFF8FB1)
+    com.example.thermohammer.engine.UxTest.VIDEO -> Color(0xFF6FA8FF)
+    com.example.thermohammer.engine.UxTest.QR -> Ramp.at(0.55f)
+    else -> Forge.phaseMeasured
 }
 
 fun thermalStateColor(state: ThermalState): Color = when (state) {

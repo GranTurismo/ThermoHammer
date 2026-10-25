@@ -1,0 +1,24 @@
+#version 460
+// HDR + bloom → ACES tonemap, gamma, vignette, grade, grain → RGBA8.
+layout(local_size_x = 8, local_size_y = 8) in;
+#include "post.glsl"
+layout(set = 1, binding = 2, rgba8) uniform writeonly image2D dst;
+float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(dst);
+    if (id.x >= size.x || id.y >= size.y) return;
+    vec2 uv = (vec2(id) + 0.5) / vec2(size);
+    vec3 c = textureLod(srcA, uv, 0.0).rgb + textureLod(srcB, uv, 0.0).rgb * 0.16;
+    c = pow(aces(c), vec3(1.0 / 2.2));
+    vec2 v = uv - 0.5;
+    c *= 1.0 - dot(v, v) * 0.7;
+    c = mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, 1.12);
+    c += (hash12(uv * 1733.0 + pp.p0) - 0.5) * 0.018;
+    imageStore(dst, id, vec4(clamp(c, 0.0, 1.0), 1.0));
+}

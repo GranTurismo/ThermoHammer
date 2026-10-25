@@ -145,6 +145,52 @@ object StressProbes {
         return ((b[0] - a[0]).toFloat() / (b[1] - a[1]).toFloat()).coerceIn(0f, 1f)
     }
 
+    /**
+     * Share of the CPU this app gets right now, 0..1: one spinning thread per core, each timing its
+     * own CPU time against the wall clock (the first 150 ms are skipped while parked cores wake).
+     * ≈1 on a quiet phone; well below it while Android compiles a just-installed app or installs
+     * updates in the background. Works where /proc/stat is closed to apps (Android 8+).
+     */
+    fun cpuShare(): Float {
+        val n = allowedCores()
+        val go = java.util.concurrent.CountDownLatch(1)
+        val shares = DoubleArray(n) { 1.0 }
+        val threads = List(n) { i ->
+            Thread {
+                go.await()
+                val t0 = System.nanoTime()
+                var x = 0L
+                while (System.nanoTime() - t0 < SHARE_SKIP_NS) x = x * 31 + 7
+                val w1 = System.nanoTime(); val c1 = android.os.Debug.threadCpuTimeNanos()
+                while (System.nanoTime() - t0 < SHARE_SKIP_NS + SHARE_SPAN_NS) x = x * 31 + 7
+                val w2 = System.nanoTime(); val c2 = android.os.Debug.threadCpuTimeNanos()
+                if (c1 >= 0 && c2 > c1) shares[i] = (c2 - c1).toDouble() / (w2 - w1)
+                spinSink = x
+            }.apply { start() }
+        }
+        go.countDown()
+        threads.forEach { it.join() }
+        return shares.average().toFloat().coerceIn(0f, 1f)
+    }
+
+    private const val SHARE_SKIP_NS = 150_000_000L
+    private const val SHARE_SPAN_NS = 400_000_000L
+    @Volatile private var spinSink = 0L
+
+    /** Cores this process may run on: its cpuset (/proc/self/status), never more than are online. */
+    private fun allowedCores(): Int {
+        val online = Runtime.getRuntime().availableProcessors()
+        val list = try {
+            File("/proc/self/status").readLines().firstOrNull { it.startsWith("Cpus_allowed_list:") }
+                ?.substringAfter(':')?.trim()
+        } catch (_: Exception) { null } ?: return online
+        val allowed = list.split(',').sumOf { part ->
+            val ends = part.trim().split('-').mapNotNull { it.toIntOrNull() }
+            when (ends.size) { 1 -> 1; 2 -> ends[1] - ends[0] + 1; else -> 0 }
+        }
+        return if (allowed in 1..online) allowed else online
+    }
+
     fun scheduledFraction(deltaJiffies: Long, deltaWallNs: Long): Float {
         if (deltaWallNs <= 0) return 1f
         val wallJiffies = deltaWallNs / 1e9 * CLK_TCK

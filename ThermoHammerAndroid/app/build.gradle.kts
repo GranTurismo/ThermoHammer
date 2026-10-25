@@ -1,18 +1,32 @@
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.kotlin.serialization)
 }
 
 android {
+    // UX test media (assets/media): MediaExtractor reads the clips through openFd, which needs them stored
+    androidResources { noCompress += listOf("mp4", "webm", "webp", "avif", "tflite") }
     namespace = "com.example.thermohammer"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
     defaultConfig {
         applicationId = "com.granturismo.thermohammer"
         minSdk = 24
         targetSdk = 36
         versionCode = 11
         versionName = "1.9"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake { arguments += "-DANDROID_STL=c++_static" }
+        }
+    }
+
+    // GPU Test 3 (Neon City RT): the Vulkan ray-query renderer in src/main/cpp
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     // Release-signing secrets live OUTSIDE the repo (the repo is public). On each build machine put
@@ -47,6 +61,16 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }
+        // A release-speed build for testing on a phone without USB debugging: optimised and not
+        // debuggable (so CPU scores are real), debug-signed, and installed beside the Play app.
+        create("bench") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".bench"
+            versionNameSuffix = "-bench"
+            matchingFallbacks += "release"
+            ndk { abiFilters += "arm64-v8a" }          // phones to sideload onto, and the arm64 emulator
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -63,7 +87,16 @@ android {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
+      jniLibs {
+        // Qualcomm's QNN runtime (bench builds only): just the HTP backend for Snapdragon 8 Gen 2 – 8 Elite Gen 5
+        excludes += listOf("**/libQnnDsp*.so", "**/libQnnGpu.so", "**/libQnnHtpV68*.so", "**/libQnnHtpV69*.so")
+      }
     }
+}
+
+androidComponents {
+    // The NPU loads QNN's Hexagon libraries from files, so the bench build extracts its native libraries
+    onVariants(selector().withBuildType("bench")) { it.packaging.jniLibs.useLegacyPackaging.set(true) }
 }
 
 kotlin {
@@ -115,4 +148,17 @@ dependencies {
   implementation(libs.okhttp.core)
   implementation(libs.okhttp.logging)
   implementation(libs.kotlinx.coroutines.android)
+
+  // UX test: QR scanning — ZXing (scored, CPU) and ML Kit's bundled scanner (reported)
+  implementation(libs.mlkit.barcode)
+
+
+  // AI tests: LiteRT on the CPU, the GPU and the NPU (vendor dispatch libraries). Qualcomm's QNN runtime
+  // goes only into the sideloaded bench build; Play builds are to get it through Play AI packs.
+  implementation(libs.litert)
+  implementation(libs.litert.gpu)
+  implementation(libs.litert.npu.qualcomm)
+  implementation(libs.litert.npu.mediatek)
+  implementation(libs.litert.npu.google.tensor)
+  "benchImplementation"(libs.qnn.runtime)
 }

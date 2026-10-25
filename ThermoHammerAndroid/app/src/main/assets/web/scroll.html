@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  ThermoHammer UX Test 2 — web scrolling.
+  An endless social feed (photos, rich text, charts, action bars, comments) is built just ahead of the
+  viewport and recycled behind it — the way feed apps and sites work — while the page scrolls at a speed
+  that rises 20 % every 0.6 s. A speed "holds" while at most 10 % of its frames miss the display's refresh; the
+  result is the fastest speed held (CSS px/s), which is about how fast the phone can build a heavy page, not
+  about its refresh rate. Results go to the app through window.ThermoBench. Fully offline.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, user-scalable=no">
+<style>
+  html, body { margin: 0; width: 1280px; background: #0b0e12; overflow-x: hidden;
+    font-family: system-ui, -apple-system, Roboto, sans-serif; color: #e8edf2; }
+  body::-webkit-scrollbar { display: none; }
+  #top { position: fixed; left: 0; right: 0; top: 0; height: 52px; z-index: 5; display: flex; align-items: center;
+    gap: 14px; padding: 0 24px; background: rgba(13,17,23,.92); border-bottom: 1px solid #1d2632; }
+  #top.shadow { box-shadow: 0 6px 18px rgba(0,0,0,.55); }
+  #top .logo { font-weight: 800; letter-spacing: .5px; color: #7fd6c2; }
+  #top .search { flex: 1; max-width: 420px; height: 30px; border-radius: 15px; background: #18202b; }
+  #bar { position: fixed; left: 0; top: 52px; height: 3px; background: linear-gradient(90deg,#3dd9b4,#a6e3ff); z-index: 6; }
+  #side, #trend { position: fixed; top: 72px; width: 250px; }
+  #side { left: 24px; } #trend { right: 24px; }
+  .panel { background: #121821; border: 1px solid #1d2632; border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; }
+  .panel b { display: block; margin-bottom: 8px; font-size: 13px; }
+  .panel div { font-size: 12px; color: #9fb0c2; padding: 4px 0; }
+  #feed { width: 640px; margin: 0 auto; padding-top: 68px; }
+  .card { background: #131a23; border: 1px solid #1f2935; border-radius: 16px; margin-bottom: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.35); overflow: hidden; }
+  .head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 6px; }
+  .av { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+  .who b { font-size: 14px; } .who span { font-size: 12px; color: #7c8da0; margin-left: 6px; }
+  .who div { font-size: 11px; color: #5f7083; }
+  .text { padding: 4px 14px 10px; font-size: 14px; line-height: 1.5; color: #c9d5e0; }
+  .text a { color: #6cc4ff; text-decoration: none; } .text i { color: #f2b36b; font-style: normal; }
+  .media img { display: block; width: 640px; height: 360px; object-fit: cover; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+  .grid img { width: 319px; height: 180px; object-fit: cover; display: block; }
+  .quote { margin: 0 14px 10px; padding: 10px 12px; border-left: 3px solid #3dd9b4; background: #0f151c;
+    border-radius: 8px; font-size: 13px; color: #9fb0c2; }
+  canvas.chart { display: block; margin: 0 14px 10px; width: 612px; height: 150px; border-radius: 10px; background: #0f151c; }
+  .act { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid #1d2632; }
+  .act div { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; height: 30px;
+    border-radius: 8px; font-size: 12px; color: #8ea0b4; }
+  .act svg { width: 16px; height: 16px; }
+  .cmt { display: flex; gap: 8px; padding: 8px 14px 12px; font-size: 12px; color: #9fb0c2; }
+  .cmt .av { width: 24px; height: 24px; }
+  .seen .act div:first-child { color: #ff6b8a; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+  .tags span { font-size: 11px; padding: 3px 9px; border-radius: 10px; background: #1b2531; color: #7fd6c2; }
+  .reacts { display: flex; align-items: center; padding: 0 14px 8px; font-size: 11px; color: #7c8da0; }
+  .reacts .av { width: 20px; height: 20px; margin-right: -6px; border: 2px solid #131a23; }
+  .reacts span { margin-left: 14px; }
+</style>
+</head>
+<body>
+<div id="top"><span class="logo">thermo·feed</span><div class="search"></div></div>
+<div id="bar"></div>
+<div id="side"></div>
+<div id="trend"></div>
+<div id="feed"></div>
+<script>
+'use strict';
+const bridge = window.ThermoBench || { progress() {}, done(j) { console.log(j); }, fail(m) { console.error(m); } };
+const SECONDS = 19;
+const LEVEL_S = 0.6;            // each speed is held this long
+const START_SPEED = 3000;       // CSS px/s — a brisk fling
+const STEP = 1.2;               // ×20 % per level: ~31 levels in the time, up to MAX_SPEED
+const MAX_DROPPED = 0.10;       // a level holds while ≤ 10 % of its frames are late
+const MAX_SPEED = 1000000;
+const AHEAD = 3 * 720;          // build this far below the viewport
+const KEEP = 90;                // cards kept in the DOM; older ones are recycled
+
+let seed = 1;
+function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+const WORDS = ('lake valley neon rain city night street signal train drone camera photo light river forest ' +
+  'market noodle karaoke music coffee bike bridge tower cloud summit sunset harbor garden studio arcade ' +
+  'festival lantern weekend morning').split(' ');
+function sentence(n) { let s = []; for (let i = 0; i < n; i++) s.push(WORDS[(rnd() * WORDS.length) | 0]); return s.join(' '); }
+function nextFrame() { return new Promise(r => requestAnimationFrame(r)); }
+
+const ICONS = [
+  'M8 14s-6-3.6-6-8a3 3 0 0 1 6-1 3 3 0 0 1 6 1c0 4.4-6 8-6 8z',
+  'M2 3h12v8H6l-4 3z',
+  'M3 8l10-5-3 11-2-5z',
+  'M4 2h8v12l-4-3-4 3z'
+];
+
+// a pool of "photos" (gradients, a sun, hills), JPEG-encoded once so the feed shows real images
+async function photoPool(n) {
+  const c = document.createElement('canvas'); c.width = 640; c.height = 360;
+  const g = c.getContext('2d');
+  const urls = [];
+  for (let i = 0; i < n; i++) {
+    const h = (i * 47) % 360;
+    const sky = g.createLinearGradient(0, 0, 0, 360);
+    sky.addColorStop(0, `hsl(${h},60%,${30 + i % 3 * 10}%)`); sky.addColorStop(1, `hsl(${(h + 40) % 360},70%,12%)`);
+    g.fillStyle = sky; g.fillRect(0, 0, 640, 360);
+    g.fillStyle = `hsla(${(h + 180) % 360},90%,70%,.85)`;
+    g.beginPath(); g.arc(120 + i * 53 % 400, 110, 40, 0, Math.PI * 2); g.fill();
+    for (let k = 0; k < 4; k++) {
+      g.fillStyle = `hsla(${(h + 90 + k * 20) % 360},40%,${18 + k * 6}%,.9)`;
+      g.beginPath(); g.moveTo(0, 360);
+      for (let x = 0; x <= 640; x += 32) g.lineTo(x, 220 + k * 30 + Math.sin(x / 60 + i + k) * 30);
+      g.lineTo(640, 360); g.fill();
+    }
+    for (let k = 0; k < 900; k++) {                     // grain, so the JPEG is not trivially small
+      g.fillStyle = `rgba(255,255,255,${rnd() * 0.06})`; g.fillRect(rnd() * 640, rnd() * 360, 2, 2);
+    }
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    urls.push(URL.createObjectURL(blob));
+  }
+  return urls;
+}
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+function avatar(i) { const a = el('div', 'av'); a.style.background = `linear-gradient(135deg,hsl(${i * 37 % 360},70%,55%),hsl(${i * 71 % 360},70%,35%))`; return a; }
+function icon(d) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d);
+  p.setAttribute('fill', 'none'); p.setAttribute('stroke', 'currentColor'); p.setAttribute('stroke-width', '1.4');
+  s.appendChild(p); return s;
+}
+
+let photos = [];
+function makeCard(i) {
+  const card = el('article', 'card');
+  const head = el('div', 'head'); head.appendChild(avatar(i));
+  const who = el('div', 'who'); const name = el('b', null, sentence(2)); who.appendChild(name);
+  who.appendChild(el('span', null, '@' + WORDS[i % WORDS.length] + i)); who.appendChild(el('div', null, (i % 59 + 1) + ' min'));
+  head.appendChild(who); card.appendChild(head);
+  const text = el('div', 'text');
+  const words = 40 + (i * 7) % 80;
+  for (let w = 0; w < words; w++) {
+    const r = rnd();
+    const word = WORDS[(r * WORDS.length) | 0];
+    if (r < 0.06) { const a = el('a', null, '#' + word); a.href = '#'; text.appendChild(a); }
+    else if (r < 0.1) text.appendChild(el('i', null, '@' + word));
+    else text.appendChild(document.createTextNode(word));
+    text.appendChild(document.createTextNode(' '));
+  }
+  card.appendChild(text);
+  const tags = el('div', 'tags');
+  for (let k = 0; k < 3 + i % 4; k++) tags.appendChild(el('span', null, '#' + WORDS[(i * 3 + k * 7) % WORDS.length]));
+  card.appendChild(tags);
+  const kind = i % 5;
+  if (kind === 0 || kind === 3) {
+    const m = el('div', 'media'); const img = new Image(640, 360); img.decoding = 'async';
+    img.src = photos[i % photos.length]; m.appendChild(img); card.appendChild(m);
+  } else if (kind === 1) {
+    const m = el('div', 'grid');
+    for (let k = 0; k < 4; k++) { const img = new Image(319, 180); img.decoding = 'async'; img.src = photos[(i + k) % photos.length]; m.appendChild(img); }
+    card.appendChild(m);
+  } else if (kind === 2) {
+    const c = el('canvas', 'chart'); c.width = 612; c.height = 150; const g = c.getContext('2d');
+    g.strokeStyle = '#3dd9b4'; g.lineWidth = 2; g.beginPath();
+    let y = 75;
+    for (let x = 0; x <= 612; x += 6) { y = Math.max(10, Math.min(140, y + (rnd() - 0.5) * 18)); x ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke(); g.lineTo(612, 150); g.lineTo(0, 150); g.fillStyle = 'rgba(61,217,180,.12)'; g.fill();
+    card.appendChild(c);
+  } else {
+    card.appendChild(el('div', 'quote', sentence(14)));
+  }
+  const act = el('div', 'act');
+  ICONS.forEach((d, k) => { const b = el('div'); b.appendChild(icon(d)); b.appendChild(document.createTextNode(String((i * (k + 3) * 13) % 997))); act.appendChild(b); });
+  const reacts = el('div', 'reacts');
+  for (let k = 0; k < 6; k++) reacts.appendChild(avatar(i * 11 + k));
+  reacts.appendChild(el('span', null, sentence(2) + ' and ' + (i * 37 % 900 + 12) + ' others'));
+  card.appendChild(reacts);
+  card.appendChild(act);
+  for (let k = 0; k < 3; k++) {
+    const cmt = el('div', 'cmt'); cmt.appendChild(avatar(i + 5 + k)); cmt.appendChild(el('div', null, sentence(9 + k * 4))); card.appendChild(cmt);
+  }
+  return card;
+}
+
+const feed = document.getElementById('feed');
+const top_ = document.getElementById('top');
+const bar = document.getElementById('bar');
+let built = 0;
+function fill() {
+  // build ahead of the viewport, recycle far behind it (keeping the scroll position steady)
+  while (feed.offsetTop + feed.offsetHeight - (window.scrollY + 720) < AHEAD) feed.appendChild(makeCard(built++));
+  if (feed.children.length > KEEP) {
+    let removed = 0;
+    while (feed.children.length > KEEP - 20) { removed += feed.firstChild.offsetHeight + 14; feed.removeChild(feed.firstChild); }
+    feed.style.paddingTop = (parseFloat(feed.style.paddingTop || '68') + removed) + 'px';
+  }
+}
+const seen = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add('seen'); }));
+const observe = new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => seen.observe(n))));
+observe.observe(feed, { childList: true });
+window.addEventListener('scroll', () => {
+  top_.classList.toggle('shadow', window.scrollY > 4);
+  bar.style.width = ((window.scrollY / 40) % 1280) + 'px';
+}, { passive: true });
+
+function sidePanels() {
+  for (const [id, title] of [['side', 'Following'], ['trend', 'Trending']]) {
+    const host = document.getElementById(id);
+    for (let p = 0; p < 2; p++) {
+      const panel = el('div', 'panel'); panel.appendChild(el('b', null, title));
+      for (let k = 0; k < 6; k++) panel.appendChild(el('div', null, '#' + sentence(2).replace(' ', '')));
+      host.appendChild(panel);
+    }
+  }
+}
+
+async function refreshInterval() {
+  const v = []; let last = await nextFrame();
+  for (let i = 0; i < 40; i++) { const t = await nextFrame(); v.push(t - last); last = t; }
+  v.sort((a, b) => a - b);
+  return v[v.length >> 1];
+}
+
+async function run() {
+  try {
+    sidePanels();
+    photos = await photoPool(10);
+    fill();
+    await nextFrame(); await nextFrame();
+    const vsync = await refreshInterval();
+    let speed = START_SPEED, level = 0, best = 0, fails = 0, lastDropRate = 1;
+    let totalFrames = 0, totalDropped = 0;
+    const t0 = performance.now();
+    let prev = await nextFrame();
+    while (performance.now() - t0 < SECONDS * 1000 && fails < 2 && speed <= MAX_SPEED) {
+      const levelStart = prev;
+      let frames = 0, dropped = 0;
+      while (prev - levelStart < LEVEL_S * 1000) {
+        const ts = await nextFrame();
+        const dt = ts - prev; prev = ts;
+        const late = Math.max(0, Math.round(dt / vsync) - 1);
+        frames += 1; dropped += late;
+        window.scrollBy(0, speed * Math.min(dt, 4 * vsync) / 1000);
+        fill();
+      }
+      const rate = dropped / (frames + dropped);
+      totalFrames += frames; totalDropped += dropped;
+      if (rate <= MAX_DROPPED) { best = speed; fails = 0; } else fails++;
+      lastDropRate = level === 0 ? rate : lastDropRate;
+      bridge.progress(`LEVEL ${level + 1} · ${Math.round(1000 / vsync)} HZ · ${Math.round(rate * 100)}% DROPPED`,
+        Math.min(1, (performance.now() - t0) / (SECONDS * 1000)), Math.round(speed), speed, level);
+      level++; speed *= STEP;
+    }
+    // a phone that can't hold even the first speed scores by how far it fell short
+    if (best === 0) best = START_SPEED * Math.max(0.05, 1 - lastDropRate);
+    bridge.done(JSON.stringify({ speed: best, dropped: 100 * totalDropped / Math.max(1, totalFrames + totalDropped),
+      levels: level, refreshHz: 1000 / vsync }));
+  } catch (e) {
+    bridge.fail(String(e && e.stack || e));
+  }
+}
+run();
+</script>
+</body>
+</html>

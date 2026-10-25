@@ -56,6 +56,9 @@ object ThermoHasher {
         return hmacSha256(encryptionKey, sb.toString())
     }
 
+    /** Benchmark hash: HMAC-SHA256 over [BenchmarkPayload.canonical] with the session key. */
+    fun computeBenchmarkHash(encryptionKey: String, canonical: String): String = hmacSha256(encryptionKey, canonical)
+
     /**
      * v2 hash — covers the whole submission: run metadata + every stamp, so
      * conditions/identity fields cannot be altered without detection.
