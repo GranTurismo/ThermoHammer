@@ -69,7 +69,8 @@ public enum StressThreadingType
 public enum OsPlatform
 {
     iOS = 1,
-    Android = 2
+    Android = 2,
+    macOS = 3      // the iPhone app running on an Apple-silicon Mac
 }
 
 public class HammerStamp

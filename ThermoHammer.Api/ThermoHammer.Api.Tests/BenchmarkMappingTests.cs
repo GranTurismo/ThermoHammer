@@ -16,7 +16,7 @@ public class BenchmarkMappingTests
         {
             SessionId = 7,
             Hash = "",
-            BenchmarkVersion = 2,
+            BenchmarkVersion = 4,
             DeviceManufacturer = "Honor",
             DeviceModel = "Honor 600 Pro",
             Os = OsPlatform.Android,
@@ -50,7 +50,18 @@ public class BenchmarkMappingTests
             VideoHevc = 180.25,
             VideoVp9 = 0,
             VideoAv1 = 33.1,
-            VideoHardware = 3,
+            Video8kHevc = 64.5,
+            Video8kAv1 = 0,
+            VideoHardware = 19,
+            ExportAvc = 150.25,
+            ExportHevc = 140,
+            ExportAv1 = 0,
+            Export8kHevc = 31.5,
+            ExportAvcPsnr = 39.87,
+            ExportHevcPsnr = 41.2,
+            ExportAv1Psnr = 0,
+            Export8kHevcPsnr = 40.05,
+            ExportHardware = 11,
             AiClassifyCpu = 301.5,
             AiClassifyGpu = 640.25,
             AiClassifyNpu = 4100.0,
@@ -84,12 +95,19 @@ public class BenchmarkMappingTests
     public void CanonicalStringMatchesTheApp()
     {
         // Same expectation as BenchmarkScoreTest.`canonical string is what the server re-derives` in the app.
-        Assert.Equal("bench|2|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
+        Assert.Equal("bench|4|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
                      "180.00|1400.50|700.00|900.00|912.34|75.20|0.00|61.50|40.25|58.00|301.75|" +
-                     "9100.50|3.40|61.20|38.75|0.00|118.30|241.50|180.25|0.00|33.10|3|" +
+                     "9100.50|3.40|61.20|38.75|0.00|118.30|241.50|180.25|0.00|33.10|64.50|0.00|19|" +
+                     "150.25|140.00|0.00|31.50|39.87|41.20|0.00|40.05|11|" +
                      "301.50|640.25|4100.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|Qualcomm QNN|" +
-                     "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|0",
+                     "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|" +
+                     "0.00|0.00|0.00|0.00||0.00|0",
             BenchmarkScoring.Canonical(Request()));
+        Assert.EndsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|0", BenchmarkScoring.Canonical(Request(r =>
+        {
+            (r.LlmPrefillCpu, r.LlmDecodeCpu, r.LlmPrefillGpu, r.LlmDecodeGpu) = (118.4, 21.35, 402, 19.1);
+            (r.LlmGpu, r.LlmFreeGb) = ("QUALCOMM Adreno(TM) 830", 9.42);
+        })));
     }
 
     [Fact]
@@ -130,6 +148,10 @@ public class BenchmarkMappingTests
         r.GalleryJpeg = BenchmarkScoring.RefJpeg; r.GalleryWebp = BenchmarkScoring.RefWebp; r.GalleryAvif = BenchmarkScoring.RefAvif;
         r.PhotoEdit = BenchmarkScoring.RefPhoto;
         r.VideoAvc = r.VideoHevc = r.VideoVp9 = r.VideoAv1 = BenchmarkScoring.RefVideo;
+        r.Video8kHevc = r.Video8kAv1 = BenchmarkScoring.RefVideo8k;
+        r.ExportAvc = r.ExportHevc = r.ExportAv1 = BenchmarkScoring.RefExport;
+        r.Export8kHevc = BenchmarkScoring.RefExport8k;
+        r.ExportAvcPsnr = r.ExportHevcPsnr = r.ExportAv1Psnr = r.Export8kHevcPsnr = 38;
         r.QrRate = 6000 / BenchmarkScoring.QrWeight;
     }
 
@@ -142,6 +164,7 @@ public class BenchmarkMappingTests
         Assert.Equal(6000, reference.GalleryScore);
         Assert.Equal(6000, reference.PhotoScore);
         Assert.Equal(6000, reference.VideoScore);
+        Assert.Equal(6000, reference.ExportScore);
         Assert.Equal(6000, reference.QrScore);
         Assert.Equal(6000, reference.UxScore);
 
@@ -154,8 +177,8 @@ public class BenchmarkMappingTests
         }).ToDao();
         Assert.Equal(12000, run.WebScore);
         Assert.Equal(2000, run.QrScore);
-        Assert.Equal(5608, run.UxScore);                         // 6000 · (2 · ⅓)^(1/6)
-        Assert.Equal(run.CpuScore + run.MemScore + 6000 + 5608 + run.AiScore, run.TotalScore);
+        Assert.Equal(5664, run.UxScore);                         // (6 · 6000 · (2 · ⅓)^(1/6) + export 6000) / 7
+        Assert.Equal(run.CpuScore + run.MemScore + 6000 + 5664 + run.AiScore, run.TotalScore);
         Assert.Equal(40, run.MlKitQrRate);
     }
 
@@ -163,12 +186,33 @@ public class BenchmarkMappingTests
     public void MissingCodecsAndFormatsCostAShareNotEverything()
     {
         var noAv1 = Request(r => { ReferenceUx(r); r.VideoAv1 = 0; r.VideoHardware = 0b0111; }).ToDao();
-        Assert.Equal(4500, noAv1.VideoScore);                    // three codecs of four
+        Assert.Equal(4875, noAv1.VideoScore);                    // 4K: three codecs of four, three quarters; 8K whole
         Assert.Equal(0b0111, noAv1.VideoHardware);
+        var no8k = Request(r => { ReferenceUx(r); r.Video8kHevc = r.Video8kAv1 = 0; r.Export8kHevc = 0; r.Export8kHevcPsnr = 0; }).ToDao();
+        Assert.Equal(4500, no8k.VideoScore);                     // no 8K: a quarter off, not half
+        Assert.Equal(4500, no8k.ExportScore);
+        var noEncoder = Request(r => { ReferenceUx(r); r.ExportAvc = r.ExportHevc = r.ExportAv1 = r.Export8kHevc = 0;
+            r.ExportAvcPsnr = r.ExportHevcPsnr = r.ExportAv1Psnr = r.Export8kHevcPsnr = 0; }).ToDao();
+        Assert.Equal(0, noEncoder.ExportScore);
+        Assert.Equal(5143, noEncoder.UxScore);                   // no 4K encoder: a seventh off, not the whole section
         var noAvif = Request(r => { ReferenceUx(r); r.GalleryAvif = 0; }).ToDao();
         Assert.Equal(4000, noAvif.GalleryScore);                 // two formats of three
         Assert.True(noAv1.UxScore > 0 && noAvif.UxScore > 0);
         Assert.Equal(0, Request(r => { ReferenceUx(r); r.PhotoEdit = 0; }).ToDao().UxScore);   // a failed test zeroes UX
+    }
+
+    [Fact]
+    public void ABrokenExportDoesNotCountHoweverFast()
+    {
+        // H.264 ten times the reference but below the quality floor: as if there were no H.264 export
+        var broken = Request(r => { ReferenceUx(r); r.ExportAvc = BenchmarkScoring.RefExport * 10; r.ExportAvcPsnr = 22.5;
+            r.Export8kHevc = 0; r.Export8kHevcPsnr = 0; }).ToDao();
+        Assert.Equal(3000, broken.ExportScore);
+        Assert.Equal(BenchmarkScoring.RefExport, BenchmarkScoring.Counted(BenchmarkScoring.RefExport, BenchmarkScoring.MinExportPsnr));
+        Assert.Equal(0, BenchmarkScoring.Counted(500, BenchmarkScoring.MinExportPsnr - 0.01));
+        Assert.Equal(6000, BenchmarkScoring.Parts(Request(ReferenceUx).ToDao())["ux.export"]);
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.ExportHevcPsnr = 120)));
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.ExportHardware = 16)));
     }
 
     private static void ReferenceAi(BenchmarkRequest r, bool npu)
@@ -211,7 +255,7 @@ public class BenchmarkMappingTests
             if (jpeg != 0) r.GalleryJpeg = jpeg;
             if (hevc != 0) r.VideoHevc = hevc;
         })));
-        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.VideoHardware = 16)));
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.VideoHardware = 64)));
     }
 
     [Fact]
@@ -271,6 +315,41 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
+    public void LlmTakesTheFasterOfCpuAndGpuForPrefillAndDecode()
+    {
+        // Same expectations as BenchmarkScoreTest.`LLM takes the faster …` in the app.
+        var reference = Request(r => { r.LlmPrefillGpu = BenchmarkScoring.RefLlmPrefill; r.LlmDecodeCpu = BenchmarkScoring.RefLlmDecode;
+            r.LlmPrefillCpu = BenchmarkScoring.RefLlmPrefill / 3; r.LlmDecodeGpu = BenchmarkScoring.RefLlmDecode / 2; }).ToDao();
+        Assert.Equal(6000, reference.LlmPrefillScore);
+        Assert.Equal(6000, reference.LlmDecodeScore);
+        Assert.Equal(6000, reference.LlmScore);
+        Assert.Equal(reference.CpuScore + reference.MemScore + reference.Score + reference.UxScore + reference.AiScore + 6000,
+            reference.TotalScore);
+        // a phone whose GPU can't run it: the CPU's numbers count
+        var cpuOnly = Request(r => { r.LlmPrefillCpu = BenchmarkScoring.RefLlmPrefill * 4 / 3; r.LlmDecodeCpu = BenchmarkScoring.RefLlmDecode / 3; }).ToDao();
+        Assert.Equal(4000, cpuOnly.LlmScore);                 // geomean of 8000 and 2000
+        Assert.Equal(0, Request(r => r.LlmPrefillCpu = 120).ToDao().LlmScore);   // no reply: 0
+        Assert.Equal(0, Request().ToDao().LlmScore);
+        Assert.Equal("QUALCOMM Adreno(TM) 830", Request(r => r.LlmGpu = "  QUALCOMM Adreno(TM) 830 ").ToDao().LlmGpu);
+    }
+
+    [Theory]
+    [InlineData(-1, 0, 0)]
+    [InlineData(2e5, 0, 0)]                                   // a prompt faster than any phone
+    [InlineData(0, 2e4, 0)]
+    [InlineData(0, 0, -1)]
+    [InlineData(0, 0, 4096)]
+    public void ImplausibleLlmResultsAreRejected(double prefill, double decode, double freeGb)
+    {
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r =>
+        {
+            if (prefill != 0) r.LlmPrefillGpu = prefill;
+            if (decode != 0) r.LlmDecodeCpu = decode;
+            if (freeGb != 0) r.LlmFreeGb = freeGb;
+        })));
+    }
+
+    [Fact]
     public void FailedWebViewTestZeroesUx()
     {
         var run = Request(r => { r.WebLayout = 0; r.WebCanvas = 0; r.WebCss = 0; r.WebSvg = 0; r.WebJs = 0; }).ToDao();
@@ -293,12 +372,12 @@ public class BenchmarkMappingTests
     }
 
     [Theory]
-    [InlineData(3, 120, 100, 30, 25)]                         // future scene version
-    [InlineData(1, 120, 100, 30, 25)]                         // the old version (before the four media tests)
-    [InlineData(2, 0, 0, 30, 25)]                             // no frames
-    [InlineData(2, 9000, 100, 30, 25)]                        // beyond any phone
-    [InlineData(2, 120, 200, 30, 25)]                         // 1% low above the average
-    [InlineData(2, 120, 100, 30, 40)]                         // 1% low above the average, Test 2
+    [InlineData(5, 120, 100, 30, 25)]                         // future scene version
+    [InlineData(3, 120, 100, 30, 25)]                         // the old version (before 8K playback and export)
+    [InlineData(4, 0, 0, 30, 25)]                             // no frames
+    [InlineData(4, 9000, 100, 30, 25)]                        // beyond any phone
+    [InlineData(4, 120, 200, 30, 25)]                         // 1% low above the average
+    [InlineData(4, 120, 100, 30, 40)]                         // 1% low above the average, Test 2
     public void ImplausibleRunsAreRejected(int version, double f1, double l1, double f2, double l2)
     {
         var r = Request(x =>
@@ -307,6 +386,27 @@ public class BenchmarkMappingTests
         });
         Assert.NotNull(BenchmarkScoring.Problem(r));
         Assert.Null(BenchmarkScoring.Problem(Request()));
+    }
+
+    [Fact]
+    public void ModelStatsGiveTheSpreadSectionsPartsAndOsVersions()
+    {
+        BenchmarkRun Run(double f1, string os) => Request(r => { r.Test1Fps = f1; r.OsVersion = os; }).ToDao();
+        var runs = new[] { Run(100, "16"), Run(120, "16"), Run(110, "17"), Run(130, "16") };
+        var stats = BenchmarkScoring.ModelStats("Honor 600 Pro", runs);
+        Assert.Equal(4, stats.Runs);
+        var totals = runs.Select(r => r.TotalScore).OrderBy(t => t).ToArray();
+        Assert.Equal(totals[^1], stats.Total!.Best);
+        Assert.Equal((int)Math.Round((totals[1] + totals[2]) / 2.0, MidpointRounding.AwayFromZero), stats.Total.Median);
+        Assert.True(stats.Total.P25 <= stats.Total.Median && stats.Total.Median <= stats.Total.P75);
+        Assert.Equal(6, stats.Sections.Count);
+        Assert.Equal(22, stats.Parts.Count);
+        Assert.Equal(BenchmarkScoring.Points(115, BenchmarkScoring.Test1Weight), stats.Parts["gpu.lake"]);   // median of 4 fps
+        Assert.Equal("16", stats.ByOsVersion[0].OsVersion);
+        Assert.Equal(3, stats.ByOsVersion[0].Runs);
+        Assert.Null(BenchmarkScoring.ModelStats("Nothing", []).Total);
+        Assert.True(BenchmarkScoring.IsVerified(0));
+        Assert.False(BenchmarkScoring.IsVerified(1 << 2));     // a charger during the run
     }
 
     [Fact]

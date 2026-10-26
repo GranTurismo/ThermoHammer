@@ -85,22 +85,33 @@ public static class ThermoEndpointsMapper
             await db.BenchmarkRuns.AddAsync(run);
             await db.SaveChangesAsync();
 
-            // rank among phones: devices whose best ranked run beats this one, plus one
+            // rank among phones: devices whose best verified run beats this one, plus one
             int better = await db.BenchmarkRuns
-                .Where(r => r.BenchmarkVersion == run.BenchmarkVersion
-                         && (r.ValidityFlags & BenchmarkScoring.PowerEventFlag) == 0
+                .Where(r => r.BenchmarkVersion == run.BenchmarkVersion && r.ValidityFlags == 0
                          && r.TotalScore > run.TotalScore && r.DeviceModel != run.DeviceModel)
                 .Select(r => r.DeviceModel).Distinct().CountAsync();
             return Results.Ok(new { id = run.Id, score = run.TotalScore, rank = better + 1 });
         });
 
+        // verified runs only (BenchmarkScoring.IsVerified): no charger, battery saver, warm start or busy phone
         app.MapGet("/benchmark/leaderboard", async (ThermoDbContext db) =>
         {
             var runs = await db.BenchmarkRuns
-                .Where(r => r.BenchmarkVersion == BenchmarkScoring.CurrentVersion
-                         && (r.ValidityFlags & BenchmarkScoring.PowerEventFlag) == 0)
+                .Where(r => r.BenchmarkVersion == BenchmarkScoring.CurrentVersion && r.ValidityFlags == 0)
                 .ToListAsync();
             return Results.Ok(BenchmarkScoring.Leaderboard(runs).Take(500));
+        });
+
+        // Phone Health: how a model does — its verified runs, matched by the name submissions are stored under
+        app.MapGet("/benchmark/model", async (string model, OsPlatform os, ThermoDbContext db, DeviceModelResolver modelResolver) =>
+        {
+            if (string.IsNullOrWhiteSpace(model)) return Results.BadRequest("Missing model");
+            string resolved = await modelResolver.ResolveModelAsync(os, model);
+            var runs = await db.BenchmarkRuns
+                .Where(r => r.BenchmarkVersion == BenchmarkScoring.CurrentVersion && r.ValidityFlags == 0
+                         && r.DeviceModel == resolved)
+                .ToListAsync();
+            return Results.Ok(BenchmarkScoring.ModelStats(resolved, runs));
         });
 
         app.MapGet("modelfix", async (ThermoDbContext db, DeviceModelResolver modelResolver) =>

@@ -8,8 +8,10 @@ namespace ThermoHammer.Api.Models;
 /// Test 2 (Neon City) and Test 3 (Neon City RT, Vulkan ray tracing — 0 on phones without it), each rendered
 /// offscreen at 1920×1080. UX: web browsing, web scrolling, photo gallery, photo editing, 4K video playback and
 /// QR scanning. AI: six 8-bit models on the CPU, the GPU and the NPU (0 without one). MEM: RAM, storage and an
-/// app-style SQLite database. Total = CPU + MEM + GPU + UX + AI. Every score is computed here from the submitted raw results (fps, scene
-/// complexities, megapixels and scans per second) — the client's own scores are never trusted.
+/// app-style SQLite database. LLM: a 3B language model (llama.cpp, Llama 3.2 3B's shape, 4-bit, seeded weights) reading a
+/// 512-token prompt and writing its reply, on the CPU and the GPU. Total = CPU + MEM + GPU + UX + AI + LLM. Every score is
+/// computed here from the submitted raw results (fps, scene complexities, megapixels, scans and tokens per second) — the
+/// client's own scores are never trusted.
 /// </summary>
 public class BenchmarkRun
 {
@@ -62,8 +64,20 @@ public class BenchmarkRun
     public double VideoHevc { get; set; }
     public double VideoVp9 { get; set; }
     public double VideoAv1 { get; set; }
-    public int VideoHardware { get; set; }   // bit per codec (AVC, HEVC, VP9, AV1) decoded in hardware (reported)
+    public double Video8kHevc { get; set; }  // 8K30 decode fps (HEVC, AV1), 0 = unsupported
+    public double Video8kAv1 { get; set; }
+    public int VideoHardware { get; set; }   // bit per clip (4K AVC, HEVC, VP9, AV1; 8K HEVC, AV1) decoded in hardware (reported)
     public int VideoScore { get; set; }
+    public double ExportAvc { get; set; }    // export fps: 4K60 H.264, HEVC, AV1; 8K30 HEVC — 0 = no such encoder
+    public double ExportHevc { get; set; }
+    public double ExportAv1 { get; set; }
+    public double Export8kHevc { get; set; }
+    public double ExportAvcPsnr { get; set; }   // each export's quality, dB on its lower third (0 = not run)
+    public double ExportHevcPsnr { get; set; }
+    public double ExportAv1Psnr { get; set; }
+    public double Export8kHevcPsnr { get; set; }
+    public int ExportHardware { get; set; }  // bit per export (4K AVC, HEVC, AV1; 8K HEVC) encoded in hardware (reported)
+    public int ExportScore { get; set; }
     public double QrRate { get; set; }       // ZXing QR decodes/s (scored)
     public double? MlKitQrRate { get; set; } // ML Kit scans/s (reported only)
     public int QrScore { get; set; }
@@ -115,6 +129,16 @@ public class BenchmarkRun
     public double CpuCrypto { get; set; }
     public double CpuMulti { get; set; }
     public int CpuScore { get; set; }
+    // LLM: tokens/s reading the 512-token prompt (prefill) and writing the reply (decode), on the CPU and the GPU
+    public double LlmPrefillCpu { get; set; }
+    public double LlmDecodeCpu { get; set; }
+    public double LlmPrefillGpu { get; set; }
+    public double LlmDecodeGpu { get; set; }
+    public string? LlmGpu { get; set; }      // the GPU it ran on (reported)
+    public double LlmFreeGb { get; set; }    // memory the app could take when the test began (reported)
+    public int LlmPrefillScore { get; set; }
+    public int LlmDecodeScore { get; set; }
+    public int LlmScore { get; set; }
     public int TotalScore { get; set; }
     public int ValidityFlags { get; set; }   // ValidityFlag bits from the app; 0 = clean run
 }
@@ -159,7 +183,18 @@ public class BenchmarkRequest
     public double VideoHevc { get; set; }
     public double VideoVp9 { get; set; }
     public double VideoAv1 { get; set; }
+    public double Video8kHevc { get; set; }
+    public double Video8kAv1 { get; set; }
     public int VideoHardware { get; set; }
+    public double ExportAvc { get; set; }
+    public double ExportHevc { get; set; }
+    public double ExportAv1 { get; set; }
+    public double Export8kHevc { get; set; }
+    public double ExportAvcPsnr { get; set; }
+    public double ExportHevcPsnr { get; set; }
+    public double ExportAv1Psnr { get; set; }
+    public double Export8kHevcPsnr { get; set; }
+    public int ExportHardware { get; set; }
     public double AiClassifyCpu { get; set; }
     public double AiClassifyGpu { get; set; }
     public double AiClassifyNpu { get; set; }
@@ -191,6 +226,12 @@ public class BenchmarkRequest
     public double DbInsert { get; set; }
     public double DbUpdate { get; set; }
     public double DbQuery { get; set; }
+    public double LlmPrefillCpu { get; set; }
+    public double LlmDecodeCpu { get; set; }
+    public double LlmPrefillGpu { get; set; }
+    public double LlmDecodeGpu { get; set; }
+    public string? LlmGpu { get; set; }
+    public double LlmFreeGb { get; set; }
     public int ValidityFlags { get; set; }
     public string? AppVersion { get; set; }
 }
@@ -209,12 +250,14 @@ public class BenchmarkDto
     public int CpuScore { get; set; }
     public int AiScore { get; set; }
     public int MemScore { get; set; }
+    public int LlmScore { get; set; }
     public int TotalScore { get; set; }
     public int WebScore { get; set; }
     public int ScrollScore { get; set; }
     public int GalleryScore { get; set; }
     public int PhotoScore { get; set; }
     public int VideoScore { get; set; }
+    public int ExportScore { get; set; }
     public int QrScore { get; set; }
     public int Test1Score { get; set; }
     public int Test2Score { get; set; }
@@ -226,11 +269,40 @@ public class BenchmarkDto
     public int Runs { get; set; }            // runs submitted for this device model
 }
 
+/// <summary>
+/// How one phone model does: the spread of its verified runs (this scoring version), the median of every section
+/// and of every part of the score, and the median per OS version — what the app's Phone Health compares a run with.
+/// </summary>
+public class BenchmarkModelStats
+{
+    public required string DeviceModel { get; set; }
+    public int Runs { get; set; }                                    // verified runs counted
+    public ScoreSpread? Total { get; set; }                          // null without runs
+    public Dictionary<string, int> Sections { get; set; } = new();   // cpu, mem, gpu, ux, ai, llm → median points
+    public Dictionary<string, int> Parts { get; set; } = new();      // e.g. gpu.neon, mem.storage → median points
+    public List<OsVersionStats> ByOsVersion { get; set; } = new();   // most runs first
+}
+
+public class ScoreSpread
+{
+    public int Median { get; set; }
+    public int P25 { get; set; }
+    public int P75 { get; set; }
+    public int Best { get; set; }
+}
+
+public class OsVersionStats
+{
+    public required string OsVersion { get; set; }
+    public int Runs { get; set; }
+    public int MedianTotal { get; set; }
+}
+
 public static class BenchmarkScoring
 {
     /// <summary>Scene/scoring version the server accepts — matches BenchmarkScore.VERSION in the app.</summary>
-    public const int CurrentVersion = 2;
-    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9, 2026-10-25) scores 6000 on each test —
+    public const int CurrentVersion = 4;
+    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9, 2026-10-25/26) scores 6000 on each test —
     // they must match engine/Benchmark.kt in the app.
     public const double Test1Weight = 46.3;  // Lake Valley:  129.5 fps → 6000 points
     public const double Test2Weight = 228;   // Neon City:     26.3 fps → 6000 points
@@ -242,10 +314,16 @@ public static class BenchmarkScoring
     public const double RefJpeg = 122, RefWebp = 99, RefAvif = 103;   // gallery MP/s per format
     public const double RefPhoto = 397;      // MP/s through the editing chain
     public const double RefVideo = 298;      // 4K frames/s, mean of the codecs
-    public const double QrWeight = 13.6;     // zxing-cpp decodes/s → points (440/s → 6000)
+    // PROVISIONAL until the Honor's version-4 report (as in the app): 8K = a quarter of the 4K rate; export ≈ a
+    // hardware encoder's 4K rate with AV1 missing
+    public const double RefVideo8k = 74.5;   // 8K frames/s, mean of HEVC and AV1
+    public const double RefExport = 100;     // encoded 4K frames/s, mean of H.264, HEVC, AV1
+    public const double RefExport8k = 30;    // encoded 8K frames/s, HEVC
+    public const double MinExportPsnr = 26;  // dB: below it the export is broken and its speed doesn't count
+    public const double QrWeight = 10.67;    // zxing-cpp decodes/s → points (562/s → 6000)
 
-    // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), 6000 points each — provisional
-    public const double RefCpuMath = 1172, RefCpuData = 632, RefCpuCrypto = 595, RefCpuMulti = 6091;
+    // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), 6000 points each
+    public const double RefCpuMath = 1469, RefCpuData = 647, RefCpuCrypto = 580, RefCpuMulti = 5003;
     public const double MaxFps = 5000;
 
     // AI references: inferences/s worth 6000 points per model (classify, detect, segment, upscale, depth, sound)
@@ -259,8 +337,14 @@ public static class BenchmarkScoring
     public const double RefSeqRead = 1750, RefSeqWrite = 1300, RefRandomRead = 29000, RefRandomWrite = 13400; // MB/s, IOPS
     public const double RefDbInsert = 9700, RefDbUpdate = 36000, RefDbQuery = 20300;                  // per second
 
-    /// <summary>The app's ValidityFlag.POWER_EVENT — a charger during the run lifts power limits.</summary>
-    public const int PowerEventFlag = 1 << 2;
+    // LLM references, tokens/s worth 6000 points — the Snapdragon 8 Elite's faster path (its GPU)
+    public const double RefLlmPrefill = 362.7, RefLlmDecode = 17.23;
+
+    /// <summary>
+    /// A clean run: none of the app's validity flags — no charger, no battery saver, started cool, nothing else
+    /// busy. Only these reach the leaderboard and the model statistics.
+    /// </summary>
+    public static bool IsVerified(int validityFlags) => validityFlags == 0;
 
     public static int Points(double fps, double weight) =>
         (int)Math.Round(fps * weight, MidpointRounding.AwayFromZero);
@@ -294,9 +378,21 @@ public static class BenchmarkScoring
 
     public static int PhotoPoints(double mps) => (int)Math.Round(6000 * Math.Max(mps, 0) / RefPhoto, MidpointRounding.AwayFromZero);
 
-    /// <summary>Mean over the four codecs — a codec the phone lacks costs a quarter.</summary>
-    public static int VideoPoints(double avc, double hevc, double vp9, double av1) => (int)Math.Round(
-        6000 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(vp9, 0) + Math.Max(av1, 0)) / (RefVideo * 4),
+    /// <summary>
+    /// 4K three quarters (mean of the four codecs), 8K one quarter (mean of HEVC and AV1) — UxScore.videoPoints.
+    /// </summary>
+    public static int VideoPoints(double avc, double hevc, double vp9, double av1, double hevc8k, double av18k) => (int)Math.Round(
+        6000 * (0.75 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(vp9, 0) + Math.Max(av1, 0)) / (RefVideo * 4) +
+                0.25 * (Math.Max(hevc8k, 0) + Math.Max(av18k, 0)) / (RefVideo8k * 2)),
+        MidpointRounding.AwayFromZero);
+
+    /// <summary>An export's speed, or 0 when its quality check failed — ExportJobResult.counted.</summary>
+    public static double Counted(double fps, double psnr) => psnr >= MinExportPsnr ? fps : 0;
+
+    /// <summary>4K (mean of H.264, HEVC, AV1) three quarters, 8K HEVC one quarter — UxScore.exportPoints.</summary>
+    public static int ExportPoints(double avc, double hevc, double av1, double hevc8k) => (int)Math.Round(
+        6000 * (0.75 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(av1, 0)) / (RefExport * 3) +
+                0.25 * Math.Max(hevc8k, 0) / RefExport8k),
         MidpointRounding.AwayFromZero);
 
     public static int CpuPoints(double value, double reference) =>
@@ -339,7 +435,14 @@ public static class BenchmarkScoring
         _ => [r.AiClassifyNpu, r.AiDetectNpu, r.AiSegmentNpu, r.AiUpscaleNpu, r.AiDepthNpu, r.AiSoundNpu],
     };
 
-    /// <summary>Geometric mean of the six UX tests (0 if any is 0) — UxScore.overall in the app.</summary>
+    /// <summary>
+    /// The six everyday UX tests' geometric mean six sevenths, the export one seventh — a phone with no 4K encoder loses
+    /// a seventh, not the section (like ray tracing in GPU). UxScore.overall(everyday, export) in the app.
+    /// </summary>
+    public static int UxWithExport(int everyday, int export) =>
+        everyday <= 0 ? 0 : (int)Math.Round((6.0 * everyday + Math.Max(export, 0)) / 7, MidpointRounding.AwayFromZero);
+
+    /// <summary>Geometric mean of the six everyday UX tests (0 if any is 0) — UxScore.overall in the app.</summary>
     public static int Ux(params int[] points)
     {
         if (points.Length == 0 || points.Any(p => p <= 0)) return 0;
@@ -349,6 +452,15 @@ public static class BenchmarkScoring
     /// <summary>Geometric mean of RAM, storage and database (0 if any is 0) — MemScore.overall in the app.</summary>
     public static int Mem(int ram, int storage, int db) => Ux(ram, storage, db);
 
+    public static int LlmPoints(double tokensPerS, double reference) =>
+        (int)Math.Round(6000 * Math.Max(tokensPerS, 0) / reference, MidpointRounding.AwayFromZero);
+
+    /// <summary>
+    /// Geometric mean of prefill and decode, each the faster of the CPU and the GPU (0 if either is 0) —
+    /// LlmScore.overall in the app.
+    /// </summary>
+    public static int Llm(int prefill, int decode) => Ux(prefill, decode);
+
     /// <summary>The string the app HMACs with the session key (BenchmarkPayload.canonical()).</summary>
     public static string Canonical(BenchmarkRequest r) => string.Join("|",
         "bench", r.BenchmarkVersion.ToString(CultureInfo.InvariantCulture), r.DeviceManufacturer, r.DeviceModel,
@@ -356,11 +468,14 @@ public static class BenchmarkScoring
         F2(r.Test3Fps), F2(r.Test3LowFps), r.RayTracing ? "1" : "0", F2(r.WebLayout), F2(r.WebCanvas), F2(r.WebCss),
         F2(r.WebSvg), F2(r.WebJs), F2(r.QrRate), F2(r.MlKitQrRate ?? 0), F2(r.CpuMath), F2(r.CpuData), F2(r.CpuCrypto),
         F2(r.CpuMulti), F2(r.ScrollSpeed), F2(r.ScrollDropped), F2(r.GalleryJpeg), F2(r.GalleryWebp), F2(r.GalleryAvif),
-        F2(r.PhotoEdit), F2(r.VideoAvc), F2(r.VideoHevc), F2(r.VideoVp9), F2(r.VideoAv1),
-        r.VideoHardware.ToString(CultureInfo.InvariantCulture), F2(r.AiClassifyCpu), F2(r.AiClassifyGpu), F2(r.AiClassifyNpu), F2(r.AiDetectCpu), F2(r.AiDetectGpu), F2(r.AiDetectNpu), F2(r.AiSegmentCpu), F2(r.AiSegmentGpu), F2(r.AiSegmentNpu), F2(r.AiUpscaleCpu), F2(r.AiUpscaleGpu), F2(r.AiUpscaleNpu), F2(r.AiDepthCpu), F2(r.AiDepthGpu), F2(r.AiDepthNpu), F2(r.AiSoundCpu), F2(r.AiSoundGpu), F2(r.AiSoundNpu),
+        F2(r.PhotoEdit), F2(r.VideoAvc), F2(r.VideoHevc), F2(r.VideoVp9), F2(r.VideoAv1), F2(r.Video8kHevc), F2(r.Video8kAv1),
+        r.VideoHardware.ToString(CultureInfo.InvariantCulture), F2(r.ExportAvc), F2(r.ExportHevc), F2(r.ExportAv1),
+        F2(r.Export8kHevc), F2(r.ExportAvcPsnr), F2(r.ExportHevcPsnr), F2(r.ExportAv1Psnr), F2(r.Export8kHevcPsnr),
+        r.ExportHardware.ToString(CultureInfo.InvariantCulture), F2(r.AiClassifyCpu), F2(r.AiClassifyGpu), F2(r.AiClassifyNpu), F2(r.AiDetectCpu), F2(r.AiDetectGpu), F2(r.AiDetectNpu), F2(r.AiSegmentCpu), F2(r.AiSegmentGpu), F2(r.AiSegmentNpu), F2(r.AiUpscaleCpu), F2(r.AiUpscaleGpu), F2(r.AiUpscaleNpu), F2(r.AiDepthCpu), F2(r.AiDepthGpu), F2(r.AiDepthNpu), F2(r.AiSoundCpu), F2(r.AiSoundGpu), F2(r.AiSoundNpu),
         r.AiNpuRuntime ?? "", F2(r.MemRead), F2(r.MemWrite), F2(r.MemCopy), F2(r.MemLatency), F2(r.StorageSeqRead),
         F2(r.StorageSeqWrite), F2(r.StorageRandomRead), F2(r.StorageRandomWrite), r.StorageDirect ? "1" : "0",
-        F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery), r.ValidityFlags.ToString(CultureInfo.InvariantCulture));
+        F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery), F2(r.LlmPrefillCpu), F2(r.LlmDecodeCpu), F2(r.LlmPrefillGpu),
+        F2(r.LlmDecodeGpu), r.LlmGpu ?? "", F2(r.LlmFreeGb), r.ValidityFlags.ToString(CultureInfo.InvariantCulture));
 
     private static string F2(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
 
@@ -391,9 +506,14 @@ public static class BenchmarkScoring
             return "Implausible scroll result";
         double[] media = [r.GalleryJpeg, r.GalleryWebp, r.GalleryAvif, r.PhotoEdit];
         if (media.Any(v => !(v >= 0 && v < 1e5))) return "Implausible photo result";
-        double[] video = [r.VideoAvc, r.VideoHevc, r.VideoVp9, r.VideoAv1];
+        double[] video = [r.VideoAvc, r.VideoHevc, r.VideoVp9, r.VideoAv1, r.Video8kHevc, r.Video8kAv1];
         if (video.Any(v => !(v >= 0 && v <= 5000))) return "Implausible video result";
-        if (r.VideoHardware is < 0 or > 15) return "Invalid video hardware flags";
+        if (r.VideoHardware is < 0 or > 63) return "Invalid video hardware flags";
+        double[] export = [r.ExportAvc, r.ExportHevc, r.ExportAv1, r.Export8kHevc];
+        if (export.Any(v => !(v >= 0 && v <= 5000))) return "Implausible export result";
+        double[] psnr = [r.ExportAvcPsnr, r.ExportHevcPsnr, r.ExportAv1Psnr, r.Export8kHevcPsnr];
+        if (psnr.Any(v => !(v >= 0 && v <= 99))) return "Implausible export quality";
+        if (r.ExportHardware is < 0 or > 15) return "Invalid export hardware flags";
         double[] ai = [r.AiClassifyCpu, r.AiClassifyGpu, r.AiClassifyNpu, r.AiDetectCpu, r.AiDetectGpu, r.AiDetectNpu, r.AiSegmentCpu, r.AiSegmentGpu, r.AiSegmentNpu, r.AiUpscaleCpu, r.AiUpscaleGpu, r.AiUpscaleNpu, r.AiDepthCpu, r.AiDepthGpu, r.AiDepthNpu, r.AiSoundCpu, r.AiSoundGpu, r.AiSoundNpu];
         if (ai.Any(v => !(v >= 0 && v < 1e6))) return "Implausible AI result";
         double[] ram = [r.MemRead, r.MemWrite, r.MemCopy];
@@ -402,6 +522,10 @@ public static class BenchmarkScoring
         if (storage.Any(v => !(v >= 0 && v < 1e7))) return "Implausible storage result";
         double[] db = [r.DbInsert, r.DbUpdate, r.DbQuery];
         if (db.Any(v => !(v >= 0 && v < 1e7))) return "Implausible database result";
+        double[] llm = [r.LlmPrefillCpu, r.LlmPrefillGpu];
+        if (llm.Any(v => !(v >= 0 && v < 1e5)) || !(r.LlmDecodeCpu is >= 0 and < 1e4) || !(r.LlmDecodeGpu is >= 0 and < 1e4))
+            return "Implausible LLM result";
+        if (!(r.LlmFreeGb is >= 0 and < 1024)) return "Implausible free memory";
         return r.ValidityFlags < 0 ? "Invalid flags" : null;
     }
 
@@ -415,9 +539,11 @@ public static class BenchmarkScoring
         int scrollScore = ScrollPoints(r.ScrollSpeed);
         int galleryScore = GalleryPoints(r.GalleryJpeg, r.GalleryWebp, r.GalleryAvif);
         int photoScore = PhotoPoints(r.PhotoEdit);
-        int videoScore = VideoPoints(r.VideoAvc, r.VideoHevc, r.VideoVp9, r.VideoAv1);
+        int videoScore = VideoPoints(r.VideoAvc, r.VideoHevc, r.VideoVp9, r.VideoAv1, r.Video8kHevc, r.Video8kAv1);
+        int exportScore = ExportPoints(Counted(r.ExportAvc, r.ExportAvcPsnr), Counted(r.ExportHevc, r.ExportHevcPsnr),
+            Counted(r.ExportAv1, r.ExportAv1Psnr), Counted(r.Export8kHevc, r.Export8kHevcPsnr));
         int qrScore = QrPoints(r.QrRate);
-        int ux = Ux(webScore, scrollScore, galleryScore, photoScore, videoScore, qrScore);
+        int ux = UxWithExport(Ux(webScore, scrollScore, galleryScore, photoScore, videoScore, qrScore), exportScore);
         int cpu = Cpu(r.CpuMath, r.CpuData, r.CpuCrypto, r.CpuMulti);
         int aiCpu = AiAccel(AiIps(r, 0), RefAiCpu), aiGpu = AiAccel(AiIps(r, 1), RefAiGpu), aiNpu = AiAccel(AiIps(r, 2), RefAiNpu);
         int ai = Ai(aiCpu, aiGpu, aiNpu);
@@ -425,6 +551,9 @@ public static class BenchmarkScoring
         int storageScore = StoragePoints(r.StorageSeqRead, r.StorageSeqWrite, r.StorageRandomRead, r.StorageRandomWrite);
         int dbScore = DbPoints(r.DbInsert, r.DbUpdate, r.DbQuery);
         int mem = Mem(ramScore, storageScore, dbScore);
+        int llmPrefill = LlmPoints(Math.Max(r.LlmPrefillCpu, r.LlmPrefillGpu), RefLlmPrefill);
+        int llmDecode = LlmPoints(Math.Max(r.LlmDecodeCpu, r.LlmDecodeGpu), RefLlmDecode);
+        int llm = Llm(llmPrefill, llmDecode);
         return new BenchmarkRun
         {
             SessionId = r.SessionId,
@@ -468,8 +597,20 @@ public static class BenchmarkScoring
             VideoHevc = r.VideoHevc,
             VideoVp9 = r.VideoVp9,
             VideoAv1 = r.VideoAv1,
+            Video8kHevc = r.Video8kHevc,
+            Video8kAv1 = r.Video8kAv1,
             VideoHardware = r.VideoHardware,
             VideoScore = videoScore,
+            ExportAvc = r.ExportAvc,
+            ExportHevc = r.ExportHevc,
+            ExportAv1 = r.ExportAv1,
+            Export8kHevc = r.Export8kHevc,
+            ExportAvcPsnr = r.ExportAvcPsnr,
+            ExportHevcPsnr = r.ExportHevcPsnr,
+            ExportAv1Psnr = r.ExportAv1Psnr,
+            Export8kHevcPsnr = r.Export8kHevcPsnr,
+            ExportHardware = r.ExportHardware,
+            ExportScore = exportScore,
             QrRate = r.QrRate,
             MlKitQrRate = r.MlKitQrRate,
             QrScore = qrScore,
@@ -518,9 +659,86 @@ public static class BenchmarkScoring
             StorageScore = storageScore,
             DbScore = dbScore,
             MemScore = mem,
-            TotalScore = cpu + mem + gpu + ux + ai,
+            LlmPrefillCpu = r.LlmPrefillCpu,
+            LlmDecodeCpu = r.LlmDecodeCpu,
+            LlmPrefillGpu = r.LlmPrefillGpu,
+            LlmDecodeGpu = r.LlmDecodeGpu,
+            LlmGpu = Clip(r.LlmGpu),
+            LlmFreeGb = r.LlmFreeGb,
+            LlmPrefillScore = llmPrefill,
+            LlmDecodeScore = llmDecode,
+            LlmScore = llm,
+            TotalScore = cpu + mem + gpu + ux + ai + llm,
             ValidityFlags = r.ValidityFlags
         };
+    }
+
+    /// <summary>
+    /// The parts of a run's score, each 6000 points on the reference phone — named the same in the apps' Phone
+    /// Health, which compares them with the model's medians.
+    /// </summary>
+    public static Dictionary<string, int> Parts(BenchmarkRun r) => new()
+    {
+        ["cpu.math"] = CpuPoints(r.CpuMath, RefCpuMath),
+        ["cpu.data"] = CpuPoints(r.CpuData, RefCpuData),
+        ["cpu.crypto"] = CpuPoints(r.CpuCrypto, RefCpuCrypto),
+        ["cpu.multi"] = CpuPoints(r.CpuMulti, RefCpuMulti),
+        ["mem.ram"] = r.RamScore,
+        ["mem.storage"] = r.StorageScore,
+        ["mem.db"] = r.DbScore,
+        ["gpu.lake"] = r.Test1Score,
+        ["gpu.neon"] = r.Test2Score,
+        ["gpu.rt"] = r.Test3Score,
+        ["ux.web"] = r.WebScore,
+        ["ux.scroll"] = r.ScrollScore,
+        ["ux.gallery"] = r.GalleryScore,
+        ["ux.photo"] = r.PhotoScore,
+        ["ux.video"] = r.VideoScore,
+        ["ux.export"] = r.ExportScore,
+        ["ux.qr"] = r.QrScore,
+        ["ai.cpu"] = r.AiCpuScore,
+        ["ai.gpu"] = r.AiGpuScore,
+        ["ai.npu"] = r.AiNpuScore,
+        ["llm.prefill"] = r.LlmPrefillScore,
+        ["llm.decode"] = r.LlmDecodeScore,
+    };
+
+    /// <summary>Linear-interpolated quantile of sorted values.</summary>
+    private static int Quantile(IReadOnlyList<int> sorted, double q)
+    {
+        if (sorted.Count == 0) return 0;
+        double pos = (sorted.Count - 1) * q;
+        int lo = (int)Math.Floor(pos), hi = (int)Math.Ceiling(pos);
+        return (int)Math.Round(sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo), MidpointRounding.AwayFromZero);
+    }
+
+    private static int Median(IEnumerable<int> values) => Quantile(values.OrderBy(v => v).ToList(), 0.5);
+
+    /// <summary>Statistics of one model's runs — pass only its verified runs of the current version.</summary>
+    public static BenchmarkModelStats ModelStats(string model, IReadOnlyList<BenchmarkRun> runs)
+    {
+        var stats = new BenchmarkModelStats { DeviceModel = model, Runs = runs.Count };
+        if (runs.Count == 0) return stats;
+        var totals = runs.Select(r => r.TotalScore).OrderBy(v => v).ToList();
+        stats.Total = new ScoreSpread
+        {
+            Median = Quantile(totals, 0.5), P25 = Quantile(totals, 0.25), P75 = Quantile(totals, 0.75), Best = totals[^1],
+        };
+        stats.Sections = new Dictionary<string, int>
+        {
+            ["cpu"] = Median(runs.Select(r => r.CpuScore)),
+            ["mem"] = Median(runs.Select(r => r.MemScore)),
+            ["gpu"] = Median(runs.Select(r => r.Score)),
+            ["ux"] = Median(runs.Select(r => r.UxScore)),
+            ["ai"] = Median(runs.Select(r => r.AiScore)),
+            ["llm"] = Median(runs.Select(r => r.LlmScore)),
+        };
+        var parts = runs.Select(Parts).ToList();
+        stats.Parts = parts[0].Keys.ToDictionary(k => k, k => Median(parts.Select(p => p[k])));
+        stats.ByOsVersion = runs.GroupBy(r => r.OsVersion)
+            .Select(g => new OsVersionStats { OsVersion = g.Key, Runs = g.Count(), MedianTotal = Median(g.Select(r => r.TotalScore)) })
+            .OrderByDescending(o => o.Runs).ThenBy(o => o.OsVersion).ToList();
+        return stats;
     }
 
     /// <summary>Best run per device model by total (ties: earliest), highest first.</summary>
@@ -543,12 +761,14 @@ public static class BenchmarkScoring
                 CpuScore = best.CpuScore,
                 AiScore = best.AiScore,
                 MemScore = best.MemScore,
+                LlmScore = best.LlmScore,
                 TotalScore = best.TotalScore,
                 WebScore = best.WebScore,
                 ScrollScore = best.ScrollScore,
                 GalleryScore = best.GalleryScore,
                 PhotoScore = best.PhotoScore,
                 VideoScore = best.VideoScore,
+                ExportScore = best.ExportScore,
                 QrScore = best.QrScore,
                 Test1Score = best.Test1Score,
                 Test2Score = best.Test2Score,
