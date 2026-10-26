@@ -150,7 +150,20 @@ class LeaderboardService {
         }
     }
     
+    /// The app also runs, unchanged, on Apple-silicon Macs ("Designed for iPad"): there it reports itself as a Mac.
+    static var isMac: Bool { ProcessInfo.processInfo.isiOSAppOnMac }
+    /// OsPlatform on the server: 1 iOS, 2 Android, 3 macOS.
+    static var osPlatform: Int { isMac ? 3 : 1 }
+    static func osLabel(_ os: Int, _ version: String) -> String {
+        "\(os == 2 ? "Android" : os == 3 ? "macOS" : "iOS") \(version)"
+    }
+
     func getDeviceModelName() -> String {
+        if Self.isMac {
+            // no marketing names for Macs without private API: the chip says what matters, e.g. "Mac (M5)"
+            let chip = BenchmarkUpload.chipName() ?? "Apple silicon"
+            return "Mac (\(chip.hasPrefix("Apple ") ? String(chip.dropFirst(6)) : chip))"
+        }
         #if os(iOS)
         var systemInfo = utsname()
         uname(&systemInfo)

@@ -71,7 +71,7 @@ struct WebBenchView: UIViewRepresentable {
         web.backgroundColor = UIColor(red: 0.043, green: 0.055, blue: 0.071, alpha: 1)
         web.scrollView.isScrollEnabled = false
         web.scrollView.contentInsetAdjustmentBehavior = .never
-        let host = UIView()
+        let host = StageHost()
         host.clipsToBounds = true
         host.addSubview(web)
         if let url = Bundle.main.url(forResource: page, withExtension: nil), let html = try? String(contentsOf: url) {
@@ -82,12 +82,21 @@ struct WebBenchView: UIViewRepresentable {
         return host
     }
 
-    func updateUIView(_ host: UIView, context: Context) {
-        guard let web = host.subviews.first else { return }
-        // the page keeps its 1920×1080 pixels; only the view is scaled to fit the stage
-        let s = min(host.bounds.width / web.bounds.width, host.bounds.height / web.bounds.height, 1)
-        web.transform = CGAffineTransform(scaleX: s, y: s)
-        web.center = CGPoint(x: host.bounds.midX, y: host.bounds.midY)
+    func updateUIView(_ host: UIView, context: Context) { host.setNeedsLayout() }
+
+    /**
+     * Fits the page into the stage whenever the stage is laid out. The page keeps its 1920×1080 pixels; only the
+     * view is scaled. Fitting once from updateUIView could catch the stage before it had a size: a zero scale,
+     * which WebKit on a Mac took for a hidden page — nothing drawn, its animation frames throttled.
+     */
+    final class StageHost: UIView {
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard let web = subviews.first, bounds.width > 0, bounds.height > 0 else { return }
+            let s = min(bounds.width / web.bounds.width, bounds.height / web.bounds.height, 1)
+            web.transform = CGAffineTransform(scaleX: s, y: s)
+            web.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
     }
 }
 

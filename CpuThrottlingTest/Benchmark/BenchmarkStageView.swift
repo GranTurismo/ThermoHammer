@@ -3,7 +3,7 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK STAGE — full screen while the benchmark runs: which test, its live
 // rate, a view of the work (CPU threads, the MEM block map, later the GPU
-// scene), and one progress bar across all five sections.
+// scene), and one progress bar across all six sections.
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum BenchColor {
@@ -11,6 +11,7 @@ enum BenchColor {
     static let mem = Color(hex: 0xF2A65A)       // copper
     static let memWrite = Color(hex: 0xFF7A6B)  // coral
     static let ai = Color(hex: 0xC792EA)        // lavender
+    static let llm = Color(hex: 0xB5E853)       // lime
     static func gpu(_ t: GpuTest) -> Color {
         switch t { case .lakeValley: return Forge.phaseCalibration; case .neonCity: return Ramp.at(0.85); case .neonCityRT: return Forge.phaseCooldown }
     }
@@ -21,6 +22,7 @@ enum BenchColor {
         case .gallery: return Color(hex: 0x7FD6E8)
         case .photo: return Color(hex: 0xFF8FB1)
         case .video: return Color(hex: 0x6FA8FF)
+        case .export: return Color(hex: 0xFFB077)
         case .qr: return Ramp.at(0.55)
         }
     }
@@ -30,7 +32,7 @@ struct BenchmarkStageView: View {
     @ObservedObject var engine: BenchmarkEngine
 
     private var accent: Color {
-        engine.cpuTest != nil ? BenchColor.cpu : engine.memTest != nil ? BenchColor.mem : engine.aiTest != nil ? BenchColor.ai
+        engine.llmAccel != nil ? BenchColor.llm : engine.cpuTest != nil ? BenchColor.cpu : engine.memTest != nil ? BenchColor.mem : engine.aiTest != nil ? BenchColor.ai
             : engine.gpuTest.map(BenchColor.gpu) ?? engine.uxTest.map(BenchColor.ux) ?? Forge.phaseCooldown
     }
 
@@ -42,7 +44,9 @@ struct BenchmarkStageView: View {
                     .padding(.horizontal, 20).padding(.top, 8)
                 Spacer(minLength: 12)
                 Group {
-                    if let test = engine.cpuTest {
+                    if engine.llmAccel != nil {
+                        LlmStageView(engine: engine, accent: BenchColor.llm)
+                    } else if let test = engine.cpuTest {
                         CpuStageView(test: test, progress: engine.cpuProgress, accent: BenchColor.cpu)
                     } else if let test = engine.memTest {
                         MemStageView(test: test, progress: engine.memProgress)
@@ -52,12 +56,24 @@ struct BenchmarkStageView: View {
                             .aspectRatio(16 / 9, contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     } else if engine.uxTest == .video {
-                        ZStack {
+                        ZStack(alignment: .bottom) {
                             Color.black
                             if let img = engine.videoFrame { Image(uiImage: img).resizable().scaledToFit() }
+                            if let osd = engine.videoOsd { VideoOsdBar(osd: osd, accent: BenchColor.ux(.video)).padding(10) }
                         }
                         .aspectRatio(16 / 9, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else if engine.uxTest == .export {
+                        // the frame being encoded, and an editor's export sheet under it
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Color.black
+                                if let img = engine.videoFrame { Image(uiImage: img).resizable().scaledToFit() }
+                            }
+                            .aspectRatio(16 / 9, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            if let st = engine.exportStage { ExportDialogView(st: st, accent: BenchColor.ux(.export)).frame(maxWidth: 600) }
+                        }
                     } else if engine.aiTest != nil {
                         AiStageView(visual: engine.aiVisual, accent: BenchColor.ai)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -76,6 +92,11 @@ struct BenchmarkStageView: View {
                 }
                 .padding(.horizontal, 20)
                 Spacer(minLength: 12)
+                if engine.inBackground {
+                    Text("KEEP THERMOHAMMER IN FRONT — A COVERED WINDOW RUNS SLOWER, SO THIS RUN IS NOW UNVERIFIED")
+                        .font(ThermoFont.mono(9, weight: .bold)).tracking(1).foregroundColor(Ramp.at(0.5))
+                        .multilineTextAlignment(.center).padding(.horizontal, 20).padding(.bottom, 8)
+                }
                 HStack(alignment: .bottom, spacing: 14) {
                     BenchProgressBar(engine: engine)
                     HoldToAbort { engine.stop() }
@@ -89,7 +110,7 @@ struct BenchmarkStageView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(engine.cpuTest != nil ? "CPU BENCHMARK" : engine.memTest != nil ? "MEM BENCHMARK" : engine.gpuTest != nil ? "GPU BENCHMARK"
-                     : engine.uxTest != nil ? "UX BENCHMARK" : engine.aiTest != nil ? "AI BENCHMARK" : "BENCHMARK")
+                     : engine.uxTest != nil ? "UX BENCHMARK" : engine.aiTest != nil ? "AI BENCHMARK" : engine.llmAccel != nil ? "LLM BENCHMARK" : "BENCHMARK")
                     .font(ThermoFont.mono(9, weight: .bold)).tracking(2).foregroundColor(accent)
                 if let t = engine.cpuTest {
                     Text("CPU TEST \(t.number)/\(CpuTest.allCases.count) · \(t.title)").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
@@ -106,6 +127,9 @@ struct BenchmarkStageView: View {
                 } else if let t = engine.aiTest {
                     Text("AI TEST \(t.number)/\(AiTest.allCases.count) · \(t.title)").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
                     Text(engine.aiDetail).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
+                } else if let a = engine.llmAccel {
+                    Text("LLM TEST \(a.rawValue + 1)/\(LlmAccel.allCases.count) · \(a.label) · LLAMA 3.2 3B").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
+                    Text(engine.llmDetail).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
                 } else {
                     Text("GETTING READY").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
                 }
@@ -128,6 +152,7 @@ struct BenchmarkStageView: View {
         if engine.gpuTest != nil, engine.gpuFps >= 0 { return (engine.gpuFps, "FPS") }
         if engine.uxTest != nil, engine.uxValue >= 0 { return (engine.uxValue, engine.uxUnit) }
         if engine.aiTest != nil, engine.aiRate >= 0 { return (engine.aiRate, "INF/S") }
+        if engine.llmAccel != nil, engine.llmRate >= 0 { return (engine.llmRate, "TOK/S") }
         return nil
     }
 }
@@ -139,7 +164,8 @@ private struct PreparingView: View {
         VStack(spacing: 14) {
             ProgressView().tint(Forge.phaseCooldown).scaleEffect(1.3)
             Text("❄ GETTING READY · \(elapsed)s").font(ThermoFont.mono(11, weight: .bold)).tracking(1).foregroundColor(Forge.phaseCooldown)
-            Text(busy ? "Waiting for the phone to finish background work" : "Letting the phone cool to a fair start")
+            Text(busy ? "Waiting for the \(LeaderboardService.isMac ? "Mac" : "phone") to finish background work"
+                      : "Letting the \(LeaderboardService.isMac ? "Mac" : "phone") cool to a fair start")
                 .font(ThermoFont.mono(9)).foregroundColor(Forge.ink2).multilineTextAlignment(.center)
         }
     }
@@ -321,7 +347,7 @@ struct BenchProgressBar: View {
     private var segments: [(Int, Color)] {
         CpuTest.allCases.map { ($0.seconds, BenchColor.cpu) } + MemTest.allCases.map { ($0.seconds, BenchColor.mem) } +
             GpuTest.allCases.map { ($0.seconds, BenchColor.gpu($0)) } + UxTest.allCases.map { ($0.seconds, BenchColor.ux($0)) } +
-            AiTest.allCases.map { ($0.seconds, BenchColor.ai) }
+            AiTest.allCases.map { ($0.seconds, BenchColor.ai) } + LlmAccel.allCases.map { ($0.seconds, BenchColor.llm) }
     }
 
     private var elapsed: Double {
@@ -344,6 +370,11 @@ struct BenchProgressBar: View {
         if let t = engine.aiTest {
             return cpuTotal + memTotal + gpuTotal + uxTotal + Double(AiTest.allCases.filter { $0.number < t.number }.reduce(0) { $0 + $1.seconds }) + engine.aiProgress * Double(t.seconds)
         }
+        let aiTotal = Double(AiTest.allCases.reduce(0) { $0 + $1.seconds })
+        if let a = engine.llmAccel {
+            return cpuTotal + memTotal + gpuTotal + uxTotal + aiTotal + Double(LlmAccel.allCases.filter { $0.rawValue < a.rawValue }.reduce(0) { $0 + $1.seconds })
+                + engine.llmProgress * Double(a.seconds)
+        }
         return 0
     }
 
@@ -355,7 +386,7 @@ struct BenchProgressBar: View {
             HStack {
                 Text(engine.cpuTest.map { "CPU TEST \($0.number) · \($0.title)" } ?? engine.memTest.map { "MEM TEST \($0.number) · \($0.title)" }
                      ?? engine.gpuTest.map { "GPU TEST \($0.number) · \($0.title)" } ?? engine.uxTest.map { "UX TEST \($0.number) · \($0.title)" }
-                     ?? engine.aiTest.map { "AI TEST \($0.number) · \($0.title)" } ?? "PREPARING")
+                     ?? engine.aiTest.map { "AI TEST \($0.number) · \($0.title)" } ?? engine.llmAccel.map { "LLM TEST \($0.rawValue + 1) · \($0.label)" } ?? "PREPARING")
                     .font(ThermoFont.mono(9, weight: .bold)).tracking(1.5).foregroundColor(Forge.ink0)
                 Spacer()
                 Text("\(Int(done / total * 100))%").font(ThermoFont.mono(9)).foregroundColor(Forge.ink1)
@@ -419,5 +450,111 @@ private struct PhotoPanelLabels: View {
                     .position(x: g.size.width * (i % 2 == 0 ? 0.25 : 0.75), y: g.size.height * (i < 2 ? 0.06 : 0.56))
             }
         }
+    }
+}
+
+/** A player's chrome over the decoded clip — timecode, scrub bar, format, bitrate and how far past real time it runs (Android's VideoOsdBar). */
+struct VideoOsdBar: View {
+    let osd: VideoOsd
+    let accent: Color
+
+    private func tc(_ s: Double) -> String { String(format: "%02d:%05.2f", Int(s / 60), s.truncatingRemainder(dividingBy: 60)) }
+
+    var body: some View {
+        VStack(spacing: 7) {
+            HStack(spacing: 8) {
+                Text("▶").foregroundColor(accent)
+                Text(verbatim: "\(tc(osd.positionS)) / \(tc(osd.durationS))")
+                Spacer(minLength: 4)
+                Text(verbatim: osd.format).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
+                Text("\(osd.mbps) MBPS").foregroundColor(Forge.ink1)
+                Text(osd.speed > 0 ? String(format: "×%.1f REAL TIME", osd.speed) : "×— REAL TIME")
+                    .foregroundColor(Forge.bg).padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(accent).cornerRadius(5)
+            }
+            .font(ThermoFont.mono(8, weight: .bold))
+            .foregroundColor(Forge.ink0)
+            GeometryReader { geo in
+                let wdt = geo.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Forge.ink2.opacity(0.35)).frame(height: 3)
+                    let f = osd.durationS > 0 ? min(1, max(0, osd.positionS / osd.durationS)) : 0
+                    Capsule().fill(accent).frame(width: wdt * f, height: 3)
+                    Circle().fill(Forge.ink0).frame(width: 9, height: 9).offset(x: wdt * f - 4.5)
+                }
+                .frame(height: 10)
+            }
+            .frame(height: 10)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(Forge.bg.opacity(0.62))
+        .cornerRadius(10)
+    }
+}
+
+/**
+ * An editor's export sheet (Android's ExportDialog): the file, its format and encoder, a progress bar of the frames
+ * written (the job is a fixed timeline, so this is the export's real progress), time spent and left, the step, and the
+ * render queue.
+ */
+struct ExportDialogView: View {
+    let st: ExportStage
+    let accent: Color
+
+    var body: some View {
+        let j = st.job
+        let active = st.queue.firstIndex { $0.job == j } ?? 0
+        let ok = ["ENCODING", "FINISHING THE FILE", "CHECKING QUALITY"].contains(st.step)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(verbatim: "⤓ EXPORTING  \(active + 1) OF \(st.queue.count)").font(ThermoFont.mono(8, weight: .bold)).tracking(1).foregroundColor(accent)
+                Spacer()
+                Text(verbatim: st.speedText)
+                    .font(ThermoFont.mono(8, weight: .bold)).foregroundColor(Forge.bg)
+                    .padding(.horizontal, 6).padding(.vertical, 2).background(accent).cornerRadius(5)
+            }
+            Text(verbatim: j.fileName).font(ThermoFont.mono(12, weight: .black)).foregroundColor(Forge.ink0).lineLimit(1).minimumScaleFactor(0.8)
+                .padding(.top, 8)
+            Text(verbatim: "\(j.label) · \(j.width)×\(j.height) · \(j.fps) FPS · \(j.mbps) MBPS · \(st.hardware ? "HARDWARE" : "SOFTWARE")")
+                .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.8)
+            HStack(spacing: 10) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Forge.ink2.opacity(0.3))
+                        Capsule().fill(LinearGradient(colors: [accent.opacity(0.7), accent], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geo.size.width * st.progress)
+                            .animation(.easeOut(duration: 0.22), value: st.progress)
+                    }
+                }
+                .frame(height: 11)
+                Text("\(Int(st.progress * 100))%").font(ThermoFont.mono(15, weight: .black)).foregroundColor(Forge.ink0)
+                    .frame(minWidth: 46, alignment: .trailing)
+            }
+            .padding(.top, 10)
+            Text(verbatim: "\(st.framesDone) / \(j.frames) FRAMES · " + String(format: "%.1f S · ", st.elapsedS) + st.timeLeftText + st.step)
+                .font(ThermoFont.mono(8)).foregroundColor(ok ? Forge.ink1 : Ramp.at(0.85)).lineLimit(1).minimumScaleFactor(0.8)
+                .padding(.top, 6)
+            Rectangle().fill(Forge.hairline).frame(height: 1).padding(.vertical, 9)
+            HStack(alignment: .top, spacing: 4) {
+                ForEach(st.queue.indices, id: \.self) { i in
+                    let item = st.queue[i]
+                    let mark = item.state == .done ? "✓" : item.state == .active ? "●" : item.state == .skipped ? "✗" : "○"
+                    let color: Color = item.state == .done ? accent : item.state == .active ? Forge.ink0
+                        : item.state == .skipped ? Ramp.at(0.85) : Forge.ink2
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(mark) \(item.job.res) \(item.job.label)").font(ThermoFont.mono(8, weight: .bold)).foregroundColor(color).lineLimit(1)
+                        Text(item.state == .done ? String(format: "%.0f FPS · %.1f dB", item.fps, item.psnr)
+                             : item.state == .active ? (st.fps > 0 ? String(format: "%.0f FPS", st.fps) : "…")
+                             : item.state == .skipped ? "0 POINTS" : "QUEUED")
+                            .font(ThermoFont.mono(7)).foregroundColor(Forge.ink2).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 13)
+        .background(Forge.surface.opacity(0.94))
+        .cornerRadius(14)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(accent.opacity(0.35), lineWidth: 1))
     }
 }

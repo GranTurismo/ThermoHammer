@@ -18,12 +18,14 @@ struct BenchmarkResultView: View {
                     Text("THERMOHAMMER BENCHMARK").font(ThermoFont.mono(9, weight: .bold)).tracking(2).foregroundColor(Forge.ink2)
                     Text(result.total.formatted()).font(ThermoFont.mono(46, weight: .black)).foregroundColor(Forge.ink0)
                     Text("TOTAL POINTS").font(ThermoFont.mono(9)).tracking(1.5).foregroundColor(Forge.ink2)
-                    HStack(spacing: 14) {
+                    verifiedPill
+                    HStack(spacing: 4) {
                         section("CPU", result.cpuScore, BenchColor.cpu, ran: result.cpu != nil)
                         section("MEM", result.memScore, BenchColor.mem, ran: result.mem != nil)
                         section("GPU", result.gpuScore, Forge.phaseCalibration, ran: !result.gpu.isEmpty)
                         section("UX", result.uxScore, Forge.phaseMeasured, ran: result.ux != nil)
                         section("AI", result.aiScore, BenchColor.ai, ran: result.ai != nil)
+                        section("LLM", result.llmScore, BenchColor.llm, ran: result.llm != nil)
                     }
                     Text("\(LeaderboardService.shared.getDeviceModelName()) · \(result.gpuName)")
                         .font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Forge.ink1)
@@ -34,6 +36,7 @@ struct BenchmarkResultView: View {
                     if !result.isVerified {
                         Text(validityNote(result.validityFlags)).font(ThermoFont.mono(9)).foregroundColor(Ramp.at(0.5)).multilineTextAlignment(.center)
                     }
+                    HealthCard(result: result, record: record)
                     if let cpu = result.cpu {
                         ForEach(CpuTest.allCases, id: \.self) { t in cpuCard(t, cpu) }
                     }
@@ -41,6 +44,7 @@ struct BenchmarkResultView: View {
                     ForEach(result.gpu, id: \.test) { gpuCard($0) }
                     if let ux = result.ux { uxCards(ux) }
                     if let ai = result.ai { aiCards(ai) }
+                    if let llm = result.llm { llmCard(llm) }
                     buttons
                 }
                 .padding(18)
@@ -51,11 +55,28 @@ struct BenchmarkResultView: View {
         }
     }
 
+    /** Verified: none of the validity flags — scored on the server, eligible for the leaderboard. */
+    private var verifiedPill: some View {
+        let ok = result.isVerified && result.isComplete
+        let color = ok ? Forge.phaseMeasured : Ramp.at(0.5)
+        return HStack(spacing: 0) {
+            Text(ok ? "✓ VERIFIED RUN" : "UNVERIFIED RUN").font(ThermoFont.mono(9, weight: .bold))
+            Text(ok ? " · SCORED ON OUR SERVER" : " · NOT FOR THE LEADERBOARD").font(ThermoFont.mono(8)).opacity(0.75)
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 12).padding(.vertical, 5)
+        .background(color.opacity(0.14))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(color.opacity(0.5), lineWidth: 1))
+    }
+
     private func section(_ label: String, _ value: Int, _ color: Color, ran: Bool) -> some View {
         VStack(spacing: 2) {
-            Text(ran ? value.formatted() : "—").font(ThermoFont.mono(14, weight: .black)).foregroundColor(ran ? color : Forge.ink2)
+            Text(ran ? value.formatted() : "—").font(ThermoFont.mono(13, weight: .black)).foregroundColor(ran ? color : Forge.ink2)
+                .lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func card<Content: View>(_ label: String, _ title: String, _ points: Int, _ accent: Color, @ViewBuilder content: () -> Content) -> some View {
@@ -152,6 +173,39 @@ struct BenchmarkResultView: View {
         card("UX TEST \(t.number)", t.title, points, BenchColor.ux(t), content: content)
     }
 
+    /** One clip or export: its rate, what it is, how it ran — a column of equal width, so four never run together. */
+    private func codecMetric(_ value: String, _ name: String, _ how: String, _ ok: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(ThermoFont.mono(12, weight: .bold)).foregroundColor(ok ? Forge.ink0 : Ramp.at(0.85))
+            Text(name).font(ThermoFont.mono(7)).foregroundColor(Forge.ink2).lineLimit(1)
+            Text(how).font(ThermoFont.mono(7)).foregroundColor(ok ? Forge.ink1 : Ramp.at(0.85)).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /** Codec rows × 4K30 … 8K240: ✓ real time with 10 % to spare, – too slow, ✗ can't, · not tested. */
+    private func gridTable(_ rows: [(String, [VideoGrid.Cell])], _ accent: Color) -> some View {
+        VStack(spacing: 3) {
+            HStack(spacing: 0) {
+                Spacer().frame(width: 40)
+                ForEach(VideoGrid.tiers.indices, id: \.self) { i in
+                    Text(VideoGrid.tiers[i].label).font(ThermoFont.mono(7)).foregroundColor(Forge.ink2).lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity)
+                }
+            }
+            ForEach(rows.indices, id: \.self) { r in
+                HStack(spacing: 0) {
+                    Text(rows[r].0).font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Forge.ink1).frame(width: 40, alignment: .leading)
+                    ForEach(rows[r].1.indices, id: \.self) { i in
+                        let c = rows[r].1[i]
+                        Text(c.rawValue).font(ThermoFont.mono(11, weight: .black)).frame(maxWidth: .infinity)
+                            .foregroundColor(c == .yes ? accent : c == .no ? Forge.ink2 : c == .unsupported ? Ramp.at(0.85) : Forge.ink2.opacity(0.4))
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
     @ViewBuilder private func uxCards(_ ux: UxResult) -> some View {
         let missing = Ramp.at(0.85)
         uxCard(.web, ux.webPoints) {
@@ -188,15 +242,31 @@ struct BenchmarkResultView: View {
         }
         uxCard(.video, ux.videoPoints) {
             if let v = ux.video {
-                HStack {
-                    ForEach(v.codecs, id: \.codec) { c in
-                        metric(c.codec.short + (c.fps > 0 ? (c.hardware ? " · HW" : " · SW") : " · N/A"),
-                               c.fps > 0 ? String(format: "%.0f", c.fps) : "—", c.fps > 0 ? Forge.ink0 : missing)
-                        if c.codec != v.codecs.last?.codec { Spacer() }
+                ForEach([false, true], id: \.self) { k8 in
+                    HStack(alignment: .top, spacing: 4) {
+                        ForEach(v.codecs.filter { $0.clip.k8 == k8 }, id: \.clip) { c in
+                            codecMetric(c.fps > 0 ? String(format: "%.0f", c.fps) : "—", "\(c.clip.res) \(c.codec.short)",
+                                        c.fps > 0 ? (c.hardware ? "HW" : "SW") : "N/A", c.fps > 0)
+                        }
+                        if k8 { Spacer().frame(maxWidth: .infinity); Spacer().frame(maxWidth: .infinity) }   // 8K: two clips under four
                     }
                 }
+                gridTable(VideoCodec.allCases.map { ($0.short, VideoGrid.playback(v, $0)) }, BenchColor.ux(.video))
             }
-            note("Frames per second decoding 4K60 clips flat out; \(Int(UxScore.refVideo)) fps per codec = 6000 points, an unsupported codec 0.")
+            note("Frames per second decoding each clip flat out (an unsupported one 0); 4K counts three quarters, 8K one. The grid: what plays in real time with 10 % to spare.")
+        }
+        uxCard(.export, ux.exportPoints) {
+            if let e = ux.export {
+                HStack(alignment: .top, spacing: 4) {
+                    ForEach(e.jobs, id: \.job) { j in
+                        let ok = j.fps > 0 && j.psnr >= VideoGrid.minPsnr
+                        codecMetric(j.fps > 0 ? String(format: "%.0f", j.fps) : "—", "\(j.job.res) \(j.job.label)",
+                                    j.fps <= 0 ? "N/A" : (j.hardware ? "HW · " : "SW · ") + String(format: ok ? "%.1f dB" : "LOW %.1f dB", j.psnr), ok)
+                    }
+                }
+                gridTable([VideoCodec.avc, .hevc, .av1].map { ($0.short, VideoGrid.export(e, $0)) }, BenchColor.ux(.export))
+            }
+            note("Frames per second exporting a graded edit; each export is decoded again and compared with what went in — below \(Int(VideoGrid.minPsnr)) dB it doesn't count.")
         }
         uxCard(.qr, ux.qrPoints) {
             if let q = ux.qr {
@@ -247,6 +317,32 @@ struct BenchmarkResultView: View {
             .background(Forge.surface)
             .cornerRadius(14)
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(BenchColor.ai.opacity(0.3), lineWidth: 1))
+        }
+    }
+
+    private func tokensPerS(_ v: Double) -> String {
+        v > 0 ? (v < 100 ? String(format: "%.1f", v) : v.formatted(.number.precision(.fractionLength(0)))) : "—"
+    }
+
+    @ViewBuilder private func llmCard(_ llm: LlmResult) -> some View {
+        let missing = Ramp.at(0.85)
+        card("LLM · LLAMA 3.2 3B · 4-BIT", "PROMPT · REPLY", llm.score, BenchColor.llm) {
+            ForEach(LlmAccel.allCases, id: \.self) { a in
+                let run = llm.run(a)
+                HStack {
+                    metric("\(a.label) PREFILL TOK/S", tokensPerS(run?.prefill ?? 0), (run?.prefill ?? 0) > 0 ? Forge.ink0 : missing); Spacer()
+                    metric("\(a.label) DECODE TOK/S", tokensPerS(run?.decode ?? 0), (run?.decode ?? 0) > 0 ? Forge.ink0 : missing); Spacer()
+                    metric(a == .cpu ? "THREADS" : "GPU", a == .cpu ? (run.map { $0.threads > 0 ? "\($0.threads)" : "—" } ?? "—")
+                           : String((llm.gpuName ?? "—").prefix(14)), Forge.ink1)
+                }
+                if llm.error == nil, let e = run?.error { note("\(a.label): \(e)", missing) }
+            }
+            if let e = llm.error { note("Not run: \(e).", missing) }
+            note(llm.largestModel > 0
+                 ? String(format: "Largest common model that fits in the memory iOS lets the app take now: %dB (4-bit, %.1f GB).", llm.largestModel, llm.freeGb)
+                 : String(format: "Memory the app can take now: %.1f GB — too little for even a 1B model.", llm.freeGb), Forge.ink1)
+            note(String(format: "Prefill reads a 512-token prompt; decode writes the reply token by token. The faster of the CPU and the GPU counts for each: %.0f and %.1f tokens/s = 6000 points. The weights come from a seed — the words are random, the work is real.",
+                        LlmScore.refPrefill, LlmScore.refDecode))
         }
     }
 
@@ -301,7 +397,10 @@ struct BenchmarkResultView: View {
         if flags & BenchFlag.powerEvent != 0 { notes.append("charger connected during the run") }
         if flags & BenchFlag.envCapped != 0 { notes.append("Low Power Mode was on") }
         if flags & (BenchFlag.cooldownTimeout | BenchFlag.warmStarted) != 0 { notes.append("started warm") }
-        if flags & BenchFlag.interference != 0 { notes.append("the phone was busy with background work") }
+        if flags & BenchFlag.interference != 0 {
+            notes.append(LeaderboardService.isMac ? "another app was in front during the run, or the Mac was busy"
+                         : "the phone was busy with background work")
+        }
         return "Unverified: " + notes.joined(separator: ", ") + "."
     }
 }

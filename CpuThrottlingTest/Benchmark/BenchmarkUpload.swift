@@ -33,6 +33,9 @@ struct BenchmarkRecord: Codable, Identifiable {
     var storageSeqRead = 0.0, storageSeqWrite = 0.0, storageRandomRead = 0.0, storageRandomWrite = 0.0
     var storageDirect = false
     var dbInsert = 0.0, dbUpdate = 0.0, dbQuery = 0.0
+    var llm: LlmRecord?        // optional: runs saved before the LLM test decode without it
+    var media: MediaRecord?    // optional: UX 5's 8K clips and UX 6's exports (version 4)
+    var osVersion: String?     // what it ran on — Phone Health spots a slowdown after an update
     var validityFlags = 0
     var complete = false
     var submitted = false
@@ -53,9 +56,15 @@ struct BenchmarkRecord: Codable, Identifiable {
             scrollSpeed = q(ux.scroll?.speed ?? 0); scrollDropped = q(ux.scroll?.droppedPct ?? 0)
             galleryJpeg = q(ux.gallery?.jpeg ?? 0); galleryWebp = q(ux.gallery?.webp ?? 0); galleryAvif = q(ux.gallery?.avif ?? 0)
             photoEdit = q(ux.photoMps)
-            videoAvc = q(ux.video?.fps(.avc) ?? 0); videoHevc = q(ux.video?.fps(.hevc) ?? 0)
-            videoVp9 = q(ux.video?.fps(.vp9) ?? 0); videoAv1 = q(ux.video?.fps(.av1) ?? 0)
+            videoAvc = q(ux.video?.fps(.avc4k) ?? 0); videoHevc = q(ux.video?.fps(.hevc4k) ?? 0)
+            videoVp9 = q(ux.video?.fps(.vp94k) ?? 0); videoAv1 = q(ux.video?.fps(.av14k) ?? 0)
             videoHardware = ux.video?.hardwareMask ?? 0
+            let v = ux.video, e = ux.export
+            media = MediaRecord(video8kHevc: q(v?.fps(.hevc8k) ?? 0), video8kAv1: q(v?.fps(.av18k) ?? 0),
+                                exportAvc: q(e?.fps(.avc4k) ?? 0), exportHevc: q(e?.fps(.hevc4k) ?? 0), exportAv1: q(e?.fps(.av14k) ?? 0),
+                                export8kHevc: q(e?.fps(.hevc8k) ?? 0), exportAvcPsnr: q(e?.psnr(.avc4k) ?? 0),
+                                exportHevcPsnr: q(e?.psnr(.hevc4k) ?? 0), exportAv1Psnr: q(e?.psnr(.av14k) ?? 0),
+                                export8kHevcPsnr: q(e?.psnr(.hevc8k) ?? 0), exportHardware: e?.hardwareMask ?? 0)
         }
         if let cpu = r.cpu {
             cpuMath = q(cpu.value(.math)); cpuData = q(cpu.value(.data)); cpuCrypto = q(cpu.value(.crypto)); cpuMulti = q(cpu.value(.multi))
@@ -71,9 +80,30 @@ struct BenchmarkRecord: Codable, Identifiable {
             storageDirect = m.storage.direct
             dbInsert = q(m.db.insert); dbUpdate = q(m.db.update); dbQuery = q(m.db.query)
         }
+        if let l = r.llm {
+            llm = LlmRecord(prefillCpu: q(l.run(.cpu)?.prefill ?? 0), decodeCpu: q(l.run(.cpu)?.decode ?? 0),
+                            prefillGpu: q(l.run(.gpu)?.prefill ?? 0), decodeGpu: q(l.run(.gpu)?.decode ?? 0),
+                            gpu: l.gpuName, freeGb: q(l.freeGb))
+        }
         validityFlags = r.validityFlags
         complete = r.isComplete
+        osVersion = UIDevice.current.systemVersion
     }
+}
+
+/** The LLM test's raw results: tokens/s reading the prompt and writing the reply, per accelerator (0 = didn't run). */
+struct LlmRecord: Codable {
+    var prefillCpu = 0.0, decodeCpu = 0.0, prefillGpu = 0.0, decodeGpu = 0.0
+    var gpu: String?
+    var freeGb = 0.0
+}
+
+/** UX 5's 8K decode rates and UX 6's exports: fps, quality (dB) and which ran in hardware. */
+struct MediaRecord: Codable {
+    var video8kHevc = 0.0, video8kAv1 = 0.0
+    var exportAvc = 0.0, exportHevc = 0.0, exportAv1 = 0.0, export8kHevc = 0.0
+    var exportAvcPsnr = 0.0, exportHevcPsnr = 0.0, exportAv1Psnr = 0.0, export8kHevcPsnr = 0.0
+    var exportHardware = 0
 }
 
 /** The request body of POST /benchmark — the field names the server (and the Android app) use. */
@@ -83,7 +113,7 @@ struct BenchmarkPayload: Encodable {
     let benchmarkVersion: Int
     let deviceManufacturer: String
     let deviceModel: String
-    let os = 1   // OsPlatform.iOS
+    let os = LeaderboardService.osPlatform   // OsPlatform: iOS, or macOS for the app on a Mac
     let osVersion: String
     let osBuild: String?
     let socModel: String?
@@ -98,7 +128,11 @@ struct BenchmarkPayload: Encodable {
     let galleryJpeg, galleryWebp, galleryAvif: Double
     let photoEdit: Double
     let videoAvc, videoHevc, videoVp9, videoAv1: Double
+    let video8kHevc, video8kAv1: Double
     let videoHardware: Int
+    let exportAvc, exportHevc, exportAv1, export8kHevc: Double
+    let exportAvcPsnr, exportHevcPsnr, exportAv1Psnr, export8kHevcPsnr: Double
+    let exportHardware: Int
     let aiClassifyCpu, aiClassifyGpu, aiClassifyNpu, aiDetectCpu, aiDetectGpu, aiDetectNpu: Double
     let aiSegmentCpu, aiSegmentGpu, aiSegmentNpu, aiUpscaleCpu, aiUpscaleGpu, aiUpscaleNpu: Double
     let aiDepthCpu, aiDepthGpu, aiDepthNpu, aiSoundCpu, aiSoundGpu, aiSoundNpu: Double
@@ -107,6 +141,9 @@ struct BenchmarkPayload: Encodable {
     let storageSeqRead, storageSeqWrite, storageRandomRead, storageRandomWrite: Double
     let storageDirect: Bool
     let dbInsert, dbUpdate, dbQuery: Double
+    let llmPrefillCpu, llmDecodeCpu, llmPrefillGpu, llmDecodeGpu: Double
+    let llmGpu: String?             // the GPU it ran on (reported)
+    let llmFreeGb: Double           // memory the app could take (reported)
     let validityFlags: Int
     let appVersion: String?
 
@@ -118,12 +155,14 @@ struct BenchmarkPayload: Encodable {
             f2(webLayout), f2(webCanvas), f2(webCss), f2(webSvg), f2(webJs), f2(qrRate), f2(mlkitQrRate ?? 0),
             f2(cpuMath), f2(cpuData), f2(cpuCrypto), f2(cpuMulti), f2(scrollSpeed), f2(scrollDropped),
             f2(galleryJpeg), f2(galleryWebp), f2(galleryAvif), f2(photoEdit), f2(videoAvc), f2(videoHevc), f2(videoVp9), f2(videoAv1),
-            "\(videoHardware)",
+            f2(video8kHevc), f2(video8kAv1), "\(videoHardware)", f2(exportAvc), f2(exportHevc), f2(exportAv1), f2(export8kHevc),
+            f2(exportAvcPsnr), f2(exportHevcPsnr), f2(exportAv1Psnr), f2(export8kHevcPsnr), "\(exportHardware)",
             f2(aiClassifyCpu), f2(aiClassifyGpu), f2(aiClassifyNpu), f2(aiDetectCpu), f2(aiDetectGpu), f2(aiDetectNpu),
             f2(aiSegmentCpu), f2(aiSegmentGpu), f2(aiSegmentNpu), f2(aiUpscaleCpu), f2(aiUpscaleGpu), f2(aiUpscaleNpu),
             f2(aiDepthCpu), f2(aiDepthGpu), f2(aiDepthNpu), f2(aiSoundCpu), f2(aiSoundGpu), f2(aiSoundNpu), aiNpuRuntime ?? "",
             f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
             f2(storageRandomRead), f2(storageRandomWrite), storageDirect ? "1" : "0", f2(dbInsert), f2(dbUpdate), f2(dbQuery),
+            f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu ?? "", f2(llmFreeGb),
             "\(validityFlags)"]
         return parts.joined(separator: "|")
     }
@@ -137,6 +176,8 @@ enum BenchmarkUpload {
     static func submit(_ r: BenchmarkRecord) async throws -> BenchmarkSubmitResponse {
         let session = try await LeaderboardService.shared.createSession()
         let a = r.ai
+        let l = r.llm ?? LlmRecord()
+        let m = r.media ?? MediaRecord()
         var payload = BenchmarkPayload(
             sessionId: session.id, hash: "", benchmarkVersion: r.version, deviceManufacturer: "Apple",
             deviceModel: LeaderboardService.shared.getDeviceModelName(), osVersion: UIDevice.current.systemVersion,
@@ -148,7 +189,11 @@ enum BenchmarkUpload {
             cpuMath: r.cpuMath, cpuData: r.cpuData, cpuCrypto: r.cpuCrypto, cpuMulti: r.cpuMulti,
             scrollSpeed: r.scrollSpeed, scrollDropped: r.scrollDropped,
             galleryJpeg: r.galleryJpeg, galleryWebp: r.galleryWebp, galleryAvif: r.galleryAvif, photoEdit: r.photoEdit,
-            videoAvc: r.videoAvc, videoHevc: r.videoHevc, videoVp9: r.videoVp9, videoAv1: r.videoAv1, videoHardware: r.videoHardware,
+            videoAvc: r.videoAvc, videoHevc: r.videoHevc, videoVp9: r.videoVp9, videoAv1: r.videoAv1,
+            video8kHevc: m.video8kHevc, video8kAv1: m.video8kAv1, videoHardware: r.videoHardware,
+            exportAvc: m.exportAvc, exportHevc: m.exportHevc, exportAv1: m.exportAv1, export8kHevc: m.export8kHevc,
+            exportAvcPsnr: m.exportAvcPsnr, exportHevcPsnr: m.exportHevcPsnr, exportAv1Psnr: m.exportAv1Psnr,
+            export8kHevcPsnr: m.export8kHevcPsnr, exportHardware: m.exportHardware,
             aiClassifyCpu: a[0], aiClassifyGpu: a[1], aiClassifyNpu: a[2], aiDetectCpu: a[3], aiDetectGpu: a[4], aiDetectNpu: a[5],
             aiSegmentCpu: a[6], aiSegmentGpu: a[7], aiSegmentNpu: a[8], aiUpscaleCpu: a[9], aiUpscaleGpu: a[10], aiUpscaleNpu: a[11],
             aiDepthCpu: a[12], aiDepthGpu: a[13], aiDepthNpu: a[14], aiSoundCpu: a[15], aiSoundGpu: a[16], aiSoundNpu: a[17],
@@ -157,6 +202,8 @@ enum BenchmarkUpload {
             storageSeqRead: r.storageSeqRead, storageSeqWrite: r.storageSeqWrite,
             storageRandomRead: r.storageRandomRead, storageRandomWrite: r.storageRandomWrite, storageDirect: r.storageDirect,
             dbInsert: r.dbInsert, dbUpdate: r.dbUpdate, dbQuery: r.dbQuery,
+            llmPrefillCpu: l.prefillCpu, llmDecodeCpu: l.decodeCpu, llmPrefillGpu: l.prefillGpu, llmDecodeGpu: l.decodeGpu,
+            llmGpu: l.gpu, llmFreeGb: l.freeGb,
             validityFlags: r.validityFlags,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
         let mac = HMAC<SHA256>.authenticationCode(for: Data(payload.canonical().utf8), using: SymmetricKey(data: Data(session.encryptionKey.utf8)))
@@ -174,8 +221,13 @@ enum BenchmarkUpload {
         return try JSONDecoder().decode(BenchmarkSubmitResponse.self, from: data)
     }
 
-    /** The phone's chip, from its model identifier. */
+    /** The phone's chip, from its model identifier — on a Mac, the chip's name (e.g. "Apple M5"). */
     static func chipName() -> String? {
+        if LeaderboardService.isMac {
+            // the CPU's name isn't readable from the iPhone app's sandbox; Metal names the chip ("Apple M5")
+            let gpu = gpuName()
+            return gpu.hasPrefix("Apple M") ? gpu : nil
+        }
         var info = utsname()
         uname(&info)
         let id = withUnsafeBytes(of: &info.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }

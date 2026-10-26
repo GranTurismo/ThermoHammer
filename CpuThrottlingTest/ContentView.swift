@@ -16,6 +16,9 @@ struct ContentView: View {
     @State private var selectedDuration: TestDuration = .minutes5
     @State private var selectedThreadingType: StressThreadingType = .multi
     @State private var selectedTab = 0
+    // the welcome: on first launch, and whenever the header's "?" asks for it (not for -autoBenchmark checks)
+    @AppStorage("welcome.seen") private var welcomeSeen = false
+    @State private var showWelcome = false
 
     // overlays
     @State private var showPreflight = false
@@ -69,18 +72,10 @@ struct ContentView: View {
         ZStack {
             Forge.bg.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                headerSection
-
-                if selectedTab == 0 {
-                    diagnosticsTab
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                } else {
-                    LeaderboardTab()
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                }
+            // a Mac window (or an iPad): a sidebar and the instrument laid out across the window; a phone: one column
+            GeometryReader { geo in
+                if geo.size.width >= Forge.desktopWidth { desktopLayout } else { phoneLayout }
             }
-            .animation(.easeInOut(duration: 0.28), value: selectedTab)
 
             // ── overlays (animated entrances) ──
             if showPreflight {
@@ -139,6 +134,16 @@ struct ContentView: View {
         }
         .forgeGrain()
         .overlay { benchmarkLayer }   // above the grain: the stage is clean black
+        .overlay {
+            if (!welcomeSeen || showWelcome || ProcessInfo.processInfo.arguments.contains("-welcomePage") || ProcessInfo.processInfo.arguments.contains("-welcomeTour")) && !bench.isRunning && !engine.isRunning
+                && !ProcessInfo.processInfo.arguments.contains("-autoBenchmark") {
+                WelcomeView {
+                    withAnimation(.easeOut(duration: 0.35)) { welcomeSeen = true; showWelcome = false }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 1.04)))
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: showWelcome)
         .preferredColorScheme(.dark)
         .onChange(of: engine.isRunning) { running in
             if !running { handleRunEnd() }
@@ -191,6 +196,7 @@ struct ContentView: View {
                         .font(ThermoFont.display(22, weight: .bold))
                         .tracking(2)
                         .foregroundColor(Forge.ink0)
+                        .lineLimit(1).minimumScaleFactor(0.7)          // one line, beside the chip and the "?"
                     HStack(spacing: 4) {
                         Circle().fill(networkMonitor.isConnected ? Ramp.at(0.05) : Ramp.at(0.5))
                             .frame(width: 5, height: 5)
@@ -202,8 +208,15 @@ struct ContentView: View {
                     .background(Color.white.opacity(0.04)).cornerRadius(6)
                     .overlay(RoundedRectangle(cornerRadius: 6)
                         .stroke(Forge.hairline, lineWidth: 1))
+                    .fixedSize()                                         // the title gives way, not the chip
+                    // the welcome again: what the app does and why its numbers hold
+                    Button { showWelcome = true } label: {
+                        Text("?").font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Forge.ink1)
+                            .frame(width: 20, height: 20)
+                            .overlay(Circle().stroke(Forge.ink2.opacity(0.6), lineWidth: 1))
+                    }
                 }
-                Text("iOS CPU THERMAL DIAGNOSTIC")
+                Text("\(LeaderboardService.isMac ? "MAC" : "PHONE") BENCHMARK · THERMAL STRESS")
                     .font(ThermoFont.mono(9, weight: .bold))
                     .tracking(1)
                     .foregroundColor(engine.isRunning ? Ramp.at(0.5) : Forge.ink2)
@@ -222,84 +235,138 @@ struct ContentView: View {
         .overlay(Rectangle().fill(Forge.hairline).frame(height: 1), alignment: .bottom)
     }
 
+    // MARK: layouts
+
+    /** A phone: header, the instrument scrolling under the controls, the tab bar at the bottom. */
+    private var phoneLayout: some View {
+        VStack(spacing: 0) {
+            headerSection
+
+            if selectedTab == 0 {
+                diagnosticsTab
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else {
+                LeaderboardTab()
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.28), value: selectedTab)
+        // between a phone and the desktop layout (an iPad in portrait): a phone-width column
+        .frame(maxWidth: Forge.columnWidth)
+        .frame(maxWidth: .infinity)
+    }
+
+    /** A Mac window: the header across the top, a sidebar (where to go, what to run), the instrument in two columns. */
+    private var desktopLayout: some View {
+        VStack(spacing: 0) {
+            headerSection
+            HStack(spacing: 0) {
+                sidebar
+                    .frame(width: 290)
+                    .background(Forge.surface.opacity(0.55))
+                    .overlay(Rectangle().fill(Forge.hairline).frame(width: 1), alignment: .trailing)
+                ZStack {
+                    if selectedTab == 0 {
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 16) {
+                                updateCard
+                                phaseRail
+                                HStack(alignment: .top, spacing: 16) {
+                                    VStack(spacing: 16) {
+                                        VStack(spacing: 8) { reactor; liveChips }
+                                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                            .background(Forge.surface.opacity(0.5)).cornerRadius(12).cornerTicks()
+                                        constellation
+                                        horizon
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    VStack(spacing: 16) {
+                                        ribbon
+                                        xray
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding(20)
+                            .frame(maxWidth: 1080)
+                            .frame(maxWidth: .infinity)
+                        }
+                        .transition(.opacity)
+                    } else {
+                        LeaderboardTab()
+                            .frame(maxWidth: 760)
+                            .frame(maxWidth: .infinity)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(.easeInOut(duration: 0.22), value: selectedTab)
+            }
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(spacing: 4) {
+                ForEach(0..<2, id: \.self) { i in
+                    let item = [("DIAGNOSTICS", "speedometer"), ("LEADERBOARD", "trophy")][i]
+                    Button {
+                        selectedTab = i
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: item.1).font(.system(size: 13, weight: .semibold)).frame(width: 18)
+                            Text(item.0).font(ThermoFont.mono(10, weight: .bold)).tracking(1)
+                            Spacer()
+                        }
+                        .foregroundColor(selectedTab == i ? Forge.ink0 : Forge.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(selectedTab == i ? Forge.interact : .clear)
+                        .cornerRadius(8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Rectangle().fill(Forge.hairline).frame(height: 1)
+            Engraved(text: engine.isRunning ? "RUNNING" : "RUN", size: 8)
+            runControls
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .animation(.easeInOut(duration: 0.25), value: selectedTab)
+        .animation(.easeInOut(duration: 0.3), value: engine.isRunning)
+    }
+
     // MARK: diagnostics tab
 
     private var diagnosticsTab: some View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
-                    if !engine.isRunning, let insight = currentUpdateInsight {
-                        UpdateImpactCard(
-                            insight: insight,
-                            onRetest: { rec in
-                                // Repeat exactly the test the old result came from, then open pre-flight.
-                                selectedDuration = rec.durationType == 1 ? .minutes15
-                                    : rec.durationType == 2 ? .minutes30 : .minutes5
-                                selectedThreadingType = StressThreadingType(rawValue: rec.threadingType) ?? .multi
-                                ThermoHaptics.tap()
-                                showPreflight = true
-                            },
-                            onDismiss: { withAnimation(.easeOut(duration: 0.2)) { runHistory.dismiss(insight) } }
-                        )
-                        .padding(.horizontal, 4)
-                        .padding(.top, 10)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    if !engine.isRunning && currentUpdateInsight != nil {
+                        updateCard
+                            .padding(.horizontal, 4)
+                            .padding(.top, 10)
                     }
 
-                    PhaseRail(phase: engine.state.phase,
-                              preflightActive: showPreflight,
-                              completed: engine.wasCompleted,
-                              progress: phaseProgress,
-                              progressLabel: phaseProgressLabel)
+                    phaseRail
                         .padding(.top, 10)
 
-                    ThermalReactor(state: engine.state, topology: engine.topology,
-                                   completed: engine.wasCompleted)
+                    reactor
                         .padding(.top, 4)
 
-                    // live chips under reactor
-                    VStack(spacing: 6) {
-                        if engine.state.phase == .measured && engine.state.attribution != .none {
-                            attributionChip
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                        if engine.state.phase == .cooldown {
-                            Text("❄ COOLING \(engine.state.thermalState.name) → NOMINAL · \(Int(engine.state.cooldownElapsed))s")
-                                .font(ThermoFont.mono(9, weight: .bold))
-                                .foregroundColor(Forge.phaseCooldown)
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Forge.phaseCooldown.opacity(0.08))
-                                .cornerRadius(8)
-                                .overlay(RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Forge.phaseCooldown.opacity(0.3), lineWidth: 1))
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                    .animation(.easeInOut(duration: 0.3), value: engine.state.phase)
-                    .animation(.easeInOut(duration: 0.3), value: engine.state.attribution)
+                    liveChips
 
-                    ThroughputRibbon(stamps: engine.state.stamps,
-                                     preRun: engine.state.preRunIps,
-                                     baselineIps: engine.state.baselineIps,
-                                     duration: engine.state.duration)
-                        .padding(.horizontal, 14)
-                        .background(Forge.surface.opacity(0.5))
-                        .cornerRadius(12)
-                        .cornerTicks()
+                    ribbon
                         .padding(.horizontal, 4)
 
-                    CoreConstellation(topology: engine.topology,
-                                      workerRatios: engine.state.workerRatios,
-                                      activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
+                    constellation
                         .padding(.horizontal, 4)
 
-                    ThermalXRay(state: engine.state, topology: engine.topology,
-                                activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
+                    xray
                         .padding(.horizontal, 4)
 
-                    ThermalHorizon(thermalState: engine.state.thermalState,
-                                   systemLoad: engine.state.systemLoad,
-                                   history: engine.state.stamps.map { $0.thermalState })
+                    horizon
                         .padding(.horizontal, 4)
 
                     Spacer(minLength: 90)
@@ -309,6 +376,89 @@ struct ContentView: View {
             // bottom control area
             controlArea
         }
+    }
+
+    // MARK: the instrument's panels
+
+    @ViewBuilder private var updateCard: some View {
+        if !engine.isRunning, let insight = currentUpdateInsight {
+            UpdateImpactCard(
+                insight: insight,
+                onRetest: { rec in
+                    // Repeat exactly the test the old result came from, then open pre-flight.
+                    selectedDuration = rec.durationType == 1 ? .minutes15
+                        : rec.durationType == 2 ? .minutes30 : .minutes5
+                    selectedThreadingType = StressThreadingType(rawValue: rec.threadingType) ?? .multi
+                    ThermoHaptics.tap()
+                    showPreflight = true
+                },
+                onDismiss: { withAnimation(.easeOut(duration: 0.2)) { runHistory.dismiss(insight) } }
+            )
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    private var phaseRail: some View {
+        PhaseRail(phase: engine.state.phase,
+                  preflightActive: showPreflight,
+                  completed: engine.wasCompleted,
+                  progress: phaseProgress,
+                  progressLabel: phaseProgressLabel)
+    }
+
+    private var reactor: some View {
+        ThermalReactor(state: engine.state, topology: engine.topology, completed: engine.wasCompleted)
+    }
+
+    /** The live chips under the reactor. */
+    private var liveChips: some View {
+        VStack(spacing: 6) {
+            if engine.state.phase == .measured && engine.state.attribution != .none {
+                attributionChip
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if engine.state.phase == .cooldown {
+                Text("❄ COOLING \(engine.state.thermalState.name) → NOMINAL · \(Int(engine.state.cooldownElapsed))s")
+                    .font(ThermoFont.mono(9, weight: .bold))
+                    .foregroundColor(Forge.phaseCooldown)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Forge.phaseCooldown.opacity(0.08))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .stroke(Forge.phaseCooldown.opacity(0.3), lineWidth: 1))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: engine.state.phase)
+        .animation(.easeInOut(duration: 0.3), value: engine.state.attribution)
+    }
+
+    private var ribbon: some View {
+        ThroughputRibbon(stamps: engine.state.stamps,
+                         preRun: engine.state.preRunIps,
+                         baselineIps: engine.state.baselineIps,
+                         duration: engine.state.duration)
+            .padding(.horizontal, 14)
+            .background(Forge.surface.opacity(0.5))
+            .cornerRadius(12)
+            .cornerTicks()
+    }
+
+    private var constellation: some View {
+        CoreConstellation(topology: engine.topology,
+                          workerRatios: engine.state.workerRatios,
+                          activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
+    }
+
+    private var xray: some View {
+        ThermalXRay(state: engine.state, topology: engine.topology,
+                    activeWorkers: selectedThreadingType == .single ? 1 : engine.coreCount)
+    }
+
+    private var horizon: some View {
+        ThermalHorizon(thermalState: engine.state.thermalState,
+                       systemLoad: engine.state.systemLoad,
+                       history: engine.state.stamps.map { $0.thermalState })
     }
 
     private var attributionChip: some View {
@@ -324,7 +474,21 @@ struct ContentView: View {
 
     // MARK: controls
 
+    /** The phone's bottom area: what to run, then the tab bar. */
     private var controlArea: some View {
+        VStack(spacing: 10) {
+            runControls
+            tabBar
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(Forge.surface.opacity(0.92))
+        .animation(.easeInOut(duration: 0.3), value: engine.isRunning)
+    }
+
+    /** Stress test or benchmark, its options, and the button — or, while a test runs, hold to abort. */
+    @ViewBuilder private var runControls: some View {
         VStack(spacing: 10) {
             if !engine.isRunning {
                 // run kind: the sustained stress test, or the five-section benchmark
@@ -344,7 +508,7 @@ struct ContentView: View {
                     }
                 }
                 if runBenchmark {
-                    Text("CPU + MEM + GPU + UX + AI · the same tests as on Android")
+                    Text("WHOLE PHONE · SIX SECTIONS · SAME TESTS AS ANDROID")
                         .font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
                 }
                 // pickers — animated away during run
@@ -412,14 +576,7 @@ struct ContentView: View {
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-
-            tabBar
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-        .background(Forge.surface.opacity(0.92))
-        .animation(.easeInOut(duration: 0.3), value: engine.isRunning)
     }
 
     private var tabBar: some View {
@@ -536,7 +693,7 @@ struct ContentView: View {
                     stamps: wireStamps, type: type,
                     testThreadingType: engine.testThreadingType.rawValue,
                     deviceManufacturer: "Apple", deviceModel: model,
-                    os: 1, osVersion: osv,
+                    os: LeaderboardService.osPlatform, osVersion: osv,
                     sessionId: session.id, hash: hash,
                     schemaVersion: 2,
                     baselineScore: Int(sc?.baselineIps ?? 0),

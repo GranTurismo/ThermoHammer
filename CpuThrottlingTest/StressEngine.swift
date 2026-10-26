@@ -310,7 +310,8 @@ final class StressEngine: ObservableObject {
         for i in 0..<levels {
             let name = sysctlString("hw.perflevel\(i).name") ?? "LEVEL\(i)"
             let cnt = sysctlInt("hw.perflevel\(i).physicalcpu") ?? 0
-            names.append(name.uppercased().contains("PERF") ? "PERF" : "EFF")
+            // "Performance" / "Efficiency" — the M5 (and later chips) call their fast cores "Super"
+            names.append(name.uppercased().contains("EFFICIEN") ? "EFF" : "PERF")
             counts.append(cnt)
         }
         var clusters: [[Int]] = []
@@ -354,7 +355,7 @@ final class StressEngine: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, self.isRunning else { return }
-                let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+                let charging = deviceCharging()
                 if self.state.phase == .measured, charging != self.prevCharging { self.powerEventSeen = true }
                 self.prevCharging = charging
             }
@@ -382,18 +383,26 @@ final class StressEngine: ObservableObject {
         var gates: [GateResult] = []
         var hints = 0
 
-        // Battery state / charger (UIKit — main thread)
-        let batt = await batterySnapshot()
-        let charging = batt.charging
-        gates.append(GateResult(id: "charger", title: "CHARGER", blocking: true,
-                                passed: !charging,
-                                detail: charging ? "UNPLUG — charging heat skews the run" : "on battery"))
-        // Battery level
-        let level = batt.level
-        let battOK = level < 0 || level >= 0.20
-        gates.append(GateResult(id: "battery", title: "BATTERY", blocking: true,
-                                passed: battOK,
-                                detail: level < 0 ? "level unknown" : "\(Int(level * 100))% \(battOK ? "" : "— charge first")"))
+        if LeaderboardService.isMac {
+            // a Mac runs on its charger, and the battery an iPad app sees there isn't the Mac's: neither gates the run
+            gates.append(GateResult(id: "charger", title: "CHARGER", blocking: false, passed: true,
+                                    detail: "a Mac may run on its charger"))
+            gates.append(GateResult(id: "battery", title: "BATTERY", blocking: false, passed: true,
+                                    detail: "not readable on a Mac"))
+        } else {
+            // Battery state / charger (UIKit — main thread)
+            let batt = await batterySnapshot()
+            let charging = batt.charging
+            gates.append(GateResult(id: "charger", title: "CHARGER", blocking: true,
+                                    passed: !charging,
+                                    detail: charging ? "UNPLUG — charging heat skews the run" : "on battery"))
+            // Battery level
+            let level = batt.level
+            let battOK = level < 0 || level >= 0.20
+            gates.append(GateResult(id: "battery", title: "BATTERY", blocking: true,
+                                    passed: battOK,
+                                    detail: level < 0 ? "level unknown" : "\(Int(level * 100))% \(battOK ? "" : "— charge first")"))
+        }
         // Mobile data blocks the start: a busy modem sits next to the SoC and heats it (Wi-Fi or airplane mode don't)
         let mobile = NetworkMonitor.shared.onMobileData
         gates.append(GateResult(id: "cellular", title: "MOBILE DATA", blocking: true,
@@ -446,7 +455,7 @@ final class StressEngine: ObservableObject {
         calIps = []
         workerBaselines = Array(repeating: 1, count: coreCount)
         displayBaselines = Array(repeating: 1, count: coreCount)
-        chargingAtStart = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+        chargingAtStart = deviceCharging()
         prevCharging = chargingAtStart
         for c in counters { c.reset() }
         prevCounters = Array(repeating: 0, count: coreCount)
@@ -697,8 +706,7 @@ final class StressEngine: ObservableObject {
                 let stampWindowNs = now - stampLastNs
                 if stampWindowNs >= 1_000_000_000 {
                     var env: Int = 0
-                    let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
-                    if charging { env |= EnvFlag.charging }
+                    if deviceCharging() { env |= EnvFlag.charging }
                     if ProcessInfo.processInfo.isLowPowerModeEnabled { env |= EnvFlag.lowPowerMode }
                     if ts != .nominal { env |= EnvFlag.thermalElevated }
                     envAcc |= env
@@ -885,4 +893,9 @@ struct ThermalEvent: Identifiable, Equatable {
         }
     }
     var color: Color { thermalStateColor(state) }
+}
+
+/// On the charger? Never on a Mac: UIDevice's battery is made up there (1 %, "charging", whatever the Mac's own says).
+private func deviceCharging() -> Bool {
+    !LeaderboardService.isMac && (UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full)
 }

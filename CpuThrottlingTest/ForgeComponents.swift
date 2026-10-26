@@ -456,7 +456,7 @@ struct CoreConstellation: View {
                     }
                 }
             }
-            Engraved(text: "frequency telemetry unavailable on iOS — gauges show worker throughput share", size: 7)
+            Engraved(text: "frequency telemetry unavailable on \(LeaderboardService.isMac ? "macOS" : "iOS") — gauges show worker throughput share", size: 7)
                 .opacity(0.7)
         }
         .padding(12)
@@ -497,7 +497,7 @@ struct ThermalHorizon: View {
             HStack {
                 Engraved(text: "THERMAL HORIZON")
                 Spacer()
-                let lvl = UIDevice.current.batteryLevel
+                let lvl = LeaderboardService.isMac ? -1 : UIDevice.current.batteryLevel     // a Mac's reading is made up
                 Engraved(text: lvl >= 0 ? "BATT \(Int(lvl * 100))%" : "BATT --",
                          color: Forge.ink1, size: 8)
             }
@@ -531,7 +531,7 @@ struct ThermalHorizon: View {
                 if ProcessInfo.processInfo.isLowPowerModeEnabled {
                     Engraved(text: "LOW POWER MODE", color: Ramp.at(0.5), size: 7.5)
                 }
-                if UIDevice.current.batteryState == .charging {
+                if UIDevice.current.batteryState == .charging && !LeaderboardService.isMac {
                     Engraved(text: "CHARGING", color: Ramp.at(0.62), size: 7.5)
                 }
             }

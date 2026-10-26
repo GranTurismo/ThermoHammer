@@ -31,6 +31,11 @@ enum Forge {
     static let phaseWarmup      = Color(hex: 0x5A6B73)  // dormant steel
     static let phaseCalibration = Color(hex: 0x9D7BFF)  // arc violet
     static let phaseMeasured    = Color(hex: 0x3DE8C2)  // forge teal
+
+    /// The widest the app's column gets (an iPad in portrait): wider screens center it.
+    static let columnWidth: CGFloat = 600
+    /// From this wide (a Mac window, an iPad in landscape) the app lays out like a desktop app: a sidebar and two columns.
+    static let desktopWidth: CGFloat = 860
 }
 
 /// The Thermal Ramp — continuous position 0..1. t=0 cool teal → t=1 molten.
@@ -177,6 +182,7 @@ struct CornerTicks: ViewModifier {
                 line(CGPoint(x: w, y: h), CGPoint(x: w - l, y: h))
                 line(CGPoint(x: w, y: h), CGPoint(x: w, y: h - l))
             }
+            .allowsHitTesting(false)          // decoration over the whole card: the buttons under it take the clicks
         )
     }
 }
@@ -207,13 +213,17 @@ struct ForgeGrain: ViewModifier {
         return UIImage(cgImage: img).resizableImage(withCapInsets: .zero, resizingMode: .tile)
     }()
 
-    func body(content: Content) -> some View {
-        content.overlay(
-            Image(uiImage: ForgeGrain.noiseImage)
-                .resizable(resizingMode: .tile)
-                .allowsHitTesting(false)
-                .opacity(0.22)
-        )
+    @ViewBuilder func body(content: Content) -> some View {
+        if LeaderboardService.isMac {
+            content                    // on a Mac's lower-density screen the grain reads as static: none there
+        } else {
+            content.overlay(
+                Image(uiImage: ForgeGrain.noiseImage)
+                    .resizable(resizingMode: .tile)
+                    .allowsHitTesting(false)
+                    .opacity(0.22)
+            )
+        }
     }
 }
 

@@ -197,8 +197,8 @@ struct ThermalXRay: View {
                     .frame(height: 4).cornerRadius(2)
                 Engraved(text: "DEGRADED", size: 6.5)
             }
-            Text("iOS gives apps no thermal sensors — no °C, no zones. Lit regions show the only " +
-                 "signals an app can see: system thermal state, per-core worker throughput, battery level. " +
+            Text("\(LeaderboardService.isMac ? "macOS" : "iOS") gives apps no thermal sensors — no °C, no zones. Lit regions show the only " +
+                 "signals an app can see: system thermal state, per-core worker throughput\(LeaderboardService.isMac ? "" : ", battery level"). " +
                  "Nothing is estimated.")
                 .font(ThermoFont.mono(6.5)).foregroundColor(Forge.ink1)
             Text("Outline is schematic — part positions are typical, readings are measured. " +
@@ -234,7 +234,7 @@ struct ThermalXRay: View {
         out[.cpu] = cpuLit()
 
         // BATTERY ← charge level only. A gauge, on purpose not on the heat ramp.
-        if batteryLevel >= 0 {
+        if batteryLevel >= 0 && !LeaderboardService.isMac {        // a Mac's battery reading is made up: left dark
             let charging = batteryState == .charging || batteryState == .full
             out[.battery] = XRayLit(
                 color: Forge.phasePreFlight,

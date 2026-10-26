@@ -1,15 +1,15 @@
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BENCHMARK — the same five sections and the same scoring as the Android app
+// BENCHMARK — the same six sections and the same scoring as the Android app
 // (engine/Benchmark.kt) and the server (BenchmarkScoring.cs): CPU + MEM + GPU
-// + UX + AI, every test 6000 points on the Snapdragon 8 Elite reference phone.
+// + UX + AI + LLM, every test 6000 points on the Snapdragon 8 Elite reference phone.
 // Change a number here only together with those two.
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum BenchmarkScore {
     /// Bump when a scene, the resolution or the scoring changes — scores compare only within a version.
-    static let version = 2
+    static let version = 4
     /// Frames that start before this (s) are driver/shader warm-up and not scored.
     static let warmupS: Float = 2
     static let windowS: Float = 5
@@ -134,8 +134,8 @@ struct CpuResult {
 }
 
 enum CpuScore {
-    // geometric-mean kernel ops/s worth 6000 points (provisional — see Benchmark.kt)
-    static let refMath = 1172.0, refData = 632.0, refCrypto = 595.0, refMulti = 6091.0
+    // geometric-mean kernel ops/s worth 6000 points (the Honor, 2026-10-26 — see Benchmark.kt)
+    static let refMath = 1469.0, refData = 647.0, refCrypto = 580.0, refMulti = 5003.0
 
     static func ref(_ t: CpuTest) -> Double {
         switch t { case .math: return refMath; case .data: return refData; case .crypto: return refCrypto; case .multi: return refMulti }
@@ -200,34 +200,151 @@ enum MemScore {
 // MARK: - UX
 
 enum UxTest: Int, CaseIterable {
-    case web = 1, scroll, gallery, photo, video, qr
+    case web = 1, scroll, gallery, photo, video, export, qr
 
     var number: Int { rawValue }
-    var title: String { ["", "WEB BROWSING", "WEB SCROLLING", "PHOTO GALLERY", "PHOTO EDITING", "VIDEO PLAYBACK", "QR SCANNING"][rawValue] }
-    var seconds: Int { [0, 36, 20, 16, 15, 20, 24][rawValue] }
+    var title: String { ["", "WEB BROWSING", "WEB SCROLLING", "PHOTO GALLERY", "PHOTO EDITING", "VIDEO PLAYBACK", "VIDEO EXPORT", "QR SCANNING"][rawValue] }
+    var seconds: Int { [0, 36, 20, 16, 15, 28, 26, 24][rawValue] }
     /// The test's web page (bundled `web/` folder), for the browser tests.
-    var page: String? { [nil, "web/bench.html", "web/scroll.html", "web/gallery.html", nil, nil, nil][rawValue] }
+    var page: String? { [nil, "web/bench.html", "web/scroll.html", "web/gallery.html", nil, nil, nil, nil][rawValue] }
 }
 
 struct WebResult { let layout, canvas, css, svg, js: Double }
 struct ScrollResult { let speed, droppedPct: Double }
 struct GalleryResult { let jpeg, webp, avif: Double }
 
-/// The clips of UX Test 5: the same second of Neon City, 3840×2160 at 60 fps.
 enum VideoCodec: Int, CaseIterable {
     case avc, hevc, vp9, av1
     var label: String { ["H.264", "HEVC 10-BIT", "VP9", "AV1 10-BIT"][rawValue] }
     var short: String { ["H.264", "HEVC", "VP9", "AV1"][rawValue] }
-    var asset: String { ["media/clip_avc.mp4", "media/clip_hevc10.mp4", "media/clip_vp9.webm", "media/clip_av1.mp4"][rawValue] }
 }
 
-struct VideoCodecResult { let codec: VideoCodec; let fps: Double; let decoder: String?; let hardware: Bool; var error: String? = nil }
+/// The clips of UX Test 5 (media/, BenchmarkScene/build_ux_media.sh): Neon City, a different three seconds in each —
+/// 4K60 in every codec, 8K30 in HEVC and AV1. Android's VideoClip, in the same order.
+enum VideoClip: Int, CaseIterable {
+    case avc4k, hevc4k, vp94k, av14k, hevc8k, av18k
+    var codec: VideoCodec { [.avc, .hevc, .vp9, .av1, .hevc, .av1][rawValue] }
+    var k8: Bool { rawValue >= 4 }
+    var asset: String { ["media/clip_avc.mp4", "media/clip_hevc10.mp4", "media/clip_vp9.webm", "media/clip_av1.mp4",
+                         "media/clip8k_hevc10.mp4", "media/clip8k_av1.mp4"][rawValue] }
+    var width: Int { k8 ? 7680 : 3840 }
+    var height: Int { k8 ? 4320 : 2160 }
+    var fps: Int { k8 ? 30 : 60 }
+    var mbps: Int { [30, 18, 16, 10, 40, 24][rawValue] }
+    var res: String { k8 ? "8K" : "4K" }
+    var label: String { "\(codec.label) \(res)" }
+}
+
+struct VideoCodecResult {
+    let clip: VideoClip; let fps: Double; let decoder: String?; let hardware: Bool; var error: String? = nil
+    var codec: VideoCodec { clip.codec }
+}
 
 struct VideoResult {
     let codecs: [VideoCodecResult]
-    func fps(_ c: VideoCodec) -> Double { codecs.first { $0.codec == c }?.fps ?? 0 }
-    /// Bit per codec decoded in hardware — reported, not scored.
-    var hardwareMask: Int { codecs.filter { $0.hardware && $0.fps > 0 }.reduce(0) { $0 | (1 << $1.codec.rawValue) } }
+    func fps(_ c: VideoClip) -> Double { codecs.first { $0.clip == c }?.fps ?? 0 }
+    /// Bit per clip decoded in hardware — reported, not scored.
+    var hardwareMask: Int { codecs.filter { $0.hardware && $0.fps > 0 }.reduce(0) { $0 | (1 << $1.clip.rawValue) } }
+}
+
+/// The jobs of UX Test 6: the H.264 4K clip graded and encoded at a fixed bitrate — 4K60 H.264, HEVC, AV1 and 8K30 HEVC
+/// (from the 8K HEVC clip). Android's ExportJob, in the same order.
+enum ExportJob: Int, CaseIterable {
+    case avc4k, hevc4k, av14k, hevc8k
+    var codec: VideoCodec { [.avc, .hevc, .av1, .hevc][rawValue] }
+    var k8: Bool { self == .hevc8k }
+    var label: String { ["H.264", "HEVC", "AV1", "HEVC"][rawValue] }
+    var source: VideoClip { k8 ? .hevc8k : .avc4k }
+    var width: Int { k8 ? 7680 : 3840 }
+    var height: Int { k8 ? 4320 : 2160 }
+    var fps: Int { k8 ? 30 : 60 }
+    var mbps: Int { [40, 30, 20, 80][rawValue] }
+    var res: String { k8 ? "8K" : "4K" }
+    /// The timeline exported start to finish: 8 s of 4K60, 4 s of 8K30 (Android's ExportJob.seconds).
+    var seconds: Int { k8 ? 4 : 8 }
+    var frames: Int { seconds * fps }
+    var fileName: String { "Neon City · Night Run · \(res) \(label).mp4" }
+}
+
+/// UX Test 6 on the stage: an editor's export dialog — the job in hand, its progress, the render queue (Android's ExportStage).
+struct ExportStage: Equatable {
+    enum State { case done, active, pending, skipped }
+    struct Item: Equatable { let job: ExportJob; let state: State; var fps = 0.0; var psnr = 0.0 }
+    let job: ExportJob
+    let encoder: String?
+    let hardware: Bool
+    let framesDone: Int
+    let elapsedS: Double
+    let fps: Double
+    let step: String            // ENCODING · FINISHING THE FILE · CHECKING QUALITY · or why it can't run
+    let queue: [Item]
+    var progress: Double { min(1, max(0, Double(framesDone) / Double(job.frames))) }
+    var leftS: Double? { fps > 0 ? Double(max(0, job.frames - framesDone)) / fps : nil }
+    /// "×1.2 REAL TIME" — two decimals below 1, so a slow export doesn't read ×0.0.
+    var speedText: String {
+        guard fps > 0 else { return "×— REAL TIME" }
+        let x = fps / Double(job.fps)
+        return String(format: x < 1 ? "×%.2f REAL TIME" : "×%.1f REAL TIME", x)
+    }
+    /// "~2.4 S LEFT · " while encoding — or, when it won't finish in time, where it'll be cut off.
+    var timeLeftText: String {
+        guard step == "ENCODING", let left = leftS else { return "" }
+        return elapsedS + left > ExportBench.capS ? String(format: "STOPS AT %.0f S · ", ExportBench.capS) : String(format: "~%.1f S LEFT · ", left)
+    }
+}
+
+/// One export: frames encoded per second and the export's quality — luma PSNR (dB) of sampled frames' lower third
+/// against what went in. Below VideoGrid.minPsnr the speed doesn't count.
+struct ExportJobResult {
+    let job: ExportJob; let fps: Double; let psnr: Double; let encoder: String?; let hardware: Bool; var error: String? = nil
+    var counted: Double { psnr >= VideoGrid.minPsnr ? fps : 0 }
+}
+
+struct ExportResult {
+    let jobs: [ExportJobResult]
+    func job(_ j: ExportJob) -> ExportJobResult? { jobs.first { $0.job == j } }
+    func fps(_ j: ExportJob) -> Double { job(j)?.fps ?? 0 }
+    func psnr(_ j: ExportJob) -> Double { job(j)?.psnr ?? 0 }
+    func counted(_ j: ExportJob) -> Double { job(j)?.counted ?? 0 }
+    /// Bit per job encoded in hardware — reported, not scored.
+    var hardwareMask: Int { jobs.filter { $0.hardware && $0.fps > 0 }.reduce(0) { $0 | (1 << $1.job.rawValue) } }
+}
+
+/// The stage's player overlay during UX Test 5 (Android's VideoOsd).
+struct VideoOsd: Equatable {
+    let format: String          // e.g. "HEVC 10-BIT · 3840×2160 · 60 FPS"
+    let mbps: Int
+    let positionS: Double       // where in the clip
+    let durationS: Double       // the clip's length
+    let speed: Double           // × real time
+}
+
+/// What a speed means in playback terms (Android's VideoGrid): real time at a tier = at least 10 % faster than its
+/// frame rate. Derived from the measured speed, so a faster future chip fills in the higher tiers by itself.
+enum VideoGrid {
+    struct Tier { let k8: Bool; let fps: Int; var label: String { (k8 ? "8K" : "4K") + "\(fps)" } }
+    static let tiers = [Tier(k8: false, fps: 30), Tier(k8: false, fps: 60), Tier(k8: false, fps: 120), Tier(k8: false, fps: 240),
+                        Tier(k8: true, fps: 30), Tier(k8: true, fps: 60), Tier(k8: true, fps: 120), Tier(k8: true, fps: 240)]
+    static let margin = 1.1
+    /// dB on the lower third: honest encodes 29.7–33.9, a starved one 24.2 — below this the export is broken.
+    static let minPsnr = 26.0
+
+    enum Cell: String { case yes = "✓", no = "–", unsupported = "✗", notTested = "·" }
+
+    static func cell(_ t: Tier, _ fps4k: Double?, _ fps8k: Double?) -> Cell {
+        guard let f = t.k8 ? fps8k : fps4k else { return .notTested }
+        return f <= 0 ? .unsupported : f >= Double(t.fps) * margin ? .yes : .no
+    }
+    static func row(_ fps4k: Double?, _ fps8k: Double?) -> [Cell] { tiers.map { cell($0, fps4k, fps8k) } }
+    static func playback(_ v: VideoResult, _ c: VideoCodec) -> [Cell] {
+        row(VideoClip.allCases.first { $0.codec == c && !$0.k8 }.map { v.fps($0) },
+            VideoClip.allCases.first { $0.codec == c && $0.k8 }.map { v.fps($0) })
+    }
+    static func export(_ e: ExportResult, _ c: VideoCodec) -> [Cell] {
+        row(ExportJob.allCases.first { $0.codec == c && !$0.k8 }.map { e.counted($0) },
+            ExportJob.allCases.first { $0.codec == c && $0.k8 }.map { e.counted($0) })
+    }
+    static func text(_ cells: [Cell]) -> String { zip(tiers, cells).map { $0.label + $1.rawValue }.joined(separator: " ") }
 }
 
 /// ZXing's (zxing-cpp's) rate is scored; the platform's own scanner (Vision here, ML Kit on Android) is reported.
@@ -239,6 +356,7 @@ struct UxResult {
     var gallery: GalleryResult?
     var photoMps: Double
     var video: VideoResult?
+    var export: ExportResult?
     var qr: QrResult?
     var error: String? = nil
 
@@ -247,8 +365,9 @@ struct UxResult {
     var galleryPoints: Int { gallery.map(UxScore.galleryPoints) ?? 0 }
     var photoPoints: Int { UxScore.photoPoints(photoMps) }
     var videoPoints: Int { video.map(UxScore.videoPoints) ?? 0 }
+    var exportPoints: Int { export.map(UxScore.exportPoints) ?? 0 }
     var qrPoints: Int { UxScore.qrPoints(qr?.rate ?? 0) }
-    var score: Int { UxScore.overall([webPoints, scrollPoints, galleryPoints, photoPoints, videoPoints, qrPoints]) }
+    var score: Int { UxScore.overall([webPoints, scrollPoints, galleryPoints, photoPoints, videoPoints, qrPoints], export: exportPoints) }
 }
 
 enum UxScore {
@@ -257,7 +376,11 @@ enum UxScore {
     static let refJpeg = 122.0, refWebp = 99.0, refAvif = 103.0
     static let refPhoto = 397.0
     static let refVideo = 298.0
-    static let qrWeight = 13.6          // zxing-cpp decodes/s → points (440/s → 6000, as on Android)
+    // PROVISIONAL until the Honor's version-4 report (as on Android and the server)
+    static let refVideo8k = 74.5        // 8K frames/s, mean of HEVC and AV1
+    static let refExport = 100.0        // encoded 4K frames/s, mean of H.264, HEVC, AV1
+    static let refExport8k = 30.0       // encoded 8K frames/s, HEVC
+    static let qrWeight = 10.67         // zxing-cpp decodes/s → points (562/s → 6000, as on Android)
 
     static func webPoints(_ r: WebResult) -> Int {
         let parts = [r.layout / refLayout, r.canvas / refCanvas, r.css / refCss, r.svg / refSvg, r.js / refJs]
@@ -270,12 +393,26 @@ enum UxScore {
         Int((6000 * (max(r.jpeg, 0) / refJpeg + max(r.webp, 0) / refWebp + max(r.avif, 0) / refAvif) / 3).rounded())
     }
     static func photoPoints(_ mps: Double) -> Int { Int((6000 * max(mps, 0) / refPhoto).rounded()) }
-    /// Mean over the four codecs, so a codec the phone lacks costs a quarter instead of everything.
+    /// 4K three quarters (mean of the four codecs), 8K one quarter (mean of HEVC and AV1).
     static func videoPoints(_ r: VideoResult) -> Int {
-        Int((6000 * VideoCodec.allCases.map { max(r.fps($0), 0) }.reduce(0, +) / (refVideo * Double(VideoCodec.allCases.count))).rounded())
+        let k4 = VideoClip.allCases.filter { !$0.k8 }.map { max(r.fps($0), 0) }
+        let k8 = VideoClip.allCases.filter { $0.k8 }.map { max(r.fps($0), 0) }
+        return Int((6000 * (0.75 * k4.reduce(0, +) / (refVideo * Double(k4.count)) +
+                            0.25 * k8.reduce(0, +) / (refVideo8k * Double(k8.count)))).rounded())
+    }
+    /// The same split: 4K (mean of H.264, HEVC, AV1) three quarters, 8K HEVC one quarter; a failed quality check = 0.
+    static func exportPoints(_ r: ExportResult) -> Int {
+        let k4 = ExportJob.allCases.filter { !$0.k8 }.map { max(r.counted($0), 0) }
+        return Int((6000 * (0.75 * k4.reduce(0, +) / (refExport * Double(k4.count)) +
+                            0.25 * max(r.counted(.hevc8k), 0) / refExport8k)).rounded())
     }
     static func qrPoints(_ rate: Double) -> Int { Int((max(rate, 0) * qrWeight).rounded()) }
     static func overall(_ points: [Int]) -> Int { geomean(points) }
+    /// The six everyday tests' geometric mean six sevenths, the export one seventh: no 4K encoder costs a seventh, not the section.
+    static func overall(_ everyday: [Int], export: Int) -> Int {
+        let g = geomean(everyday)
+        return g <= 0 ? 0 : Int(((6 * Double(g) + Double(max(export, 0))) / 7).rounded())
+    }
 }
 
 // MARK: - AI
@@ -326,6 +463,43 @@ enum AiScore {
     static func overall(_ cpu: Int, _ gpu: Int, _ npu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0) + max(npu, 0)) / 3).rounded()) }
 }
 
+// MARK: - LLM
+
+/** Where the model runs: the CPU (ggml's Arm dot-product kernels) or every layer on the GPU (llama.cpp's Metal backend). */
+enum LlmAccel: Int, CaseIterable {
+    case cpu, gpu
+    var label: String { ["CPU", "GPU"][rawValue] }
+    var seconds: Int { [20, 16][rawValue] }
+}
+
+/** One accelerator: tokens/s reading the 512-token prompt and writing the reply (0 = it couldn't run, `error` says why). */
+struct LlmRun { let accel: LlmAccel; let prefill: Double; let decode: Double; var threads = 0; var error: String? = nil; var batchThreads = 0 }
+
+struct LlmResult {
+    let runs: [LlmRun]
+    let gpuName: String?              // the GPU llama.cpp ran on (nil when it didn't)
+    let freeGb: Double                // memory iOS still let the app take when the test began (reported)
+    let largestModel: Int             // the largest common 4-bit model that fits in it, billions of parameters (reported)
+    var error: String? = nil          // why the test couldn't run at all
+    func run(_ a: LlmAccel) -> LlmRun? { runs.first { $0.accel == a } }
+    /// The faster of the CPU and the GPU at each — what a chat app on this phone would get.
+    var prefill: Double { runs.map(\.prefill).max() ?? 0 }
+    var decode: Double { runs.map(\.decode).max() ?? 0 }
+    var prefillPoints: Int { LlmScore.prefillPoints(prefill) }
+    var decodePoints: Int { LlmScore.decodePoints(decode) }
+    var score: Int { LlmScore.overall(prefill, decode) }
+}
+
+enum LlmScore {
+    // tokens/s worth 6000 points — the Snapdragon 8 Elite's faster path, its GPU (see Benchmark.kt)
+    static let refPrefill = 362.7, refDecode = 17.23
+
+    static func prefillPoints(_ tokensPerS: Double) -> Int { Int((6000 * max(tokensPerS, 0) / refPrefill).rounded()) }
+    static func decodePoints(_ tokensPerS: Double) -> Int { Int((6000 * max(tokensPerS, 0) / refDecode).rounded()) }
+    /// Geometric mean of prefill and decode — each the faster of the CPU and the GPU; 0 if either is 0.
+    static func overall(_ prefill: Double, _ decode: Double) -> Int { geomean([prefillPoints(prefill), decodePoints(decode)]) }
+}
+
 // MARK: - The whole run
 
 struct BenchmarkResult {
@@ -336,6 +510,7 @@ struct BenchmarkResult {
     var rayTracingProblem: String? = nil
     var ux: UxResult?
     var ai: AiResult?
+    var llm: LlmResult?
     var validityFlags = 0
     var startCpuShare: Float = 1
     var quietWaitSec = 0
@@ -345,10 +520,11 @@ struct BenchmarkResult {
     var gpuScore: Int { BenchmarkScore.overall(gpu) }
     var uxScore: Int { ux?.score ?? 0 }
     var aiScore: Int { ai?.score ?? 0 }
-    var total: Int { cpuScore + memScore + gpuScore + uxScore + aiScore }
+    var llmScore: Int { llm?.score ?? 0 }
+    var total: Int { cpuScore + memScore + gpuScore + uxScore + aiScore + llmScore }
     var isVerified: Bool { validityFlags == 0 }
     /// Every section ran — what the server needs to accept the run.
-    var isComplete: Bool { cpu != nil && mem != nil && gpu.count == GpuTest.allCases.count && ux != nil && ai != nil }
+    var isComplete: Bool { cpu != nil && mem != nil && gpu.count == GpuTest.allCases.count && ux != nil && ai != nil && llm != nil }
 }
 
 /// Geometric mean; 0 if any part failed.

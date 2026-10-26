@@ -481,7 +481,7 @@ struct LeaderboardView: View {
                             .lineLimit(1)
                         
                         HStack(spacing: 4) {
-                            Text("\(item.entry.os == 1 ? "iOS" : "Android") \(item.entry.osVersion)")
+                            Text(LeaderboardService.osLabel(item.entry.os, item.entry.osVersion))
                                 .font(ThermoFont.mono(8))
                                 .foregroundColor(.secondary)
                             Text("•")
@@ -557,7 +557,7 @@ struct LeaderboardView: View {
                     testThreadingType: pending.testThreadingType ?? 1,
                     deviceManufacturer: pending.deviceManufacturer,
                     deviceModel: pending.deviceModel,
-                    os: 1, // iOS
+                    os: LeaderboardService.osPlatform,
                     osVersion: pending.osVersion,
                     sessionId: session.id,
                     hash: hmacHash,
@@ -607,7 +607,7 @@ struct LeaderboardView: View {
                         Text("\(entry.deviceManufacturer) \(entry.deviceModel)")
                             .font(ThermoFont.mono(16, weight: .black))
                             .foregroundColor(.white)
-                        Text("\(entry.deviceManufacturer) • \(entry.os == 1 ? "iOS" : "Android") \(entry.osVersion)")
+                        Text("\(entry.deviceManufacturer) • \(LeaderboardService.osLabel(entry.os, entry.osVersion))")
                             .font(ThermoFont.mono(10))
                             .foregroundColor(.secondary)
                     }

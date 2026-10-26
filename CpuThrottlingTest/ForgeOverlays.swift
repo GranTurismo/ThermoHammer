@@ -25,6 +25,7 @@ struct ForgeOverlayScrim<Content: View>: View {
         ZStack {
             Color.black.opacity(0.72).ignoresSafeArea()
             content()
+                .frame(maxWidth: Forge.columnWidth - 40)       // a card, not a banner, on a wide window
         }
         .transition(.opacity)
     }

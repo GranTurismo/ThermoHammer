@@ -9,8 +9,8 @@ enum BenchmarkReport {
         func f(_ v: Double, _ d: Int = 2) -> String { String(format: "%.\(d)f", v) }
         func pts(_ v: Int) -> String { v.formatted(.number.grouping(.automatic)) }
         line("ThermoHammer benchmark report · app \(appVersion) · \(time)")
-        line("\(device) · iOS \(os) · SoC \(soc) · GPU \(r.gpuName.isEmpty ? "?" : r.gpuName)")
-        line("TOTAL \(pts(r.total)) = CPU \(pts(r.cpuScore)) + MEM \(pts(r.memScore)) + GPU \(pts(r.gpuScore)) + UX \(pts(r.uxScore)) + AI \(pts(r.aiScore)) · validity flags \(r.validityFlags)")
+        line("\(device) · \(LeaderboardService.osLabel(LeaderboardService.osPlatform, os)) · SoC \(soc) · GPU \(r.gpuName.isEmpty ? "?" : r.gpuName)")
+        line("TOTAL \(pts(r.total)) = CPU \(pts(r.cpuScore)) + MEM \(pts(r.memScore)) + GPU \(pts(r.gpuScore)) + UX \(pts(r.uxScore)) + AI \(pts(r.aiScore)) + LLM \(pts(r.llmScore)) · validity flags \(r.validityFlags)")
         line("Start · CPU share \(Int((r.startCpuShare * 100).rounded()))% · waited \(r.quietWaitSec) s for background work")
         if let cpu = r.cpu {
             for t in CpuTest.allCases {
@@ -37,9 +37,19 @@ enum BenchmarkReport {
             line("UX 3 PHOTO GALLERY · \(pts(ux.galleryPoints)) pts · " + (ux.gallery.map { "JPEG \(f($0.jpeg)), WebP \(f($0.webp)), AVIF \(f($0.avif)) MP/s" } ?? "did not finish"))
             line("UX 4 PHOTO EDITING · \(pts(ux.photoPoints)) pts · \(f(ux.photoMps)) MP/s")
             line("UX 5 VIDEO PLAYBACK · \(pts(ux.videoPoints)) pts · " + (ux.video.map { v in v.codecs.map { c in
-                c.fps > 0 ? "\(c.codec.label) \(f(c.fps)) fps (\(c.hardware ? "HW" : "SW") \(c.decoder ?? "?"))" : "\(c.codec.label) 0 (\(c.error ?? "unsupported"))"
+                c.fps > 0 ? "\(c.clip.label) \(f(c.fps)) fps (\(c.hardware ? "HW" : "SW") \(c.decoder ?? "?"))" : "\(c.clip.label) 0 (\(c.error ?? "unsupported"))"
             }.joined(separator: ", ") } ?? "did not run"))
-            line("UX 6 QR SCANNING · \(pts(ux.qrPoints)) pts · " + (ux.qr.map { q in
+            if let v = ux.video {
+                for c in VideoCodec.allCases { line("  plays " + c.short.padding(toLength: 5, withPad: " ", startingAt: 0) + " " + VideoGrid.text(VideoGrid.playback(v, c))) }
+            }
+            line("UX 6 VIDEO EXPORT · \(pts(ux.exportPoints)) pts · " + (ux.export.map { e in e.jobs.map { j in
+                j.fps > 0 ? "\(j.job.label) \(j.job.res) \(f(j.fps)) fps \(f(j.psnr, 1)) dB\(j.psnr < VideoGrid.minPsnr ? " LOW QUALITY" : "") (\(j.hardware ? "HW" : "SW") \(j.encoder ?? "?"))"
+                    : "\(j.job.label) \(j.job.res) 0 (\(j.error ?? "unsupported"))"
+            }.joined(separator: ", ") } ?? "did not run"))
+            if let e = ux.export {
+                for c in [VideoCodec.avc, .hevc, .av1] { line("  exports " + c.short.padding(toLength: 5, withPad: " ", startingAt: 0) + " " + VideoGrid.text(VideoGrid.export(e, c))) }
+            }
+            line("UX 7 QR SCANNING · \(pts(ux.qrPoints)) pts · " + (ux.qr.map { q in
                 "ZXing \(f(q.rate))/s (\(q.missed) missed), \(q.referenceName) " +
                     (q.referenceRate.map { "\(f($0))/s" } ?? "n/a" + (q.referenceError.map { " (\($0))" } ?? ""))
             } ?? "did not run"))
@@ -56,6 +66,18 @@ enum BenchmarkReport {
                     parts.append(ips > 0 ? "\(a.label) \(f(ips))/s" : "\(a.label) 0 (\(run?.error ?? "not run"))")
                 }
                 line("AI \(t.number) \(t.title) · " + parts.joined(separator: ", "))
+            }
+        }
+        if let llm = r.llm {
+            line("LLM · \(pts(llm.score)) pts = prefill \(pts(llm.prefillPoints)) (\(f(llm.prefill)) tok/s) · decode \(pts(llm.decodePoints)) (\(f(llm.decode)) tok/s) · " +
+                 "\(f(llm.freeGb)) GB free, largest model \(llm.largestModel)B" + (llm.error.map { " · not run: \($0)" } ?? ""))
+            for a in LlmAccel.allCases {
+                if let run = llm.run(a), run.decode > 0 {
+                    line("LLM \(a.label) · prefill \(f(run.prefill)) tok/s · decode \(f(run.decode)) tok/s · " +
+                         (a == .gpu ? (llm.gpuName ?? "?") : "\(run.threads) threads (prompt \(run.batchThreads))"))
+                } else {
+                    line("LLM \(a.label) · 0 (\(llm.run(a)?.error ?? "not run"))")
+                }
             }
         }
         return s

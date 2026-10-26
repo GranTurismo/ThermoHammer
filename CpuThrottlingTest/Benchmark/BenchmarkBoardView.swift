@@ -14,13 +14,14 @@ struct BenchmarkDto: Decodable, Identifiable {
     let cpuScore: Int
     var aiScore: Int = 0
     var memScore: Int = 0
+    var llmScore: Int = 0
     let totalScore: Int
     let test3Fps: Double
     let rayTracing: Bool
     let runs: Int
 
     private enum CodingKeys: String, CodingKey {
-        case id, deviceManufacturer, deviceModel, socModel, gpuName, os, osVersion, score, uxScore, cpuScore, aiScore, memScore
+        case id, deviceManufacturer, deviceModel, socModel, gpuName, os, osVersion, score, uxScore, cpuScore, aiScore, memScore, llmScore
         case totalScore, test3Fps, rayTracing, runs
     }
 
@@ -38,6 +39,7 @@ struct BenchmarkDto: Decodable, Identifiable {
         cpuScore = try c.decode(Int.self, forKey: .cpuScore)
         aiScore = try c.decodeIfPresent(Int.self, forKey: .aiScore) ?? 0
         memScore = try c.decodeIfPresent(Int.self, forKey: .memScore) ?? 0
+        llmScore = try c.decodeIfPresent(Int.self, forKey: .llmScore) ?? 0
         totalScore = try c.decode(Int.self, forKey: .totalScore)
         test3Fps = try c.decode(Double.self, forKey: .test3Fps)
         rayTracing = try c.decode(Bool.self, forKey: .rayTracing)
@@ -109,8 +111,8 @@ struct BenchmarkBoardView: View {
             LazyVStack(spacing: 8) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("BENCHMARK").font(ThermoFont.mono(18, weight: .black)).tracking(1.5).foregroundColor(Forge.ink0)
-                        Text("CPU + MEM + GPU + UX + AI · best run per phone").font(ThermoFont.mono(9)).foregroundColor(Forge.ink0.opacity(0.4))
+                        Text("PHONE BENCHMARK").font(ThermoFont.mono(18, weight: .black)).tracking(1.5).foregroundColor(Forge.ink0)
+                        Text("All six sections · best verified run per phone").font(ThermoFont.mono(9)).foregroundColor(Forge.ink0.opacity(0.4))
                     }
                     Spacer()
                     Button { Task { await load() } } label: {
@@ -174,13 +176,13 @@ struct BenchmarkBoardView: View {
                     .frame(width: 38, alignment: .leading)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(e.name).font(ThermoFont.mono(12, weight: .bold)).foregroundColor(Forge.ink0).lineLimit(1)
-                    Text([e.gpuName, e.os == 1 ? "iOS \(e.osVersion)" : "Android \(e.osVersion)"].compactMap { $0 }.joined(separator: " · "))
+                    Text([e.gpuName, LeaderboardService.osLabel(e.os, e.osVersion)].compactMap { $0 }.joined(separator: " · "))
                         .font(ThermoFont.mono(8)).foregroundColor(Forge.ink0.opacity(0.4)).lineLimit(1)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(e.totalScore.formatted()).font(ThermoFont.mono(15, weight: .black)).foregroundColor(Forge.ink0)
-                    Text("CPU \(e.cpuScore.formatted()) · MEM \(e.memScore.formatted()) · GPU \(e.score.formatted()) · UX \(e.uxScore.formatted()) · AI \(e.aiScore.formatted()) · "
+                    Text("CPU \(e.cpuScore.formatted()) · MEM \(e.memScore.formatted()) · GPU \(e.score.formatted()) · UX \(e.uxScore.formatted()) · AI \(e.aiScore.formatted()) · LLM \(e.llmScore.formatted()) · "
                          + (e.rayTracing ? String(format: "RT %.0f FPS", e.test3Fps) : "NO RT"))
                         .font(ThermoFont.mono(7)).foregroundColor(Forge.ink0.opacity(0.4)).lineLimit(1).minimumScaleFactor(0.7)
                 }

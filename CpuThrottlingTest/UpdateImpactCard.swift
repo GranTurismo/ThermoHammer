@@ -163,7 +163,7 @@ struct UpdateImpactCard: View {
     }
 
     private func runs(_ n: Int) -> String { n == 1 ? "1 run" : "\(n) runs" }
-    private func osName(_ version: String) -> String { "iOS \(version)" }
+    private func osName(_ version: String) -> String { LeaderboardService.osLabel(LeaderboardService.osPlatform, version) }
     private func osDetail(_ build: String?) -> String {
         guard let b = build, !b.isEmpty else { return "" }
         return "BUILD \(b)"

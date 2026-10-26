@@ -3,7 +3,7 @@ import UIKit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK ENGINE — the run, in Android's order: getting ready (cool and
-// quiet), then CPU → MEM → GPU → UX → AI. The work runs on its own thread;
+// quiet), then CPU → MEM → GPU → UX → AI → LLM. The work runs on its own thread;
 // the stage reads the published state.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,9 @@ final class BenchmarkEngine: ObservableObject {
     @Published private(set) var uxValue = -1.0
     @Published private(set) var uxUnit = ""
     @Published private(set) var webPage: String?    // the page the stage shows (web tests)
-    @Published private(set) var videoFrame: UIImage?  // a decoded frame now and then (video test)
+    @Published private(set) var videoFrame: UIImage?  // a decoded (or exported) frame now and then (UX 5–6)
+    @Published private(set) var videoOsd: VideoOsd?   // the player overlay (UX 5)
+    @Published private(set) var exportStage: ExportStage?   // the export dialog (UX 6)
     @Published private(set) var qrFrame: UIImage?     // the frame under the scanner (QR test)
     @Published private(set) var qrFound: [CGPoint]?   // where the scanner found the code in it, frame pixels
     @Published var stageTitle = ""                 // set by later sections (AI)
@@ -43,12 +45,20 @@ final class BenchmarkEngine: ObservableObject {
     @Published private(set) var aiRate = -1.0
     @Published private(set) var aiDetail = ""
     @Published private(set) var aiVisual: AiVisual?
+    @Published private(set) var llmAccel: LlmAccel?     // where the model runs now — the stage is up while set
+    @Published private(set) var llmPhase: LlmPhase = .build
+    @Published private(set) var llmProgress = 0.0       // 0..1 through this accelerator
+    @Published private(set) var llmRate = -1.0          // tokens/s so far
+    @Published private(set) var llmDetail = ""
+    @Published private(set) var llmReply: [Int] = []    // the reply being written, token ids
+    @Published private(set) var llmPrompts = 0          // prompts read so far on this accelerator
+    @Published private(set) var inBackground = false  // on a Mac: another app is in front of the run
     @Published private(set) var result: BenchmarkResult?
     @Published private(set) var error: String?
     @Published private(set) var record: BenchmarkRecord?
 
-    /// Sections after MEM, in run order (GPU, UX, AI) — filled in as they're ported.
-    var laterSections: [BenchmarkSection] = [GpuSection(), UxSection(), AiSection()]
+    /// Sections after MEM, in run order (GPU, UX, AI, LLM).
+    var laterSections: [BenchmarkSection] = [GpuSection(), UxSection(), AiSection(), LlmSection()]
 
     static let cooldownMaxS = 30.0
     static let quietShare: Float = 0.85        // starts once it gets ≥ 85 % of the CPU…
@@ -58,12 +68,20 @@ final class BenchmarkEngine: ObservableObject {
 
     private let lock = NSLock()
     private var active = false
+    private var lostFront = false       // the app wasn't in front at some point of the run (Mac)
+    private var focusObservers: [NSObjectProtocol] = []
     var isActive: Bool { lock.withLock { active } }
     var isRunning: Bool { phase == .preparing || phase == .running }
 
-    private init() {}
+    private init() {
+        // quitting mid-run (⌘Q on a Mac) isn't a crash: the AI and LLM tests' "running" markers (AiSection, LlmSection)
+        // mustn't outlive a normal exit, or the next run would skip those tests as crashing ones
+        NotificationCenter.default.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            for key in ["benchmark.aiRunning", "benchmark.llmRunning"] { UserDefaults.standard.removeObject(forKey: key) }
+        }
+    }
 
-    /** `-benchFrom gpu|rt|ux|photo|qr|ai` (simulator checks) skips everything before that test. */
+    /** `-benchFrom gpu|rt|ux|photo|qr|ai|llm` (simulator checks) skips everything before that test. */
     let startFrom: String? = ProcessInfo.processInfo.arguments.firstIndex(of: "-benchFrom").flatMap { i in
         ProcessInfo.processInfo.arguments.dropFirst(i + 1).first }
 
@@ -73,6 +91,7 @@ final class BenchmarkEngine: ObservableObject {
         lock.withLock { active = true }
         result = nil; error = nil; record = nil; cpuTest = nil; memTest = nil; cpuProgress = nil; memProgress = nil
         phase = .preparing
+        watchFront()
         UIApplication.shared.isIdleTimerDisabled = true
         let t = Thread { [weak self] in self?.runAll() }
         t.qualityOfService = .userInitiated
@@ -86,11 +105,37 @@ final class BenchmarkEngine: ObservableObject {
 
     func dismissResult() { phase = .idle; result = nil; record = nil; error = nil }
 
+    /**
+     * On a Mac the run shares the screen: a window covered by another app gets its web content throttled by
+     * macOS (the browser tests stall), and whatever is in front competes for the chip. Losing the front during
+     * the run flags it unverified, and the stage says so while it lasts. (A phone runs the app full screen.)
+     */
+    private func watchFront() {
+        lock.withLock { lostFront = false }
+        inBackground = false
+        guard LeaderboardService.isMac, focusObservers.isEmpty else { return }
+        let nc = NotificationCenter.default
+        focusObservers = [
+            nc.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self, self.isRunning else { return }
+                if self.phase == .running { self.lock.withLock { self.lostFront = true } }   // getting ready doesn't count
+                self.inBackground = true
+            },
+            nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.inBackground = false
+            },
+        ]
+    }
+
     // MARK: - the run (worker thread)
 
     private func ui(_ block: @escaping () -> Void) { DispatchQueue.main.async(execute: block) }
 
     func publishVideoFrame(_ image: UIImage?) { if let image { ui { self.videoFrame = image } } }
+
+    func publishVideoOsd(_ osd: VideoOsd?) { ui { self.videoOsd = osd } }
+
+    func publishExportStage(_ stage: ExportStage?) { ui { self.exportStage = stage } }
 
     func publishQr(_ frame: UIImage?, found: [CGPoint]?) { ui { self.qrFrame = frame; self.qrFound = found } }
 
@@ -100,6 +145,15 @@ final class BenchmarkEngine: ObservableObject {
     }
 
     func publishAiVisual(_ v: AiVisual?) { ui { self.aiVisual = v } }
+
+    /** The LLM test on the stage now: the accelerator (nil when the section is over), its phase and live rate. */
+    func publishLlm(_ accel: LlmAccel?, phase: LlmPhase, progress: Double, rate: Double, detail: String, reply: [Int] = [], prompts: Int = 0) {
+        ui {
+            self.uxTest = nil; self.aiTest = nil; self.aiVisual = nil
+            self.llmAccel = accel; self.llmPhase = phase; self.llmProgress = progress; self.llmRate = rate
+            self.llmDetail = detail; self.llmReply = reply; self.llmPrompts = prompts
+        }
+    }
 
     /** The UX test on the stage now: its progress, what it's doing and its live number. */
     func publishUx(_ test: UxTest?, progress: Double = 0, detail: String = "", value: Double = -1, unit: String = "") {
@@ -167,7 +221,10 @@ final class BenchmarkEngine: ObservableObject {
     }
 
     private func charging() -> Bool {
-        DispatchQueue.main.sync { [.charging, .full].contains(UIDevice.current.batteryState) }
+        // a Mac: UIDevice's battery reading there is made up (1 %, charging, whatever the Mac's own says), and a Mac on
+        // its charger is how it's normally used — the phone's charger rule doesn't apply
+        if LeaderboardService.isMac { return false }
+        return DispatchQueue.main.sync { [.charging, .full].contains(UIDevice.current.batteryState) }
     }
 
     private func runAll() {
@@ -185,7 +242,10 @@ final class BenchmarkEngine: ObservableObject {
         r.startCpuShare = quiet.share
         r.quietWaitSec = quiet.waited
         guard isActive else { return finish(nil, error: nil) }
-        ui { self.phase = .running }
+        ui {
+            self.phase = .running
+            if self.inBackground { self.lock.withLock { self.lostFront = true } }
+        }
 
         do {
             let from = startFrom
@@ -196,12 +256,14 @@ final class BenchmarkEngine: ObservableObject {
                 r.mem = try runMem()
                 guard isActive else { return finish(nil, error: nil) }
             }
-            for section in laterSections where !(["ux", "photo", "qr", "ai"].contains(from) && section is GpuSection)
-                && !(from == "ai" && section is UxSection) && !(from == "rt" && !(section is GpuSection)) {
+            for section in laterSections where !(["ux", "photo", "video", "export", "qr", "ai"].contains(from) && section is GpuSection)
+                && !(from == "ai" && section is UxSection) && !(from == "rt" && !(section is GpuSection))
+                && !(from == "llm" && !(section is LlmSection)) {
                 if charging() { r.validityFlags |= BenchFlag.powerEvent }
                 try section.run(self, &r)
                 guard isActive else { return finish(nil, error: nil) }
             }
+            if lock.withLock({ lostFront }) { r.validityFlags |= BenchFlag.interference }
             finish(r, error: nil)
         } catch {
             finish(nil, error: isActive ? error.localizedDescription : nil)   // a stop is not an error
@@ -216,6 +278,8 @@ final class BenchmarkEngine: ObservableObject {
             self.cpuTest = nil; self.memTest = nil; self.gpuTest = nil; self.uxTest = nil; self.webPage = nil
             self.videoFrame = nil; self.qrFrame = nil; self.qrFound = nil; self.stageTitle = ""
             self.aiTest = nil; self.aiAccel = nil; self.aiVisual = nil
+            self.llmAccel = nil; self.llmReply = []
+            self.inBackground = false
             self.error = error
             self.result = r
             self.record = record

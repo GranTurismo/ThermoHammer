@@ -1,6 +1,6 @@
 import Foundation
 
-/** The UX tests in order: web browsing, web scrolling, photo gallery, photo editing, video playback, QR scanning. */
+/** The UX tests in order: web browsing, web scrolling, photo gallery, photo editing, video playback, video export, QR scanning. */
 struct UxSection: BenchmarkSection {
     func run(_ engine: BenchmarkEngine, _ r: inout BenchmarkResult) throws {
         var ux = UxResult(photoMps: 0)
@@ -16,7 +16,8 @@ struct UxSection: BenchmarkSection {
                 return nil
             }
         }
-        let first: UxTest = engine.startFrom == "photo" ? .photo : engine.startFrom == "qr" ? .qr : .web   // simulator checks
+        let first: UxTest = engine.startFrom == "photo" ? .photo : engine.startFrom == "video" ? .video
+            : engine.startFrom == "export" ? .export : engine.startFrom == "qr" ? .qr : .web   // simulator checks
         for test in [UxTest.web, .scroll, .gallery] where test.rawValue >= first.rawValue {
             guard let outcome = engine.runWebPage(test) else { return }
             switch test {
@@ -46,17 +47,44 @@ struct UxSection: BenchmarkSection {
                 return q(Double(idx.count) * 1e9 / Double(idx.reduce(Int64(0)) { $0 + durs[$1] }) * scene.megapixels)
             } ?? 0
         }
-        // UX 5: each codec's 4K60 decode rate
+        // UX 5: each clip's decode rate — 4K60 in four codecs, 8K30 in two
         guard engine.isActive else { return }
         if first.rawValue <= UxTest.video.rawValue {
             engine.publishUx(.video, detail: "OPENING DECODERS", unit: "FPS")
-            ux.video = VideoBench().run(isActive: { engine.isActive }) { f, fps, codec, image in
-                engine.publishUx(.video, progress: f / Double(VideoCodec.allCases.count), detail: "\(codec.label) · 3840×2160 · 60 FPS CLIP",
+            ux.video = VideoBench().run(isActive: { engine.isActive }) { f, fps, clip, image, position in
+                engine.publishUx(.video, progress: f / Double(VideoClip.allCases.count),
+                                 detail: position == nil ? "\(clip.label) · NOT SUPPORTED · 0 POINTS" : "\(clip.label) · VIDEOTOOLBOX",
                                  value: fps > 0 ? fps : -1, unit: "FPS")
                 engine.publishVideoFrame(image)
+                engine.publishVideoOsd(position.map { VideoOsd(format: "\(clip.codec.label) · \(clip.width)×\(clip.height) · \(clip.fps) FPS",
+                                                               mbps: clip.mbps, positionS: $0, durationS: 3, speed: fps / Double(clip.fps)) })
             }
+            engine.publishVideoOsd(nil)
         }
-        // UX 6: the shared QR frames, zxing-cpp on one thread (scored), then Vision (reported)
+        // UX 6: a graded edit exported by each encoder, its quality checked
+        guard engine.isActive else { return }
+        if first.rawValue <= UxTest.export.rawValue {
+            engine.publishUx(.export, detail: "OPENING ENCODERS", unit: "FPS")
+            ux.export = ExportBench().run(isActive: { engine.isActive }) { job, i, p, done in
+                let skipped = p.encoder == nil
+                let step = skipped ? (p.error ?? "not supported").uppercased() : p.stage
+                engine.publishUx(.export, progress: (Double(i) + p.fraction) / Double(ExportJob.allCases.count),
+                                 detail: skipped ? "\(job.label) \(job.res) · \(step) · 0 POINTS"
+                                     : "\(job.label) \(job.res) · \(job.mbps) MBPS · \(p.encoder ?? "")",
+                                 value: p.fps > 0 ? p.fps : -1, unit: "FPS")
+                engine.publishVideoFrame(p.image)
+                let queue = ExportJob.allCases.map { e -> ExportStage.Item in
+                    if let r = done.first(where: { $0.job == e }) {
+                        return r.fps > 0 ? ExportStage.Item(job: e, state: .done, fps: r.fps, psnr: r.psnr) : ExportStage.Item(job: e, state: .skipped)
+                    }
+                    return ExportStage.Item(job: e, state: e == job ? (skipped ? .skipped : .active) : .pending)
+                }
+                engine.publishExportStage(ExportStage(job: job, encoder: p.encoder, hardware: p.encoder.map { !$0.contains("software") } ?? false,
+                                                      framesDone: p.framesDone, elapsedS: p.elapsedS, fps: p.fps, step: step, queue: queue))
+            }
+            engine.publishExportStage(nil)
+        }
+        // UX 7: the shared QR frames, zxing-cpp on one thread (scored), then Vision (reported)
         guard engine.isActive else { return }
         engine.publishUx(.qr, detail: "PREPARING FRAMES", unit: "SCANS/S")
         ux.qr = noted(.qr) { () -> QrResult in
