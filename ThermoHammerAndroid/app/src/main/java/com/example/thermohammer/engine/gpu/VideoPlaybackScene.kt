@@ -12,22 +12,22 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
-import com.example.thermohammer.engine.VideoCodec
+import com.example.thermohammer.engine.VideoClip
 import com.example.thermohammer.engine.VideoCodecResult
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIDEO PLAYBACK — UX Test 5: 4K60 decode throughput, codec by codec.
+// VIDEO PLAYBACK — UX Test 5: decode throughput, clip by clip.
 //
-//   Each clip in assets/media (the same second of Neon City, 3840×2160 at 60
-//   fps: H.264, HEVC Main 10, VP9, AV1 10-bit) loops through the phone's own
-//   decoder — MediaCodec, hardware where it has one — as fast as it will go.
-//   Frames decode into a SurfaceTexture that this GL thread latches and draws,
-//   so the stage shows the clip fast-forwarding and the decoder never waits on
-//   the display. Per codec: WARMUP_S, then MEASURE_S counted; the result is
-//   frames decoded per second. A codec the phone can't decode at 4K scores 0 —
-//   shown for SKIP_S and passed over.
+//   Each clip in assets/media (VideoClip: three seconds of Neon City each, 4K60
+//   H.264, HEVC Main 10, VP9, AV1 10-bit, then 8K30 HEVC and AV1) loops through
+//   the phone's own decoder — MediaCodec, hardware where it has one — as fast
+//   as it will go. Frames decode into a SurfaceTexture that this GL thread
+//   latches and draws, so the stage shows the clip fast-forwarding and the
+//   decoder never waits on the display. Per clip: WARMUP_S, then MEASURE_S
+//   counted; the result is frames decoded per second. A clip the phone can't
+//   decode scores 0 — shown for SKIP_S and passed over.
 // ─────────────────────────────────────────────────────────────────────────────
 
 internal class VideoPlaybackScene(private val assets: AssetManager, private val outW: Int, private val outH: Int) : GpuScene {
@@ -36,12 +36,12 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
         const val WARMUP_S = 0.6f
         const val MEASURE_S = 3.6f
         const val SKIP_S = 1.0f
-        const val W = 3840
-        const val H = 2160
     }
 
     // published for the engine's sampler (another thread)
-    @Volatile var current: VideoCodec? = null; private set
+    @Volatile var current: VideoClip? = null; private set
+    @Volatile var positionS = 0.0; private set          // where in the clip the newest frame is (the stage's timecode)
+    @Volatile var durationS = 0.0; private set
     @Volatile var currentFps = 0.0; private set
     @Volatile var currentDecoder: String? = null; private set
     @Volatile var currentHardware = false; private set
@@ -63,7 +63,7 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
     private lateinit var draw: Program
     private var vao = 0
 
-    private var next = 0                  // index into VideoCodec.entries
+    private var next = 0                  // index into VideoClip.entries
     private var session: Session? = null
     private var phaseStart = 0f
     private var skipping = false
@@ -79,7 +79,7 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
         GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
         callbacks = HandlerThread("th-video").also { it.start() }
         surfaceTexture = SurfaceTexture(oesTex)
-        surfaceTexture.setDefaultBufferSize(W, H)
+        surfaceTexture.setDefaultBufferSize(3840, 2160)
         surfaceTexture.setOnFrameAvailableListener({ pending.incrementAndGet() }, Handler(callbacks.looper))
         surface = Surface(surfaceTexture)
         outputFbo = Gl.framebuffer(colorTex = Gl.texture(outW, outH))
@@ -116,14 +116,14 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
     private fun step(t: Float) {
         val s = session
         if (s == null && !skipping) {
-            if (next >= VideoCodec.entries.size) { finish(); return }
-            begin(VideoCodec.entries[next++], t)
+            if (next >= VideoClip.entries.size) { finish(); return }
+            begin(VideoClip.entries[next++], t)
             return
         }
         val el = t - phaseStart
         val index = next - 1
         if (skipping) {
-            progress = (index + (el / SKIP_S).coerceIn(0f, 1f)) / VideoCodec.entries.size
+            progress = (index + (el / SKIP_S).coerceIn(0f, 1f)) / VideoClip.entries.size
             if (el >= SKIP_S) { skipping = false; haveFrame = false }
             return
         }
@@ -140,37 +140,41 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
             val secs = (now - s.measureStartNs) / 1e9
             if (secs > 0.05) currentFps = (s.decoded - s.measureStartFrames) / secs
         } else if (el > 0.05f) currentFps = s.decoded / el.toDouble()
-        progress = (index + (el / (WARMUP_S + MEASURE_S)).coerceIn(0f, 1f)) / VideoCodec.entries.size
+        progress = (index + (el / (WARMUP_S + MEASURE_S)).coerceIn(0f, 1f)) / VideoClip.entries.size
+        val frames = s.clipFrames
+        positionS = (s.decoded % frames) / s.clip.fps.toDouble()
         if (el >= WARMUP_S + MEASURE_S) end(s, null)
     }
 
-    private fun begin(codec: VideoCodec, t: Float) {
-        current = codec; currentFps = 0.0; currentDecoder = null; currentHardware = false
+    private fun begin(clip: VideoClip, t: Float) {
+        current = clip; currentFps = 0.0; currentDecoder = null; currentHardware = false; positionS = 0.0; durationS = 3.0
         phaseStart = t
         haveFrame = false
-        val s = try { Session(codec) } catch (e: Exception) { null.also { unsupported(codec, e.message) } }
+        val s = try { Session(clip) } catch (e: Exception) { null.also { unsupported(clip, e.message) } }
         if (s == null) return
-        if (s.decoderName == null) { s.release(); unsupported(codec, "no ${codec.label} decoder for 3840×2160"); return }
+        durationS = s.clipFrames / clip.fps.toDouble()
+        if (s.decoderName == null) { s.release(); unsupported(clip, "no ${clip.codec.label} decoder for ${clip.width}×${clip.height}"); return }
         currentDecoder = s.decoderName; currentHardware = s.hardware
         try {
             s.start(surface)
         } catch (e: Exception) {
             s.release()
-            unsupported(codec, e.message ?: e.javaClass.simpleName)
+            unsupported(clip, e.message ?: e.javaClass.simpleName)
             return
         }
+        surfaceTexture.setDefaultBufferSize(clip.width, clip.height)
         session = s
     }
 
-    private fun unsupported(codec: VideoCodec, why: String?) {
-        results += VideoCodecResult(codec, 0.0, currentDecoder, false, why ?: "not supported")
+    private fun unsupported(clip: VideoClip, why: String?) {
+        results += VideoCodecResult(clip, 0.0, currentDecoder, false, why ?: "not supported")
         skipping = true
     }
 
     private fun end(s: Session, error: String?) {
         val secs = if (s.measureStartNs != 0L) (System.nanoTime() - s.measureStartNs) / 1e9 else 0.0
         val fps = if (error == null && secs > 0) (s.decoded - s.measureStartFrames) / secs else 0.0
-        results += VideoCodecResult(s.codec, fps, s.decoderName, s.hardware, error)
+        results += VideoCodecResult(s.clip, fps, s.decoderName, s.hardware, error)
         s.release()
         session = null
     }
@@ -189,11 +193,12 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
     }
 
     /** One clip looping through one decoder. */
-    private inner class Session(val codec: VideoCodec) {
-        private val afd = assets.openFd(codec.asset)
+    private inner class Session(val clip: VideoClip) {
+        private val afd = assets.openFd(clip.asset)
         private val extractor = MediaExtractor().apply { setDataSource(afd) }
         private val track: Int
         private val clipUs: Long
+        val clipFrames: Int
         val decoderName: String?
         val hardware: Boolean
         private var decoder: MediaCodec? = null
@@ -209,9 +214,10 @@ internal class VideoPlaybackScene(private val assets: AssetManager, private val 
             }
             extractor.selectTrack(track)
             val format = extractor.getTrackFormat(track)
-            clipUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 1_000_000L
+            clipUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 3_000_000L
+            clipFrames = maxOf(1, Math.round(clipUs / 1e6 * clip.fps).toInt())
             // speed is what's measured, so the decoder has to take the size and profile, not 60 fps playback
-            val query = MediaFormat.createVideoFormat(codec.mime, W, H).apply {
+            val query = MediaFormat.createVideoFormat(clip.codec.mime, clip.width, clip.height).apply {
                 for (k in arrayOf(MediaFormat.KEY_PROFILE, MediaFormat.KEY_LEVEL))
                     if (format.containsKey(k)) setInteger(k, format.getInteger(k))
             }

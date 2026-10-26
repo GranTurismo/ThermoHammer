@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 
 data class RankedEntry(val entry: HammerDto, val rank: Int, val stability: Double)
 
-/** Leaderboard tab: the GPU benchmark board (default) or the sustained stress board. */
+/** Leaderboard tab: the benchmark board (default) or the sustained stress board. */
 @Composable
 fun LeaderboardScreen(isNetworkConnected: Boolean) {
     var board by remember { mutableIntStateOf(0) }       // 0 benchmark · 1 stress
@@ -51,7 +51,7 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                 .border(1.dp, Forge.hairline, RoundedCornerShape(12.dp)).padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            for ((i, label) in listOf("GPU BENCHMARK", "STRESS TEST").withIndex()) {
+            for ((i, label) in listOf("BENCHMARK", "STRESS TEST").withIndex()) {
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
                         .background(if (board == i) Forge.phaseMeasured else Color.Transparent)
@@ -107,9 +107,9 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("GPU BENCHMARK", style = TextStyle(color = Forge.ink0, fontSize = 18.sp, fontFamily = InstrumentMono,
+                    Text("PHONE BENCHMARK", style = TextStyle(color = Forge.ink0, fontSize = 18.sp, fontFamily = InstrumentMono,
                         fontWeight = FontWeight.Black, letterSpacing = 1.5.sp))
-                    Text("CPU + MEM + GPU + UX + AI · best run per phone",
+                    Text("All six sections · best verified run per phone",
                         style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = InstrumentMono))
                 }
                 IconButton(onClick = { load() }, enabled = !isLoading) {
@@ -185,15 +185,15 @@ private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: 
             Column(Modifier.weight(1f)) {
                 Text(name, style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono,
                     fontWeight = FontWeight.Bold), maxLines = 1)
-                Text(listOfNotNull(entry.gpuName, "Android ${entry.osVersion}".takeIf { entry.os == 2 }).joinToString(" · "),
+                Text(listOfNotNull(entry.gpuName, osLabel(entry.os, entry.osVersion)).joinToString(" · "),
                     style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono), maxLines = 1)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("%,d".format(entry.totalScore), style = TextStyle(color = Forge.ink0, fontSize = 15.sp, fontFamily = InstrumentMono,
                     fontWeight = FontWeight.Black))
-                Text("CPU %,d · MEM %,d · GPU %,d · UX %,d · AI %,d · %s".format(entry.cpuScore, entry.memScore, entry.score, entry.uxScore, entry.aiScore,
-                        if (entry.rayTracing) "RT %.0f FPS".format(entry.test3Fps) else "NO RT"),
-                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
+                Text("CPU %,d · MEM %,d · GPU %,d · UX %,d · AI %,d · LLM %,d · %s".format(entry.cpuScore, entry.memScore, entry.score,
+                        entry.uxScore, entry.aiScore, entry.llmScore, if (entry.rayTracing) "RT %.0f FPS".format(entry.test3Fps) else "NO RT"),
+                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 7.sp, fontFamily = InstrumentMono), maxLines = 1)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -753,7 +753,7 @@ private fun LeaderboardItemRow(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(entry.deviceManufacturer, style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
                 Box(Modifier.size(2.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.15f)))
-                Text("${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
+                Text(osLabel(entry.os, entry.osVersion), style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono))
                 Box(Modifier.size(2.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.15f)))
                 Text(threadText, style = TextStyle(color = threadColor, fontSize = 8.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
             }
@@ -795,7 +795,7 @@ private fun DetailOverlay(
                         "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
                     }
                     Text(fullModelName, style = TextStyle(color = Forge.ink0, fontSize = 16.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
-                    Text("${entry.deviceManufacturer} • ${if (entry.os == 1) "iOS" else "Android"} ${entry.osVersion}", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
+                    Text("${entry.deviceManufacturer} • ${osLabel(entry.os, entry.osVersion)}", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
                 }
                 Box(
                     Modifier.size(32.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.08f)).clickable(onClick = onDismiss),
@@ -875,3 +875,6 @@ fun CustomFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
         )
     }
 }
+
+/** OsPlatform on the server: 1 iOS, 2 Android, 3 macOS (the iPhone app on an Apple-silicon Mac). */
+private fun osLabel(os: Int, version: String): String = "${when (os) { 2 -> "Android"; 3 -> "macOS"; else -> "iOS" }} $version"

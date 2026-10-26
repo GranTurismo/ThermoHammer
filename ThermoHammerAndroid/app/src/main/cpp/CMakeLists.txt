@@ -66,3 +66,45 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set_source_files_properties(${BENCH_CORE}/src/crypto_arm.cpp PROPERTIES COMPILE_OPTIONS "-march=armv8-a+crypto")
 endif()
 target_link_libraries(benchcore z dl)
+
+# The LLM test: llama.cpp (BenchCore/third_party/llama.cpp, b11700) running BenchCore/llm — its CPU backend with
+# the Arm dot-product kernels and its OpenCL backend for Adreno GPUs, with the kernels' sources embedded and the
+# phone's OpenCL driver opened at run time (cl_loader.c). Its own library (libbenchllm.so), 64-bit Arm only: the
+# other ABIs get none, and the test reports it can't run. Third-party code: optimised in debug builds too, its
+# warnings off, its symbols hidden.
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(LLAMA ${BENCH_CORE}/third_party/llama.cpp)
+    set(GGML ${LLAMA}/ggml/src)
+    file(GLOB LLAMA_SRC ${LLAMA}/src/*.cpp ${LLAMA}/src/models/*.cpp)
+    set(GGML_BASE_SRC ${GGML}/ggml.c ${GGML}/ggml.cpp ${GGML}/ggml-alloc.c ${GGML}/ggml-backend.cpp
+        ${GGML}/ggml-backend-meta.cpp ${GGML}/ggml-backend-dl.cpp ${GGML}/ggml-backend-reg.cpp ${GGML}/ggml-opt.cpp
+        ${GGML}/ggml-threading.cpp ${GGML}/ggml-quants.c ${GGML}/gguf.cpp)
+    file(GLOB GGML_CPU_SRC ${GGML}/ggml-cpu/*.c ${GGML}/ggml-cpu/*.cpp ${GGML}/ggml-cpu/tiled/*.cpp)
+    list(APPEND GGML_CPU_SRC ${GGML}/ggml-cpu/llamafile/sgemm.cpp ${GGML}/ggml-cpu/arch/arm/quants.c
+        ${GGML}/ggml-cpu/arch/arm/repack.cpp)
+    set(GGML_OPENCL_SRC ${GGML}/ggml-opencl/ggml-opencl.cpp ${GGML}/ggml-opencl/cl-program-cache.cpp)
+
+    # every OpenCL kernel as a C++ raw string the backend #includes (what its embed_kernel.py does)
+    set(CL_EMBED ${CMAKE_CURRENT_BINARY_DIR}/cl-kernels)
+    file(MAKE_DIRECTORY ${CL_EMBED})
+    file(GLOB CL_KERNELS ${GGML}/ggml-opencl/kernels/*.cl)
+    foreach(K ${CL_KERNELS})
+        get_filename_component(N ${K} NAME)
+        file(READ ${K} BODY)
+        file(WRITE ${CL_EMBED}/${N}.h.tmp "R\"CLKERNEL(${BODY})CLKERNEL\"\n")
+        file(COPY_FILE ${CL_EMBED}/${N}.h.tmp ${CL_EMBED}/${N}.h ONLY_IF_DIFFERENT)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${K})
+    endforeach()
+
+    add_library(benchllm SHARED ${LLAMA_SRC} ${GGML_BASE_SRC} ${GGML_CPU_SRC} ${GGML_OPENCL_SRC}
+        ${BENCH_CORE}/llm/llm.cpp llm_jni.cpp cl_loader.c)
+    target_include_directories(benchllm PRIVATE ${BENCH_CORE}/include ${LLAMA}/include ${LLAMA}/ggml/include ${GGML}
+        ${GGML}/ggml-cpu ${LLAMA}/src ${BENCH_CORE}/third_party/OpenCL-Headers ${CL_EMBED})
+    target_compile_definitions(benchllm PRIVATE _XOPEN_SOURCE=600 _GNU_SOURCE GGML_SCHED_MAX_COPIES=4
+        GGML_USE_CPU GGML_USE_OPENCL GGML_USE_CPU_REPACK GGML_USE_LLAMAFILE
+        GGML_OPENCL_SOA_Q GGML_OPENCL_TARGET_VERSION=300 GGML_OPENCL_USE_ADRENO_KERNELS GGML_OPENCL_EMBED_KERNELS)
+    target_compile_options(benchllm PRIVATE -O3 -w -fvisibility=hidden -fvisibility-inlines-hidden)
+    set_source_files_properties(${GGML_CPU_SRC} PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod+fp16")
+    target_link_libraries(benchllm log dl)
+    target_link_options(benchllm PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL)
+endif()

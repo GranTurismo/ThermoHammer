@@ -71,9 +71,10 @@ class BenchmarkScoreTest {
         assertEquals(4260 / 48.0, r.avgFps, 0.3)              // frames ÷ time: 23 s at 120 + 25 s at 60
     }
 
-    private fun ux(web: Int, scroll: Int, gallery: Int, photo: Int, video: Int, qr: Int) = UxResult(
-        web = null, scroll = null, gallery = null, photoMps = 0.0, video = null, qr = null,
-        webPoints = web, scrollPoints = scroll, galleryPoints = gallery, photoPoints = photo, videoPoints = video, qrPoints = qr)
+    private fun ux(web: Int, scroll: Int, gallery: Int, photo: Int, video: Int, export: Int, qr: Int) = UxResult(
+        web = null, scroll = null, gallery = null, photoMps = 0.0, video = null, export = null, qr = null,
+        webPoints = web, scrollPoints = scroll, galleryPoints = gallery, photoPoints = photo, videoPoints = video,
+        exportPoints = export, qrPoints = qr)
 
     @Test
     fun `each UX test scores 6000 at its reference`() {
@@ -89,16 +90,54 @@ class BenchmarkScoreTest {
     }
 
     @Test
-    fun `video averages its codecs, so a missing one costs a quarter`() {
-        fun video(vararg fps: Double) = VideoResult(VideoCodec.entries.mapIndexed { i, c -> VideoCodecResult(c, fps[i], "dec", true) })
-        val ref = UxScore.REF_VIDEO
-        assertEquals(6000, UxScore.videoPoints(video(ref, ref, ref, ref)))
-        assertEquals(4500, UxScore.videoPoints(video(ref, ref, ref, 0.0)))
-        assertEquals(3000, UxScore.videoPoints(video(ref / 2, ref / 2, ref / 2, ref / 2)))   // real time
-        val mixed = VideoResult(listOf(VideoCodecResult(VideoCodec.AVC, 200.0, "a", true),
-            VideoCodecResult(VideoCodec.AV1, 30.0, "b", false), VideoCodecResult(VideoCodec.VP9, 0.0, null, false, "no decoder")))
-        assertEquals(1 shl VideoCodec.AVC.ordinal, mixed.hardwareMask)
-        assertEquals(0.0, mixed.fps(VideoCodec.HEVC), 0.0)
+    fun `video averages its clips, 4K three quarters and 8K one`() {
+        val r4 = UxScore.REF_VIDEO; val r8 = UxScore.REF_VIDEO_8K
+        fun video(vararg fps: Double) = VideoResult(VideoClip.entries.mapIndexed { i, c -> VideoCodecResult(c, fps[i], "dec", true) })
+        assertEquals(6000, UxScore.videoPoints(video(r4, r4, r4, r4, r8, r8)))
+        assertEquals(4500, UxScore.videoPoints(video(r4, r4, r4, r4, 0.0, 0.0)))        // no 8K: a quarter off
+        assertEquals(4875, UxScore.videoPoints(video(r4, r4, r4, 0.0, r8, r8)))         // no 4K AV1: a quarter of 4K
+        assertEquals(3000, UxScore.videoPoints(video(r4 / 2, r4 / 2, r4 / 2, r4 / 2, r8 / 2, r8 / 2)))
+        val mixed = VideoResult(listOf(VideoCodecResult(VideoClip.AVC_4K, 200.0, "a", true),
+            VideoCodecResult(VideoClip.AV1_4K, 30.0, "b", false), VideoCodecResult(VideoClip.HEVC_8K, 64.0, "c", true),
+            VideoCodecResult(VideoClip.VP9_4K, 0.0, null, false, "no decoder")))
+        assertEquals((1 shl VideoClip.AVC_4K.ordinal) or (1 shl VideoClip.HEVC_8K.ordinal), mixed.hardwareMask)
+        assertEquals(0.0, mixed.fps(VideoClip.HEVC_4K), 0.0)
+    }
+
+    @Test
+    fun `a phone with no 4K encoder loses a seventh of UX, not all of it`() {
+        assertEquals(6000, ux(6000, 6000, 6000, 6000, 6000, 6000, 6000).score)
+        assertEquals(5143, ux(6000, 6000, 6000, 6000, 6000, 0, 6000).score)      // 6/7 of 6000
+        assertEquals(6857, ux(6000, 6000, 6000, 6000, 6000, 12000, 6000).score)  // a fast encoder adds its seventh
+        assertEquals(0, ux(6000, 0, 6000, 6000, 6000, 6000, 6000).score)         // an everyday test that failed still zeroes it
+    }
+
+    @Test
+    fun `export counts only what passes the quality check`() {
+        val r4 = UxScore.REF_EXPORT; val r8 = UxScore.REF_EXPORT_8K
+        fun export(vararg r: Pair<Double, Double>) =
+            ExportResult(ExportJob.entries.mapIndexed { i, j -> ExportJobResult(j, r[i].first, r[i].second, "enc", true) })
+        val good = 40.0
+        assertEquals(6000, UxScore.exportPoints(export(r4 to good, r4 to good, r4 to good, r8 to good)))
+        assertEquals(4500, UxScore.exportPoints(export(r4 to good, r4 to good, r4 to good, 0.0 to 0.0)))
+        // a fast but broken encode counts nothing: H.264 ten times the reference below the quality floor = no H.264
+        assertEquals(3000, UxScore.exportPoints(export(r4 * 10 to 20.0, r4 to good, r4 to good, 0.0 to 0.0)))
+        assertEquals(0.0, ExportJobResult(ExportJob.AVC_4K, 500.0, VideoGrid.MIN_PSNR - 0.01, null, true).counted, 0.0)
+        assertEquals(500.0, ExportJobResult(ExportJob.AVC_4K, 500.0, VideoGrid.MIN_PSNR, null, true).counted, 0.0)
+    }
+
+    @Test
+    fun `the grid reads a speed as real-time tiers with ten percent to spare`() {
+        assertEquals(listOf(VideoGrid.Cell.YES, VideoGrid.Cell.YES, VideoGrid.Cell.YES, VideoGrid.Cell.NO,
+            VideoGrid.Cell.YES, VideoGrid.Cell.NO, VideoGrid.Cell.NO, VideoGrid.Cell.NO), VideoGrid.row(240.0, 40.0))
+        assertEquals(VideoGrid.Cell.NO, VideoGrid.cell(VideoGrid.Tier(false, 120), 131.9, null))      // 120 × 1.1 = 132
+        assertEquals(VideoGrid.Cell.YES, VideoGrid.cell(VideoGrid.Tier(false, 120), 132.0, null))
+        assertEquals(VideoGrid.Cell.UNSUPPORTED, VideoGrid.cell(VideoGrid.Tier(true, 30), 300.0, 0.0))
+        assertEquals(VideoGrid.Cell.NOT_TESTED, VideoGrid.cell(VideoGrid.Tier(true, 30), 300.0, null))
+        // a future chip: 8K240 lights up from the measured speed alone
+        assertEquals(VideoGrid.Cell.YES, VideoGrid.row(1200.0, 270.0).last())
+        val v = VideoResult(listOf(VideoCodecResult(VideoClip.VP9_4K, 150.0, "d", true)))
+        assertEquals("4K30✓ 4K60✓ 4K120✓ 4K240– 8K30· 8K60· 8K120· 8K240·", VideoGrid.text(VideoGrid.playback(v, VideoCodec.VP9)))
     }
 
     @Test
@@ -125,9 +164,9 @@ class BenchmarkScoreTest {
         assertEquals(6000, UxScore.overall(listOf(6000, 6000, 6000, 6000, 6000, 6000)))
         assertEquals(4000, UxScore.overall(listOf(8000, 2000, 8000, 2000, 8000, 2000)))
         assertEquals(0, UxScore.overall(listOf(6000, 6000, 6000, 0, 6000, 6000)))
-        assertEquals(4000, ux(8000, 2000, 8000, 2000, 8000, 2000).score)
+        assertEquals(4000, ux(8000, 2000, 8000, 2000, 8000, 4000, 2000).score)
         val result = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0,
-            ux = ux(8000, 2000, 8000, 2000, 8000, 2000))
+            ux = ux(8000, 2000, 8000, 2000, 8000, 4000, 2000))
         assertEquals(9000, result.total)
     }
 
@@ -143,7 +182,7 @@ class BenchmarkScoreTest {
         val cpu = CpuResult(ref.map { (t, r) -> com.example.thermohammer.engine.cpu.CpuTestRun(t, mapOf("K" to r)) })
         assertEquals(6000, cpu.score)
         val result = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0,
-            ux = ux(8000, 2000, 8000, 2000, 8000, 2000), cpu = cpu)
+            ux = ux(8000, 2000, 8000, 2000, 8000, 4000, 2000), cpu = cpu)
         assertEquals(6000 + 5000 + 4000, result.total)
     }
 
@@ -176,24 +215,51 @@ class BenchmarkScoreTest {
     @Test
     fun `canonical string is what the server re-derives`() {
         val p = BenchmarkPayload(
-            sessionId = 7, hash = "", benchmarkVersion = 2, deviceManufacturer = "Honor", deviceModel = "Honor 600 Pro",
+            sessionId = 7, hash = "", benchmarkVersion = 4, deviceManufacturer = "Honor", deviceModel = "Honor 600 Pro",
             osVersion = "16", gpuName = "Adreno (TM) 830", test1Fps = BenchmarkPayload.round2(123.456),
             test1LowFps = 98.0, test2Fps = BenchmarkPayload.round2(29.994), test2LowFps = 24.5,
             test3Fps = 21.5, test3LowFps = 17.25, rayTracing = true,
             webLayout = 180.0, webCanvas = 1400.5, webCss = 700.0, webSvg = 900.0, webJs = 912.34,
             qrRate = 75.2, mlkitQrRate = null, cpuMath = 61.5, cpuData = 40.25, cpuCrypto = 58.0, cpuMulti = 301.75,
             scrollSpeed = 9100.5, scrollDropped = 3.4, galleryJpeg = 61.2, galleryWebp = 38.75, galleryAvif = 0.0,
-            photoEdit = 118.3, videoAvc = 241.5, videoHevc = 180.25, videoVp9 = 0.0, videoAv1 = 33.1, videoHardware = 3,
+            photoEdit = 118.3, videoAvc = 241.5, videoHevc = 180.25, videoVp9 = 0.0, videoAv1 = 33.1,
+            video8kHevc = 64.5, video8kAv1 = 0.0, videoHardware = 19,
+            exportAvc = 150.25, exportHevc = 140.0, exportAv1 = 0.0, export8kHevc = 31.5,
+            exportAvcPsnr = 39.87, exportHevcPsnr = 41.2, exportAv1Psnr = 0.0, export8kHevcPsnr = 40.05, exportHardware = 11,
             aiClassifyCpu = 301.5, aiClassifyGpu = 640.25, aiClassifyNpu = 4100.0, aiDetectCpu = 0.0, aiDetectGpu = 0.0, aiDetectNpu = 0.0, aiSegmentCpu = 0.0, aiSegmentGpu = 0.0, aiSegmentNpu = 0.0, aiUpscaleCpu = 0.0, aiUpscaleGpu = 0.0, aiUpscaleNpu = 0.0, aiDepthCpu = 0.0, aiDepthGpu = 0.0, aiDepthNpu = 0.0, aiSoundCpu = 0.0, aiSoundGpu = 0.0, aiSoundNpu = 0.0, aiNpuRuntime = "Qualcomm QNN",
             memRead = 52.31, memWrite = 41.0, memCopy = 26.5, memLatency = 142.75, storageSeqRead = 3120.4,
             storageSeqWrite = 2050.0, storageRandomRead = 61234.5, storageRandomWrite = 48000.0, storageDirect = true,
             dbInsert = 812.25, dbUpdate = 790.0, dbQuery = 5120.5,
+            llmPrefillCpu = 0.0, llmDecodeCpu = 0.0, llmPrefillGpu = 0.0, llmDecodeGpu = 0.0, llmGpu = null, llmFreeGb = 0.0,
             validityFlags = 0
         )
-        assertEquals("bench|2|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
+        assertEquals("bench|4|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
             "180.00|1400.50|700.00|900.00|912.34|75.20|0.00|61.50|40.25|58.00|301.75|" +
-            "9100.50|3.40|61.20|38.75|0.00|118.30|241.50|180.25|0.00|33.10|3|" +
+            "9100.50|3.40|61.20|38.75|0.00|118.30|241.50|180.25|0.00|33.10|64.50|0.00|19|" +
+            "150.25|140.00|0.00|31.50|39.87|41.20|0.00|40.05|11|" +
             "301.50|640.25|4100.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|Qualcomm QNN|" +
-            "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|0", p.canonical())
+            "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|" +
+            "0.00|0.00|0.00|0.00||0.00|0", p.canonical())
+        val llm = p.copy(llmPrefillCpu = 118.4, llmDecodeCpu = 21.35, llmPrefillGpu = 402.0, llmDecodeGpu = 19.1,
+            llmGpu = "QUALCOMM Adreno(TM) 830", llmFreeGb = 9.42)
+        assertTrue(llm.canonical().endsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|0"))
+    }
+
+    @Test
+    fun `LLM takes the faster of CPU and GPU for prefill and decode`() {
+        // the GPU reads the prompt faster, the CPU writes faster: each counts where it wins
+        val reference = LlmResult(listOf(
+            LlmRun(LlmAccel.CPU, LlmScore.REF_PREFILL / 3, LlmScore.REF_DECODE, threads = 8),
+            LlmRun(LlmAccel.GPU, LlmScore.REF_PREFILL, LlmScore.REF_DECODE / 2)), "Adreno", freeGb = 9.0, largestModel = 8)
+        assertEquals(6000, reference.prefillPoints)
+        assertEquals(6000, reference.decodePoints)
+        assertEquals(6000, reference.score)
+        // no GPU: the CPU's numbers count
+        val cpuOnly = LlmResult(listOf(LlmRun(LlmAccel.CPU, LlmScore.REF_PREFILL * 4 / 3, LlmScore.REF_DECODE / 3),
+            LlmRun(LlmAccel.GPU, 0.0, 0.0, error = "no OpenCL GPU driver")), null, 5.0, 4)
+        assertEquals(4000, cpuOnly.score)                               // geomean of 8000 and 2000
+        assertEquals(0, LlmScore.overall(120.0, 0.0))                     // no reply: 0
+        val total = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, llm = cpuOnly)
+        assertEquals(5000 + 4000, total.total)
     }
 }

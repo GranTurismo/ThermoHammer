@@ -71,12 +71,17 @@ fun MainScreen() {
         }
     }
 
+    // the welcome: on first launch, and whenever the header's "?" asks for it
+    val welcomePrefs = remember { context.getSharedPreferences("welcome", Context.MODE_PRIVATE) }
+    var showWelcome by remember { mutableStateOf(!welcomePrefs.getBoolean("seen", false)) }
+
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedDuration by remember { mutableStateOf(TestDuration.MINUTES_5) }
     var selectedThreadingType by remember { mutableStateOf(com.example.thermohammer.engine.StressThreadingType.MULTI) }
     var selectedMode by remember { mutableStateOf(com.example.thermohammer.engine.StressMode.CPU) }
     var selectedKind by remember { mutableStateOf(RunKind.BENCHMARK) }
 
+    CompositionLocalProvider(LocalShowIntro provides { showWelcome = true }) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -115,6 +120,15 @@ fun MainScreen() {
 
         // Back on leaderboard tab → return to diagnostics (wrapper handles tab 0)
         BackHandler(enabled = selectedTab == 1) { selectedTab = 0 }
+
+        AnimatedVisibility(showWelcome && !state.isRunning, enter = fadeIn(tween(400)),
+            exit = fadeOut(tween(350)) + scaleOut(tween(350), targetScale = 1.04f)) {
+            WelcomeScreen(onDone = {
+                welcomePrefs.edit().putBoolean("seen", true).apply()
+                showWelcome = false
+            })
+        }
+    }
     }
 }
 
@@ -702,6 +716,9 @@ private fun DiagnosticsScreenWrapper(
                 com.example.thermohammer.ui.overlays.BenchmarkResultOverlay(
                     result = result,
                     deviceName = engine.getDeviceModel(),
+                    history = benchRecords,
+                    recordId = benchRecordId,
+                    osVersion = engine.getAndroidVersion(),
                     isNetworkConnected = isNetworkConnected,
                     isSubmitting = benchSubmitting,
                     submitMessage = benchSubmitMsg,

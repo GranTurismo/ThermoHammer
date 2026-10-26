@@ -135,6 +135,8 @@ data class StressState(
         val uxDetail: String = "",                       // e.g. "CANVAS 2D · 1,240 SHAPES"
         val uxValue: Double = -1.0,                      // big number on the stage (fps or decodes/s)
         val uxUnit: String = "",
+        val videoOsd: VideoOsd? = null,                  // UX 5: the player overlay
+        val exportStage: ExportStage? = null,            // UX 6: the export dialog
         val qrFrames: com.example.thermohammer.engine.ux.QrFrames? = null,
         val qrFrameIndex: Int = 0,
         val qrFound: FloatArray? = null,                 // where the scanner found the code (x, y pairs)
@@ -158,7 +160,15 @@ data class StressState(
         val aiProgress: Float = 0f,                      // 0..1 through that model (all three accelerators)
         val aiRate: Double = -1.0,                       // inferences/s now
         val aiDetail: String = "",
-        val aiVisual: com.example.thermohammer.engine.ai.AiVisual? = null
+        val aiVisual: com.example.thermohammer.engine.ai.AiVisual? = null,
+        // ── LLM test (last) ──
+        val llmAccel: LlmAccel? = null,                  // where the model runs now — the stage is up while set
+        val llmPhase: com.example.thermohammer.engine.llm.LlmPhase = com.example.thermohammer.engine.llm.LlmPhase.BUILD,
+        val llmProgress: Float = 0f,                     // 0..1 through this accelerator
+        val llmRate: Double = -1.0,                      // tokens/s so far
+        val llmDetail: String = "",
+        val llmReply: List<Int> = emptyList(),           // the reply being written, token ids
+        val llmPrompts: Int = 0                          // prompts read so far on this accelerator
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -200,6 +210,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         private const val KEY_AI_RUNNING = "ai_running"          // "install:test:accel" while an AI run is in flight
         private const val KEY_AI_CRASHED = "ai_crashed"          // {"install:accel"} that took the app down
         private const val AI_SECONDS = 1.6                        // measured per model and accelerator
+        private const val KEY_LLM_RUNNING = "llm_running"        // "install:accel" while an LLM run is in flight
+        private const val KEY_LLM_CRASHED = "llm_crashed"        // {"install:accel"} that took the app down
+        private const val LLM_NOTICE_MS = 3_000L                  // how long "not run" stays up when the test can't run
         private const val AI_SHOW_NS = 3_500_000_000L              // each model's result stays up at least this long
     }
 
@@ -288,7 +301,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     private var sessionJob: Job? = null
     private var workerThreads: List<Thread> = emptyList()
-    private val gpuBench = GpuBench(appContext.assets)
+    private val gpuBench = GpuBench(appContext.assets, appContext.cacheDir)
     private val vkBench = VkBench(appContext.assets)
 
     // ── Test 3 crash guard ──
@@ -312,22 +325,25 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private var gpuFramesPrev = 0.0
 
     /**
-     * Accelerators whose AI run took the app down (a native fault can't be caught): a marker left from the
-     * last session becomes a crash record, and that accelerator is skipped until the app updates.
+     * Accelerators whose AI or LLM run took the app down (a native fault can't be caught): a marker left from the
+     * last session ("install:…:accel") becomes a crash record, and that accelerator is skipped until the app updates.
      */
-    private fun aiCrashedAccels(): Set<AiAccel> {
-        fun crashed() = benchPrefs.getStringSet(KEY_AI_CRASHED, emptySet()).orEmpty()
-        benchPrefs.getString(KEY_AI_RUNNING, null)?.let { running ->
+    private fun crashedAccels(runningKey: String, crashedKey: String): Set<String> {
+        fun crashed() = benchPrefs.getStringSet(crashedKey, emptySet()).orEmpty()
+        benchPrefs.getString(runningKey, null)?.let { running ->
             val parts = running.split(':')
-            val edit = benchPrefs.edit().remove(KEY_AI_RUNNING)
-            if (parts.size == 3 && parts[0] == "$installStamp") edit.putStringSet(KEY_AI_CRASHED, crashed() + "${parts[0]}:${parts[2]}")
+            val edit = benchPrefs.edit().remove(runningKey)
+            if (parts.size >= 2 && parts[0] == "$installStamp") edit.putStringSet(crashedKey, crashed() + "${parts[0]}:${parts.last()}")
             edit.commit()
         }
-        return crashed().mapNotNull { e ->
-            val parts = e.split(':')
-            if (parts.size == 2 && parts[0] == "$installStamp") AiAccel.entries.firstOrNull { it.name == parts[1] } else null
-        }.toSet()
+        return crashed().mapNotNull { e -> e.split(':').takeIf { it.size == 2 && it[0] == "$installStamp" }?.get(1) }.toSet()
     }
+
+    private fun aiCrashedAccels(): Set<AiAccel> =
+        crashedAccels(KEY_AI_RUNNING, KEY_AI_CRASHED).mapNotNull { n -> AiAccel.entries.firstOrNull { it.name == n } }.toSet()
+
+    private fun llmCrashedAccels(): Set<LlmAccel> =
+        crashedAccels(KEY_LLM_RUNNING, KEY_LLM_CRASHED).mapNotNull { n -> LlmAccel.entries.firstOrNull { it.name == n } }.toSet()
 
     // ── Lifecycle (background cancel) ────────────────────────────────────────
 
@@ -373,6 +389,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     uxTest = null,
                     aiTest = null,
                     aiVisual = null,
+                    llmAccel = null,
                     qrFrames = null,
                     benchTest = null,
                     benchResult = null,
@@ -470,8 +487,12 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
      * GPU benchmark: cooldown, then each BenchmarkTest rendered for its fixed timeline.
      * No CPU workers — the score is pure GPU throughput (fps → points → geometric mean).
      */
-    fun startBenchmark() {
+    /** Debug builds only (MainActivity's `benchFrom` extra): start at that UX test, skipping what comes before. */
+    private var benchFrom: String? = null
+
+    fun startBenchmark(from: String? = null) {
         if (_state.value.isRunning) return
+        benchFrom = from
         activeThreadCount = 0
         val startBatt = StressProbes.battery(appContext)
         startBrightness = StressProbes.screenBrightness(appContext)
@@ -485,6 +506,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     uxTest = null,
                     aiTest = null,
                     aiVisual = null,
+                    llmAccel = null,
                     qrFrames = null,
                     qrFound = null,
                     phase = RunPhase.COOLDOWN,
@@ -514,24 +536,26 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     private suspend fun runBenchmark() {
         var flags = 0
+        val from = benchFrom
         // Getting ready: cool, and nothing else eating the CPU. If the phone was busy, that work
         // may have warmed it again, so the temperature is checked once more.
-        var cooled = coolDown()
-        val quiet = waitUntilQuiet()
+        var cooled = from != null || coolDown()
+        val quiet = if (from != null) QuietCheck(false, 1f, 0) else waitUntilQuiet()
         if (cooled && quiet.waitedSec >= 20) cooled = coolDown()   // it had cooled; the busy spell may have warmed it
         if (!cooled) flags = flags or ValidityFlag.COOLDOWN_TIMEOUT
-        if (!quiet.quiet) flags = flags or ValidityFlag.INTERFERENCE
+        if (!quiet.quiet) flags = flags or ValidityFlag.INTERFERENCE   // a partial debug run is never a verified one
         if (!_state.value.isRunning) return
         if (batterySaverAtStart) flags = flags or ValidityFlag.ENV_CAPPED
         val rtProblem = rayTracingSkipReason()
         val plan = BenchmarkTest.entries.filter { !it.rayTracing || rtProblem == null }
         _state.update { it.copy(benchPlan = plan) }
-        val cpu = runCpu() ?: return
-        val mem = runMem() ?: return
+        val cpu = if (from == null) runCpu() ?: return else null
+        val mem = if (from == null) runMem() ?: return else null
         val results = ArrayList<BenchmarkTestResult>()
         val runStartNs = System.nanoTime()
         for (test in BenchmarkTest.entries) {
             if (!_state.value.isRunning) return
+            if (from != null) { results += BenchmarkTestResult.unsupported(test); continue }
             if (test !in plan) {                       // no ray tracing on this phone: the test scores 0
                 results += BenchmarkTestResult.unsupported(test)
                 continue
@@ -575,8 +599,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val gpuScore = BenchmarkScore.overall(results)
         val gpuName = gpuBench.gpuName.ifEmpty { vkBench.gpuName }
-        val ux = runUx() ?: return
+        val ux = runUx(from) ?: return
         val ai = runAi() ?: return
+        val llm = runLlm() ?: return
         val result = BenchmarkResult(
             tests = results,
             gpuScore = gpuScore,
@@ -587,12 +612,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             cpu = cpu,
             ai = ai,
             mem = mem,
+            llm = llm,
             startCpuShare = quiet.share,
             quietWaitSec = quiet.waitedSec
         )
         _state.update {
             it.copy(benchResult = result, validityFlags = flags, wasCompleted = true, benchProgress = 1f,
-                cpuTest = null, memTest = null, uxTest = null, qrFrames = null, qrFound = null, aiTest = null, aiVisual = null)
+                cpuTest = null, memTest = null, uxTest = null, qrFrames = null, qrFound = null, aiTest = null, aiVisual = null,
+                llmAccel = null, llmReply = emptyList())
         }
         stopTest()
     }
@@ -702,31 +729,34 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     /** UX Tests 1–6. Null if the run was stopped. */
-    private suspend fun runUx(): UxResult? {
+    private suspend fun runUx(from: String? = null): UxResult? {
         val errors = ArrayList<String>()
         fun <T> Result<T>.noted(test: UxTest): T? = getOrElse { errors += "${test.title.lowercase().replaceFirstChar { c -> c.uppercase() }}: ${it.message}"; null }
         val r2 = BenchmarkScore::round2
+        val first = when (from) { "video" -> UxTest.VIDEO; "export" -> UxTest.EXPORT; else -> UxTest.WEB }   // debug starts
 
-        val web = (runWebPage(UxTest.WEB) ?: return null).mapCatching { o ->
+        val web = if (first > UxTest.WEB) null else (runWebPage(UxTest.WEB) ?: return null).mapCatching { o ->
             WebResult(r2(o.getDouble("layout")), r2(o.getDouble("canvas")), r2(o.getDouble("css")),
                 r2(o.getDouble("svg")), r2(o.getDouble("js")))
         }.noted(UxTest.WEB)
-        val scroll = (runWebPage(UxTest.SCROLL) ?: return null).mapCatching { o ->
+        val scroll = if (first > UxTest.WEB) null else (runWebPage(UxTest.SCROLL) ?: return null).mapCatching { o ->
             ScrollResult(r2(o.getDouble("speed")), r2(o.getDouble("dropped")))
         }.noted(UxTest.SCROLL)
-        val gallery = (runWebPage(UxTest.GALLERY) ?: return null).mapCatching { o ->
+        val gallery = if (first > UxTest.WEB) null else (runWebPage(UxTest.GALLERY) ?: return null).mapCatching { o ->
             GalleryResult(r2(o.getDouble("jpeg")), r2(o.getDouble("webp")), r2(o.getDouble("avif")))
         }.noted(UxTest.GALLERY)
-        val photo = (runPhotoEdit() ?: return null).noted(UxTest.PHOTO) ?: 0.0
-        val video = runVideo() ?: return null
+        val photo = if (first > UxTest.WEB) 0.0 else (runPhotoEdit() ?: return null).noted(UxTest.PHOTO) ?: 0.0
+        val video = if (first > UxTest.VIDEO) VideoResult(emptyList()) else runVideo() ?: return null
+        val export = runExport() ?: return null
         val qr = runQr() ?: return null
         return UxResult(
-            web = web, scroll = scroll, gallery = gallery, photoMps = photo, video = video, qr = qr,
+            web = web, scroll = scroll, gallery = gallery, photoMps = photo, video = video, export = export, qr = qr,
             webPoints = web?.let { UxScore.webPoints(it) } ?: 0,
             scrollPoints = scroll?.let { UxScore.scrollPoints(it.speed) } ?: 0,
             galleryPoints = gallery?.let { UxScore.galleryPoints(it) } ?: 0,
             photoPoints = UxScore.photoPoints(photo),
             videoPoints = UxScore.videoPoints(video),
+            exportPoints = UxScore.exportPoints(export),
             qrPoints = UxScore.qrPoints(qr.zxingRate),
             error = errors.joinToString("; ").ifEmpty { null }
         )
@@ -776,32 +806,87 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         return Result.success(BenchmarkScore.round2(idx.size * 1e9 / idx.sumOf { durs[it] } * mp))
     }
 
-    /** UX Test 5: each codec's 4K60 decode rate (0 where the phone can't). Null if stopped. */
+    /** UX Test 5: each clip's decode rate (0 where the phone can't). Null if stopped. */
     private suspend fun runVideo(): VideoResult? {
-        _state.update { it.copy(uxTest = UxTest.VIDEO, uxProgress = 0f, uxDetail = "OPENING DECODERS", uxValue = -1.0, uxUnit = "FPS") }
-        gpuBench.start(GpuSceneId.VIDEO, 90f)                 // the scene ends itself after the last codec
+        _state.update { it.copy(uxTest = UxTest.VIDEO, uxProgress = 0f, uxDetail = "OPENING DECODERS", uxValue = -1.0, uxUnit = "FPS",
+            videoOsd = null, gpuActive = true) }
+        gpuBench.start(GpuSceneId.VIDEO, 120f)                // the scene ends itself after the last clip
         while (_state.value.isRunning && !gpuBench.finished && gpuBench.glError == null) {
             delay(SAMPLE_MS)
             val scene = gpuBench.activeScene as? com.example.thermohammer.engine.gpu.VideoPlaybackScene ?: continue
             val c = scene.current
-            val skipped = c != null && scene.results.any { it.codec == c }
+            val skipped = c != null && scene.results.any { it.clip == c }
             _state.update {
                 it.copy(uxProgress = scene.progress,
                     uxDetail = when {
                         c == null -> "OPENING DECODERS"
                         skipped -> "${c.label} · NOT SUPPORTED · 0 POINTS"
-                        else -> "${c.label} · 3840×2160 · ${if (scene.currentHardware) "HARDWARE" else "SOFTWARE"} · ${scene.currentDecoder ?: ""}"
+                        else -> "${c.label} · ${if (scene.currentHardware) "HARDWARE" else "SOFTWARE"} · ${scene.currentDecoder ?: ""}"
                     },
-                    uxValue = if (!skipped && scene.currentFps > 0) scene.currentFps else -1.0)
+                    uxValue = if (!skipped && scene.currentFps > 0) scene.currentFps else -1.0,
+                    videoOsd = if (c == null || skipped) null else VideoOsd("${c.codec.label} · ${c.width}×${c.height} · ${c.fps} FPS",
+                        c.mbps, scene.positionS, scene.durationS, scene.currentFps / c.fps))
             }
         }
         gpuBench.stop()
+        _state.update { it.copy(videoOsd = null) }
         if (!_state.value.isRunning) return null
         val got = (gpuBench.activeScene as? com.example.thermohammer.engine.gpu.VideoPlaybackScene)?.results?.toList().orEmpty()
         val why = gpuBench.glError ?: "did not run"
-        return VideoResult(VideoCodec.entries.map { c ->
-            got.firstOrNull { it.codec == c }?.let { it.copy(fps = BenchmarkScore.round2(it.fps)) }
+        return VideoResult(VideoClip.entries.map { c ->
+            got.firstOrNull { it.clip == c }?.let { it.copy(fps = BenchmarkScore.round2(it.fps)) }
                 ?: VideoCodecResult(c, 0.0, null, false, why)
+        })
+    }
+
+    /** UX Test 6: each export's encode rate and quality (0 where the phone has no such encoder). Null if stopped. */
+    private suspend fun runExport(): ExportResult? {
+        _state.update { it.copy(uxTest = UxTest.EXPORT, uxProgress = 0f, uxDetail = "OPENING ENCODERS", uxValue = -1.0, uxUnit = "FPS",
+            videoOsd = null, exportStage = null, gpuActive = true) }
+        gpuBench.start(GpuSceneId.EXPORT, 120f)               // the scene ends itself after the last encoder
+        while (_state.value.isRunning && !gpuBench.finished && gpuBench.glError == null) {
+            delay(SAMPLE_MS)
+            val scene = gpuBench.activeScene as? com.example.thermohammer.engine.gpu.VideoExportScene ?: continue
+            val j = scene.current
+            val done = scene.results.toList()
+            val skipped = j != null && done.any { it.job == j }
+            val step = when {
+                skipped -> done.last { r -> r.job == j }.error?.uppercase() ?: "NOT SUPPORTED"
+                scene.stage == com.example.thermohammer.engine.gpu.VideoExportScene.Stage.FINISHING -> "FINISHING THE FILE"
+                scene.stage == com.example.thermohammer.engine.gpu.VideoExportScene.Stage.CHECKING -> "CHECKING QUALITY"
+                else -> "ENCODING"
+            }
+            val queue = ExportJob.entries.map { e ->
+                val r = done.firstOrNull { it.job == e }
+                when {
+                    r != null && r.fps > 0 -> ExportStage.Item(e, ExportStage.State.DONE, r.fps, r.psnr)
+                    r != null -> ExportStage.Item(e, ExportStage.State.SKIPPED, note = r.error)
+                    e == j -> ExportStage.Item(e, ExportStage.State.ACTIVE)
+                    else -> ExportStage.Item(e, ExportStage.State.PENDING)
+                }
+            }
+            _state.update {
+                it.copy(uxProgress = scene.progress,
+                    uxDetail = when {
+                        j == null -> "OPENING ENCODERS"
+                        skipped -> "${j.label} ${j.res} · $step · 0 POINTS"
+                        else -> "${j.label} ${j.res} · ${j.mbps} MBPS · ${if (scene.currentHardware) "HARDWARE" else "SOFTWARE"} · ${scene.currentEncoder ?: ""}"
+                    },
+                    uxValue = if (!skipped && scene.currentFps > 0) scene.currentFps else -1.0,
+                    exportStage = j?.let { e ->
+                        ExportStage(e, scene.currentEncoder, scene.currentHardware, if (skipped) 0 else scene.framesDone,
+                            scene.elapsedS.toDouble(), if (skipped) 0.0 else scene.currentFps, step, queue)
+                    })
+            }
+        }
+        gpuBench.stop()
+        _state.update { it.copy(videoOsd = null, exportStage = null) }
+        if (!_state.value.isRunning) return null
+        val got = (gpuBench.activeScene as? com.example.thermohammer.engine.gpu.VideoExportScene)?.results?.toList().orEmpty()
+        val why = gpuBench.glError ?: "did not run"
+        return ExportResult(ExportJob.entries.map { j ->
+            got.firstOrNull { it.job == j }?.let { it.copy(fps = BenchmarkScore.round2(it.fps), psnr = BenchmarkScore.round2(it.psnr)) }
+                ?: ExportJobResult(j, 0.0, 0.0, null, false, why)
         })
     }
 
@@ -899,6 +984,55 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             error = "no faster than the CPU (%.2f×): LiteRT fell back to it".format(speedup)) else it }
     }
 
+    // ── LLM test ──────────────────────────────────────────────────────────────
+
+    /** The 3B model on the CPU, then the GPU, with the reply it writes on the stage. Null if the run was stopped. */
+    private suspend fun runLlm(): LlmResult? = withContext(Dispatchers.Default) {
+        _state.update { it.copy(aiTest = null, aiVisual = null, llmAccel = LlmAccel.CPU, llmPhase = com.example.thermohammer.engine.llm.LlmPhase.BUILD,
+            llmProgress = 0f, llmRate = -1.0, llmDetail = "PREPARING", llmReply = emptyList(), llmPrompts = 0) }
+        val bench = com.example.thermohammer.engine.llm.LlmBench(appContext)
+        val free = bench.freeBytes()
+        val freeGb = BenchmarkScore.round2(free / 1e9)
+        val largest = bench.largestModel(free)
+        bench.problem()?.let { problem ->
+            // nothing can run: say why for a moment, every accelerator scores 0
+            _state.update { it.copy(llmDetail = "NOT RUN · ${problem.uppercase()}") }
+            delay(LLM_NOTICE_MS)
+            return@withContext LlmResult(LlmAccel.entries.map { LlmRun(it, 0.0, 0.0, error = problem) }, null, freeGb, largest, problem)
+        }
+        val crashed = llmCrashedAccels()
+        val gpuProblem = bench.gpuProblem()
+        val runs = ArrayList<LlmRun>()
+        var threads = 4
+        for (accel in LlmAccel.entries) {
+            if (!_state.value.isRunning) return@withContext null
+            val skip = when {
+                accel in crashed -> "crashed the app here last time"
+                accel == LlmAccel.GPU -> gpuProblem
+                else -> null
+            }
+            if (skip != null) { runs += LlmRun(accel, 0.0, 0.0, error = skip); continue }
+            _state.update { it.copy(llmAccel = accel, llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0) }
+            val startTemp = StressProbes.cpuAdjacentTemp(StressProbes.readThermalZones())
+            benchPrefs.edit().putString(KEY_LLM_RUNNING, "$installStamp:${accel.name}").commit()
+            val run: LlmRun? = try {
+                bench.run(accel, threads, { _state.value.isRunning }) { p ->
+                    _state.update { it.copy(llmPhase = p.phase, llmProgress = p.fraction, llmRate = p.rate, llmDetail = p.detail,
+                        llmReply = p.reply, llmPrompts = p.prompts) }
+                }
+            } catch (e: Exception) {
+                LlmRun(accel, 0.0, 0.0, error = e.message ?: e.javaClass.simpleName)
+            } finally {
+                benchPrefs.edit().remove(KEY_LLM_RUNNING).commit()
+            }
+            if (run == null) return@withContext null
+            if (run.threads > 0) threads = run.threads
+            runs += run.copy(startTempC = startTemp)
+        }
+        val gpuRan = runs.any { it.accel == LlmAccel.GPU && it.decode > 0 }
+        LlmResult(runs, bench.gpuName().takeIf { gpuRan && it.isNotEmpty() }, freeGb, largest)
+    }
+
     /** UI attaches/detaches the stage SurfaceView — forwarded to the GL thread. */
     fun gpuAttachSurface(surface: android.view.Surface) {
         gpuBench.attachDisplay(surface)
@@ -914,8 +1048,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         threadAlive.set(false)
         gpuBench.stop()
         vkBench.stop()
-        // a stopped run is not a crash: only a process killed inside Test 3 or an AI run leaves a marker behind
-        benchPrefs.edit().remove(KEY_RT_RUNNING).remove(KEY_AI_RUNNING).apply()
+        // a stopped run is not a crash: only a process killed inside Test 3, an AI or an LLM run leaves a marker behind
+        benchPrefs.edit().remove(KEY_RT_RUNNING).remove(KEY_AI_RUNNING).remove(KEY_LLM_RUNNING).apply()
         _state.update { it.copy(gpuActive = false) }
         sessionJob?.cancel()
         sessionJob = null
@@ -974,6 +1108,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     uxTest = null,
                     aiTest = null,
                     aiVisual = null,
+                    llmAccel = null,
+                    llmReply = emptyList(),
                     uxProgress = 0f,
                     qrFrames = null,
                     qrFound = null

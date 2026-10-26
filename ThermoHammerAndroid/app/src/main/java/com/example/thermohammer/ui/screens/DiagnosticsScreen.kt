@@ -284,10 +284,17 @@ internal fun AppHeader(state: StressState, isNetworkConnected: Boolean) {
                         style = ThermoType.label(7f, if (isNetworkConnected) Forge.phaseMeasured else Ramp.at(0.5f))
                     )
                 }
+                // the welcome again: what the app does and why its numbers hold
+                val showIntro = LocalShowIntro.current
+                Box(
+                    Modifier.size(20.dp).clip(CircleShape).border(1.dp, Forge.ink2.copy(alpha = 0.6f), CircleShape)
+                        .clickable(onClick = showIntro),
+                    contentAlignment = Alignment.Center
+                ) { Text("?", style = ThermoType.label(9f, Forge.ink1)) }
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                "gpu benchmark · cpu/gpu thermal stress instrument",
+                "phone benchmark · thermal stress instrument",
                 style = ThermoType.annotation(8f, if (state.isRunning) phaseColor(state.phase) else Forge.ink2)
             )
         }
@@ -545,7 +552,7 @@ fun RunKindPicker(selected: RunKind, onSelect: (RunKind) -> Unit, modifier: Modi
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         for ((kind, title, sub) in listOf(
-            Triple(RunKind.BENCHMARK, "BENCHMARK", "CPU + MEM + GPU + UX + AI · SCORE"),
+            Triple(RunKind.BENCHMARK, "BENCHMARK", "WHOLE PHONE · SCORE"),
             Triple(RunKind.STRESS, "STRESS TEST", "5–30 MIN · THROTTLING")
         )) {
             val isSelected = selected == kind
@@ -681,7 +688,8 @@ fun BenchmarkInfoCard(
                             UxTest.SCROLL -> "Endless social feed built as it scrolls ever faster · no dropped frames"
                             UxTest.GALLERY -> "12 MP JPEG, WebP and AVIF photos decoded and shown in a web page"
                             UxTest.PHOTO -> "GPU edits of a 12 MP photo · fisheye, blur, bokeh, sharpen, colour grade"
-                            UxTest.VIDEO -> "4K60 H.264, HEVC 10-bit, VP9, AV1 · decoded flat out (0 if unsupported)"
+                            UxTest.VIDEO -> "4K60 H.264, HEVC 10-bit, VP9, AV1 and 8K30 HEVC, AV1 · decoded flat out"
+                            UxTest.EXPORT -> "A 4K edit exported to H.264, HEVC, AV1 (+ 8K HEVC) · quality checked"
                             UxTest.QR -> "32 camera frames · ZXing scored, Google ML Kit reported"
                         },
                         style = ThermoType.annotation(8f, Forge.ink2)
@@ -710,6 +718,29 @@ fun BenchmarkInfoCard(
         }
         Text("AI runs open 8-bit models through LiteRT. The NPU counts where the phone has a supported one " +
             "(Snapdragon in this test build, MediaTek, Google Tensor); elsewhere it scores 0.",
+            style = ThermoType.annotation(8f, Forge.ink2))
+        for (a in com.example.thermohammer.engine.LlmAccel.entries) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val color = llmColor()
+                Box(
+                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("L${a.ordinal + 1}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("LLM · ${a.label}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                    Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Llama 3.2 3B, 4-bit · a 512-token prompt, then the reply token by token"
+                        else "The same model with every layer on the GPU · llama.cpp OpenCL, Adreno",
+                        style = ThermoType.annotation(8f, Forge.ink2))
+                }
+                Text("${a.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+            }
+        }
+        Text("The LLM runs llama.cpp on a model built from a seed in memory — nothing is downloaded. The faster of the CPU " +
+            "and the GPU counts; it needs a phone with 6 GB of RAM.",
             style = ThermoType.annotation(8f, Forge.ink2))
         if (best != null || last != null) {
             HorizontalDivider(color = Forge.hairline)

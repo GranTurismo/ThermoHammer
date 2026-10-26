@@ -6,13 +6,15 @@ import com.example.thermohammer.engine.AiTest
 import com.example.thermohammer.engine.BenchmarkResult
 import com.example.thermohammer.engine.BenchmarkScore
 import com.example.thermohammer.engine.BenchmarkTest
-import com.example.thermohammer.engine.VideoCodec
+import com.example.thermohammer.engine.LlmAccel
+import com.example.thermohammer.engine.ExportJob
+import com.example.thermohammer.engine.VideoClip
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
 
-/** One finished benchmark (CPU + MEM + GPU + UX + AI) as kept on the device (and later submitted from); `score` = total. */
+/** One finished benchmark (CPU + MEM + GPU + UX + AI + LLM) as kept on the device (and later submitted from); `score` = total. */
 data class BenchmarkRecord(
     val id: String,
     val timestamp: Long,
@@ -50,7 +52,18 @@ data class BenchmarkRecord(
     val videoHevc: Double = 0.0,
     val videoVp9: Double = 0.0,
     val videoAv1: Double = 0.0,
-    val videoHardware: Int = 0,           // bit per VideoCodec decoded in hardware (reported)
+    val video8kHevc: Double = 0.0,        // 8K30 decode fps
+    val video8kAv1: Double = 0.0,
+    val videoHardware: Int = 0,           // bit per VideoClip decoded in hardware (reported)
+    val exportAvc: Double = 0.0,          // export fps per ExportJob, 0 = no such encoder
+    val exportHevc: Double = 0.0,
+    val exportAv1: Double = 0.0,
+    val export8kHevc: Double = 0.0,
+    val exportAvcPsnr: Double = 0.0,      // the export's quality, dB (0 = not run)
+    val exportHevcPsnr: Double = 0.0,
+    val exportAv1Psnr: Double = 0.0,
+    val export8kHevcPsnr: Double = 0.0,
+    val exportHardware: Int = 0,          // bit per ExportJob encoded in hardware (reported)
     val aiScore: Int = 0,
     // AI: inferences/s of each model on each accelerator (0 = it didn't run there)
     val aiClassifyCpu: Double = 0.0,
@@ -86,11 +99,21 @@ data class BenchmarkRecord(
     val dbInsert: Double = 0.0,
     val dbUpdate: Double = 0.0,
     val dbQuery: Double = 0.0,
+    val llmScore: Int = 0,
+    // LLM: tokens/s reading the prompt and writing the reply, per accelerator (0 = it didn't run there)
+    val llmPrefillCpu: Double = 0.0,
+    val llmDecodeCpu: Double = 0.0,
+    val llmPrefillGpu: Double = 0.0,
+    val llmDecodeGpu: Double = 0.0,
+    val llmGpu: String? = null,
+    val llmFreeGb: Double = 0.0,
     val qrRate: Double = 0.0,             // ZXing decodes/s
     val mlkitRate: Double? = null,        // ML Kit scans/s (reported, not scored)
     val gpuName: String,
     val validityFlags: Int,
-    val submitted: Boolean = false
+    val submitted: Boolean = false,
+    val osVersion: String? = null,        // what it ran on — Phone Health spots a slowdown after an update
+    val osBuild: String? = null
 ) {
     companion object {
         fun of(result: BenchmarkResult, id: String, timestamp: Long): BenchmarkRecord {
@@ -102,8 +125,10 @@ data class BenchmarkRecord(
             val web = ux?.web
             val qr = ux?.qr
             val video = ux?.video
+            val export = ux?.export
             val ai = result.ai
             val mem = result.mem
+            val llm = result.llm
             return BenchmarkRecord(id = id, timestamp = timestamp, version = BenchmarkScore.VERSION, score = result.total,
                 gpuScore = result.gpuScore, uxScore = result.uxScore, cpuScore = result.cpuScore,
                 cpuMath = result.cpu?.value(CpuTest.MATH) ?: 0.0, cpuData = result.cpu?.value(CpuTest.DATA) ?: 0.0,
@@ -113,9 +138,15 @@ data class BenchmarkRecord(
                 scrollSpeed = ux?.scroll?.speed ?: 0.0, scrollDropped = ux?.scroll?.droppedPct ?: 0.0,
                 galleryJpeg = ux?.gallery?.jpeg ?: 0.0, galleryWebp = ux?.gallery?.webp ?: 0.0,
                 galleryAvif = ux?.gallery?.avif ?: 0.0, photoEdit = ux?.photoMps ?: 0.0,
-                videoAvc = video?.fps(VideoCodec.AVC) ?: 0.0, videoHevc = video?.fps(VideoCodec.HEVC) ?: 0.0,
-                videoVp9 = video?.fps(VideoCodec.VP9) ?: 0.0, videoAv1 = video?.fps(VideoCodec.AV1) ?: 0.0,
+                videoAvc = video?.fps(VideoClip.AVC_4K) ?: 0.0, videoHevc = video?.fps(VideoClip.HEVC_4K) ?: 0.0,
+                videoVp9 = video?.fps(VideoClip.VP9_4K) ?: 0.0, videoAv1 = video?.fps(VideoClip.AV1_4K) ?: 0.0,
+                video8kHevc = video?.fps(VideoClip.HEVC_8K) ?: 0.0, video8kAv1 = video?.fps(VideoClip.AV1_8K) ?: 0.0,
                 videoHardware = video?.hardwareMask ?: 0,
+                exportAvc = export?.fps(ExportJob.AVC_4K) ?: 0.0, exportHevc = export?.fps(ExportJob.HEVC_4K) ?: 0.0,
+                exportAv1 = export?.fps(ExportJob.AV1_4K) ?: 0.0, export8kHevc = export?.fps(ExportJob.HEVC_8K) ?: 0.0,
+                exportAvcPsnr = export?.psnr(ExportJob.AVC_4K) ?: 0.0, exportHevcPsnr = export?.psnr(ExportJob.HEVC_4K) ?: 0.0,
+                exportAv1Psnr = export?.psnr(ExportJob.AV1_4K) ?: 0.0, export8kHevcPsnr = export?.psnr(ExportJob.HEVC_8K) ?: 0.0,
+                exportHardware = export?.hardwareMask ?: 0,
                 aiScore = result.aiScore, aiNpuRuntime = ai?.npuRuntime,
                 aiClassifyCpu = ai?.ips(AiTest.CLASSIFY, AiAccel.CPU) ?: 0.0, aiClassifyGpu = ai?.ips(AiTest.CLASSIFY, AiAccel.GPU) ?: 0.0, aiClassifyNpu = ai?.ips(AiTest.CLASSIFY, AiAccel.NPU) ?: 0.0, aiDetectCpu = ai?.ips(AiTest.DETECT, AiAccel.CPU) ?: 0.0, aiDetectGpu = ai?.ips(AiTest.DETECT, AiAccel.GPU) ?: 0.0, aiDetectNpu = ai?.ips(AiTest.DETECT, AiAccel.NPU) ?: 0.0, aiSegmentCpu = ai?.ips(AiTest.SEGMENT, AiAccel.CPU) ?: 0.0, aiSegmentGpu = ai?.ips(AiTest.SEGMENT, AiAccel.GPU) ?: 0.0, aiSegmentNpu = ai?.ips(AiTest.SEGMENT, AiAccel.NPU) ?: 0.0, aiUpscaleCpu = ai?.ips(AiTest.UPSCALE, AiAccel.CPU) ?: 0.0, aiUpscaleGpu = ai?.ips(AiTest.UPSCALE, AiAccel.GPU) ?: 0.0, aiUpscaleNpu = ai?.ips(AiTest.UPSCALE, AiAccel.NPU) ?: 0.0, aiDepthCpu = ai?.ips(AiTest.DEPTH, AiAccel.CPU) ?: 0.0, aiDepthGpu = ai?.ips(AiTest.DEPTH, AiAccel.GPU) ?: 0.0, aiDepthNpu = ai?.ips(AiTest.DEPTH, AiAccel.NPU) ?: 0.0, aiSoundCpu = ai?.ips(AiTest.SOUND, AiAccel.CPU) ?: 0.0, aiSoundGpu = ai?.ips(AiTest.SOUND, AiAccel.GPU) ?: 0.0, aiSoundNpu = ai?.ips(AiTest.SOUND, AiAccel.NPU) ?: 0.0,
                 memScore = result.memScore, memRead = mem?.ram?.read ?: 0.0, memWrite = mem?.ram?.write ?: 0.0,
@@ -124,10 +155,15 @@ data class BenchmarkRecord(
                 storageRandomRead = mem?.storage?.randomRead ?: 0.0, storageRandomWrite = mem?.storage?.randomWrite ?: 0.0,
                 storageDirect = mem?.storage?.direct ?: false,
                 dbInsert = mem?.db?.insert ?: 0.0, dbUpdate = mem?.db?.update ?: 0.0, dbQuery = mem?.db?.query ?: 0.0,
+                llmScore = result.llmScore,
+                llmPrefillCpu = llm?.run(LlmAccel.CPU)?.prefill ?: 0.0, llmDecodeCpu = llm?.run(LlmAccel.CPU)?.decode ?: 0.0,
+                llmPrefillGpu = llm?.run(LlmAccel.GPU)?.prefill ?: 0.0, llmDecodeGpu = llm?.run(LlmAccel.GPU)?.decode ?: 0.0,
+                llmGpu = llm?.gpuName, llmFreeGb = llm?.freeGb ?: 0.0,
                 test1Fps = t1.avgFps, test1LowFps = t1.lowFps, test1Points = t1.points,
                 test2Fps = t2.avgFps, test2LowFps = t2.lowFps, test2Points = t2.points,
                 test3Fps = t3.avgFps, test3LowFps = t3.lowFps, test3Points = t3.points, rayTracing = t3.supported,
-                gpuName = result.gpuName, validityFlags = result.validityFlags)
+                gpuName = result.gpuName, validityFlags = result.validityFlags,
+                osVersion = android.os.Build.VERSION.RELEASE, osBuild = android.os.Build.ID.ifBlank { null })
         }
     }
 }

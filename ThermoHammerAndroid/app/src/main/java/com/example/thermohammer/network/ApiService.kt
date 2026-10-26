@@ -10,6 +10,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 // ── Data Models ────────────────────────────────────────────────────────────────
 
@@ -124,7 +125,19 @@ data class BenchmarkPayload(
     @SerializedName("videoHevc") val videoHevc: Double,
     @SerializedName("videoVp9") val videoVp9: Double,
     @SerializedName("videoAv1") val videoAv1: Double,
-    @SerializedName("videoHardware") val videoHardware: Int,        // bit per codec decoded in hardware
+    @SerializedName("video8kHevc") val video8kHevc: Double,          // 8K30 decode fps
+    @SerializedName("video8kAv1") val video8kAv1: Double,
+    @SerializedName("videoHardware") val videoHardware: Int,        // bit per clip decoded in hardware
+    // UX 6: export fps per encoder (4K60 H.264, HEVC, AV1; 8K30 HEVC) and each export's quality, dB
+    @SerializedName("exportAvc") val exportAvc: Double,
+    @SerializedName("exportHevc") val exportHevc: Double,
+    @SerializedName("exportAv1") val exportAv1: Double,
+    @SerializedName("export8kHevc") val export8kHevc: Double,
+    @SerializedName("exportAvcPsnr") val exportAvcPsnr: Double,
+    @SerializedName("exportHevcPsnr") val exportHevcPsnr: Double,
+    @SerializedName("exportAv1Psnr") val exportAv1Psnr: Double,
+    @SerializedName("export8kHevcPsnr") val export8kHevcPsnr: Double,
+    @SerializedName("exportHardware") val exportHardware: Int,      // bit per encoder in hardware
     // AI: inferences/s per model (classify, detect, segment, upscale, depth, sound) × accelerator (CPU, GPU, NPU)
     @SerializedName("aiClassifyCpu") val aiClassifyCpu: Double,
     @SerializedName("aiClassifyGpu") val aiClassifyGpu: Double,
@@ -158,6 +171,13 @@ data class BenchmarkPayload(
     @SerializedName("dbInsert") val dbInsert: Double,
     @SerializedName("dbUpdate") val dbUpdate: Double,
     @SerializedName("dbQuery") val dbQuery: Double,
+    // LLM: tokens/s reading the 512-token prompt and writing the reply, on the CPU and the GPU (0 = didn't run)
+    @SerializedName("llmPrefillCpu") val llmPrefillCpu: Double,
+    @SerializedName("llmDecodeCpu") val llmDecodeCpu: Double,
+    @SerializedName("llmPrefillGpu") val llmPrefillGpu: Double,
+    @SerializedName("llmDecodeGpu") val llmDecodeGpu: Double,
+    @SerializedName("llmGpu") val llmGpu: String?,                 // the GPU it ran on (reported)
+    @SerializedName("llmFreeGb") val llmFreeGb: Double,            // memory the app could take (reported)
     @SerializedName("validityFlags") val validityFlags: Int,
     @SerializedName("appVersion") val appVersion: String? = null
 ) {
@@ -167,9 +187,12 @@ data class BenchmarkPayload(
         if (rayTracing) 1 else 0, f2(webLayout), f2(webCanvas), f2(webCss), f2(webSvg), f2(webJs), f2(qrRate),
         f2(mlkitQrRate ?: 0.0), f2(cpuMath), f2(cpuData), f2(cpuCrypto), f2(cpuMulti), f2(scrollSpeed), f2(scrollDropped),
         f2(galleryJpeg), f2(galleryWebp), f2(galleryAvif), f2(photoEdit), f2(videoAvc), f2(videoHevc), f2(videoVp9),
-        f2(videoAv1), videoHardware, f2(aiClassifyCpu), f2(aiClassifyGpu), f2(aiClassifyNpu), f2(aiDetectCpu), f2(aiDetectGpu), f2(aiDetectNpu), f2(aiSegmentCpu), f2(aiSegmentGpu), f2(aiSegmentNpu), f2(aiUpscaleCpu), f2(aiUpscaleGpu), f2(aiUpscaleNpu), f2(aiDepthCpu), f2(aiDepthGpu), f2(aiDepthNpu), f2(aiSoundCpu), f2(aiSoundGpu), f2(aiSoundNpu), aiNpuRuntime ?: "",
+        f2(videoAv1), f2(video8kHevc), f2(video8kAv1), videoHardware, f2(exportAvc), f2(exportHevc), f2(exportAv1),
+        f2(export8kHevc), f2(exportAvcPsnr), f2(exportHevcPsnr), f2(exportAv1Psnr), f2(export8kHevcPsnr), exportHardware,
+        f2(aiClassifyCpu), f2(aiClassifyGpu), f2(aiClassifyNpu), f2(aiDetectCpu), f2(aiDetectGpu), f2(aiDetectNpu), f2(aiSegmentCpu), f2(aiSegmentGpu), f2(aiSegmentNpu), f2(aiUpscaleCpu), f2(aiUpscaleGpu), f2(aiUpscaleNpu), f2(aiDepthCpu), f2(aiDepthGpu), f2(aiDepthNpu), f2(aiSoundCpu), f2(aiSoundGpu), f2(aiSoundNpu), aiNpuRuntime ?: "",
         f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
         f2(storageRandomRead), f2(storageRandomWrite), if (storageDirect) 1 else 0, f2(dbInsert), f2(dbUpdate), f2(dbQuery),
+        f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu ?: "", f2(llmFreeGb),
         validityFlags).joinToString("|")
 
     companion object {
@@ -178,6 +201,29 @@ data class BenchmarkPayload(
         fun round2(v: Double): Double = Math.round(v * 100.0) / 100.0
     }
 }
+
+/** GET /benchmark/model: one phone model's verified runs — what Phone Health compares a run with. */
+data class ModelStatsDto(
+    @SerializedName("deviceModel") val deviceModel: String,
+    @SerializedName("runs") val runs: Int,
+    @SerializedName("total") val total: ScoreSpreadDto?,
+    @SerializedName("sections") val sections: Map<String, Int>?,
+    @SerializedName("parts") val parts: Map<String, Int>?,
+    @SerializedName("byOsVersion") val byOsVersion: List<OsVersionStatsDto>?
+)
+
+data class ScoreSpreadDto(
+    @SerializedName("median") val median: Int,
+    @SerializedName("p25") val p25: Int,
+    @SerializedName("p75") val p75: Int,
+    @SerializedName("best") val best: Int
+)
+
+data class OsVersionStatsDto(
+    @SerializedName("osVersion") val osVersion: String,
+    @SerializedName("runs") val runs: Int,
+    @SerializedName("medianTotal") val medianTotal: Int
+)
 
 data class BenchmarkSubmitResponse(
     @SerializedName("id") val id: Int,
@@ -198,6 +244,7 @@ data class BenchmarkDto(
     @SerializedName("cpuScore") val cpuScore: Int,
     @SerializedName("aiScore") val aiScore: Int = 0,
     @SerializedName("memScore") val memScore: Int = 0,
+    @SerializedName("llmScore") val llmScore: Int = 0,
     @SerializedName("totalScore") val totalScore: Int,
     @SerializedName("test1Score") val test1Score: Int,
     @SerializedName("test2Score") val test2Score: Int,
@@ -229,6 +276,10 @@ interface ThermoApi {
 
     @GET("benchmark/leaderboard")
     suspend fun fetchBenchmarkLeaderboard(): List<BenchmarkDto>
+
+    /** [os]: 1 iOS, 2 Android, 3 macOS — the server resolves [model] the way it stores submissions. */
+    @GET("benchmark/model")
+    suspend fun fetchModelStats(@Query("model") model: String, @Query("os") os: Int): ModelStatsDto
 }
 
 // ── Singleton Client ───────────────────────────────────────────────────────────

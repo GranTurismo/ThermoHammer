@@ -115,12 +115,16 @@ fun memColor(): Color = Color(0xFFF2A65A)
 /** Accent of the AI tests: lavender. */
 fun aiColor(): Color = Color(0xFFC792EA)
 
-/** Accent of each UX test: browser teals, photo rose, video sky, QR amber. */
+/** Accent of the LLM test: lime. */
+fun llmColor(): Color = Color(0xFFB5E853)
+
+/** Accent of each UX test: browser teals, photo rose, video sky, export apricot, QR amber. */
 fun uxColor(test: com.example.thermohammer.engine.UxTest?): Color = when (test) {
     com.example.thermohammer.engine.UxTest.SCROLL -> Color(0xFF6FE3A0)
     com.example.thermohammer.engine.UxTest.GALLERY -> Color(0xFF7FD6E8)
     com.example.thermohammer.engine.UxTest.PHOTO -> Color(0xFFFF8FB1)
     com.example.thermohammer.engine.UxTest.VIDEO -> Color(0xFF6FA8FF)
+    com.example.thermohammer.engine.UxTest.EXPORT -> Color(0xFFFFB077)
     com.example.thermohammer.engine.UxTest.QR -> Ramp.at(0.55f)
     else -> Forge.phaseMeasured
 }

@@ -35,6 +35,9 @@ class MainActivity : ComponentActivity() {
         val engineFactory = StressEngineFactory(this)
         val engine = ViewModelProvider(this, engineFactory)[StressEngine::class.java]
         lifecycle.addObserver(engine)
+        // debug builds: `adb shell am start … --es benchFrom video|export` runs the benchmark from that UX test
+        if (savedInstanceState == null && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            intent.getStringExtra("benchFrom")?.let { engine.startBenchmark(it) }
 
         // Prevent screen sleep/lock during CPU stress diagnostic runs
         lifecycleScope.launch {

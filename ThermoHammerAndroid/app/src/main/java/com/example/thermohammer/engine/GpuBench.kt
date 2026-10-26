@@ -15,6 +15,7 @@ import com.example.thermohammer.engine.gpu.LakeValleyRenderer
 import com.example.thermohammer.engine.gpu.NeonCityAsset
 import com.example.thermohammer.engine.gpu.NeonCityRenderer
 import com.example.thermohammer.engine.gpu.PhotoEditScene
+import com.example.thermohammer.engine.gpu.VideoExportScene
 import com.example.thermohammer.engine.gpu.VideoPlaybackScene
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -40,10 +41,11 @@ enum class GpuSceneId(val displayName: String) {
     LAKE_VALLEY("Lake Valley"),
     NEON_CITY("Neon City"),
     PHOTO_EDIT("Photo editing"),      // UX Test 4
-    VIDEO("Video playback")           // UX Test 5 — ends itself once every codec has run
+    VIDEO("Video playback"),          // UX Test 5 — ends itself once every clip has run
+    EXPORT("Video export")            // UX Test 6 — ends itself once every encoder has run
 }
 
-class GpuBench(private val assets: AssetManager) : GpuRunner {
+class GpuBench(private val assets: AssetManager, private val cacheDir: java.io.File) : GpuRunner {
 
     companion object {
         private const val TAG = "GpuBench"
@@ -205,7 +207,12 @@ class GpuBench(private val assets: AssetManager) : GpuRunner {
             )
             val cfgs = arrayOfNulls<EGLConfig>(8)
             val n = IntArray(1)
-            EGL14.eglChooseConfig(display, cfgAttrs, 0, cfgs, 0, 8, n, 0)
+            // the export draws into a video encoder's surface, which some drivers only take from a recordable config
+            if (sceneId == GpuSceneId.EXPORT) {
+                val recordable = cfgAttrs.copyOf(cfgAttrs.size - 1) + intArrayOf(0x3142 /* EGL_RECORDABLE_ANDROID */, 1, EGL14.EGL_NONE)
+                EGL14.eglChooseConfig(display, recordable, 0, cfgs, 0, 8, n, 0)
+            }
+            if (n[0] <= 0) EGL14.eglChooseConfig(display, cfgAttrs, 0, cfgs, 0, 8, n, 0)
             if (n[0] <= 0) throw GlException("eglChooseConfig")
             val cfg = cfgs[0]!!
 
@@ -236,6 +243,7 @@ class GpuBench(private val assets: AssetManager) : GpuRunner {
                 GpuSceneId.NEON_CITY -> NeonCityRenderer(cityAsset!!, RENDER_W, RENDER_H)
                 GpuSceneId.PHOTO_EDIT -> PhotoEditScene(assets, RENDER_W, RENDER_H)
                 GpuSceneId.VIDEO -> VideoPlaybackScene(assets, RENDER_W, RENDER_H)
+                GpuSceneId.EXPORT -> VideoExportScene(assets, cacheDir, RENDER_W, RENDER_H)
             }
             renderer = scene
             activeScene = scene
