@@ -25,6 +25,10 @@ LLM_JNI(void, setCacheDir)(JNIEnv* env, jclass, jstring dir) {
 
 LLM_JNI(jstring, gpuName)(JNIEnv* env, jclass) { return env->NewStringUTF(bc_llm_gpu_name()); }
 
+LLM_JNI(jstring, gpuApi)(JNIEnv* env, jclass) { return env->NewStringUTF(bc_llm_gpu_api()); }
+
+LLM_JNI(jdouble, agreement)(JNIEnv*, jclass, jlong h) { return bc_llm_agreement(reinterpret_cast<bc_llm*>(h)); }
+
 /** The model handle, or 0 with the reason in error[0]. */
 LLM_JNI(jlong, create)(JNIEnv* env, jclass, jboolean gpu, jint threads, jlong seed, jobjectArray error) {
     char err[512] = "";

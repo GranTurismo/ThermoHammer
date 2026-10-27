@@ -68,8 +68,9 @@ endif()
 target_link_libraries(benchcore z dl)
 
 # The LLM test: llama.cpp (BenchCore/third_party/llama.cpp, b11700) running BenchCore/llm — its CPU backend with
-# the Arm dot-product kernels and its OpenCL backend for Adreno GPUs, with the kernels' sources embedded and the
-# phone's OpenCL driver opened at run time (cl_loader.c). Its own library (libbenchllm.so), 64-bit Arm only: the
+# the Arm dot-product kernels, its OpenCL backend for Adreno GPUs (the kernels' sources embedded, the phone's
+# OpenCL driver opened at run time by cl_loader.c) and its Vulkan backend for the other GPUs. Its own library
+# (libbenchllm.so), 64-bit Arm only: the
 # other ABIs get none, and the test reports it can't run. Third-party code: optimised in debug builds too, its
 # warnings off, its symbols hidden.
 if(ANDROID_ABI STREQUAL "arm64-v8a")
@@ -96,15 +97,80 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${K})
     endforeach()
 
-    add_library(benchllm SHARED ${LLAMA_SRC} ${GGML_BASE_SRC} ${GGML_CPU_SRC} ${GGML_OPENCL_SRC}
+    # Its Vulkan backend, for the GPUs the OpenCL backend doesn't take (Mali, Xclipse, PowerVR, …). Its shaders become
+    # SPIR-V at build time: llama.cpp's generator (vulkan-shaders-gen, built for this computer) runs the NDK's glslc
+    # over every variant and writes them out as C++ arrays, as its own CMake does.
+    set(GGML_VK ${GGML}/ggml-vulkan)
+    set(VK_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/vk-gen)
+    set(VK_HPP ${VK_GEN_DIR}/ggml-vulkan-shaders.hpp)
+    set(VK_GEN ${VK_GEN_DIR}/vulkan-shaders-gen)
+    file(MAKE_DIRECTORY ${VK_GEN_DIR})
+    # the shader extensions this glslc compiles: the backend and its generator build only the variants it can
+    set(VK_FEATURES)
+    foreach(F coopmat:GL_KHR_cooperative_matrix:GGML_VULKAN_COOPMAT_GLSLC_SUPPORT
+              coopmat2:GL_NV_cooperative_matrix2:GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT
+              coopmat2_decode_vector:GL_NV_cooperative_matrix_decode_vector:GGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT
+              integer_dot:GL_EXT_integer_dot_product:GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT
+              bfloat16:GL_EXT_bfloat16:GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT
+              float_e2m1:GL_EXT_float_e2m1:GGML_VULKAN_FLOAT_E2M1_GLSLC_SUPPORT
+              float_e4m3:GL_EXT_float_e4m3:GGML_VULKAN_FLOAT_E4M3_GLSLC_SUPPORT)
+        string(REPLACE ":" ";" F ${F})
+        list(GET F 0 TEST)
+        list(GET F 1 EXT)
+        list(GET F 2 DEF)
+        execute_process(COMMAND ${GLSLC} -o - -fshader-stage=compute --target-env=vulkan1.3
+            ${GGML_VK}/vulkan-shaders/feature-tests/${TEST}.comp OUTPUT_QUIET ERROR_VARIABLE GLSLC_ERR)
+        if(NOT GLSLC_ERR MATCHES "extension not supported: ${EXT}")
+            list(APPEND VK_FEATURES ${DEF})
+        endif()
+    endforeach()
+    # this computer's own compilers, not the NDK's (which the Android toolchain puts first on the search path)
+    find_program(HOST_C_COMPILER NAMES cc clang gcc PATHS /usr/bin /usr/local/bin NO_DEFAULT_PATH)
+    find_program(HOST_CXX_COMPILER NAMES c++ clang++ g++ PATHS /usr/bin /usr/local/bin NO_DEFAULT_PATH)
+    file(WRITE ${VK_GEN_DIR}/host-toolchain.cmake
+        "set(CMAKE_C_COMPILER \"${HOST_C_COMPILER}\")\nset(CMAKE_CXX_COMPILER \"${HOST_CXX_COMPILER}\")\n")
+    set(VK_GEN_ARGS)
+    foreach(D ${VK_FEATURES})
+        list(APPEND VK_GEN_ARGS -D${D}=ON)
+    endforeach()
+    include(ExternalProject)
+    ExternalProject_Add(vulkan-shaders-gen
+        SOURCE_DIR ${GGML_VK}/vulkan-shaders
+        BINARY_DIR ${VK_GEN_DIR}/build
+        CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${VK_GEN_DIR}/host-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM} -DCMAKE_INSTALL_PREFIX=${VK_GEN_DIR} -DCMAKE_INSTALL_BINDIR=.
+            ${VK_GEN_ARGS}
+        BUILD_BYPRODUCTS ${VK_GEN})
+    file(GLOB VK_SHADERS ${GGML_VK}/vulkan-shaders/*.comp)
+    file(GLOB VK_GEN_SRC ${GGML_VK}/vulkan-shaders/*.cpp ${GGML_VK}/vulkan-shaders/*.h)
+    add_custom_command(OUTPUT ${VK_HPP}
+        COMMAND ${VK_GEN} --output-dir ${VK_GEN_DIR}/spv --target-hpp ${VK_HPP}
+        DEPENDS ${VK_GEN_SRC} vulkan-shaders-gen)
+    set(VK_SHADER_SRC ${VK_HPP})
+    foreach(S ${VK_SHADERS})
+        get_filename_component(N ${S} NAME)
+        add_custom_command(OUTPUT ${VK_GEN_DIR}/${N}.cpp
+            DEPFILE ${VK_GEN_DIR}/${N}.cpp.d
+            COMMAND ${VK_GEN} --glslc ${GLSLC} --source ${S} --output-dir ${VK_GEN_DIR}/spv --target-hpp ${VK_HPP}
+                --target-cpp ${VK_GEN_DIR}/${N}.cpp
+            DEPENDS ${S} ${VK_GEN_SRC} ${VK_HPP} vulkan-shaders-gen)
+        list(APPEND VK_SHADER_SRC ${VK_GEN_DIR}/${N}.cpp)
+    endforeach()
+    set(GGML_VULKAN_SRC ${GGML_VK}/ggml-vulkan.cpp ${GGML_VK}/ggml-vulkan-buffers.cpp ${GGML_VK}/ggml-vulkan-debug.cpp
+        ${VK_SHADER_SRC})
+
+    add_library(benchllm SHARED ${LLAMA_SRC} ${GGML_BASE_SRC} ${GGML_CPU_SRC} ${GGML_OPENCL_SRC} ${GGML_VULKAN_SRC}
         ${BENCH_CORE}/llm/llm.cpp llm_jni.cpp cl_loader.c)
     target_include_directories(benchllm PRIVATE ${BENCH_CORE}/include ${LLAMA}/include ${LLAMA}/ggml/include ${GGML}
-        ${GGML}/ggml-cpu ${LLAMA}/src ${BENCH_CORE}/third_party/OpenCL-Headers ${CL_EMBED})
+        ${GGML}/ggml-cpu ${LLAMA}/src ${BENCH_CORE}/third_party/OpenCL-Headers ${CL_EMBED}
+        ${BENCH_CORE}/third_party/Vulkan-Headers/include ${VK_GEN_DIR}
+        ${ANDROID_NDK}/sources/third_party/shaderc/third_party/spirv-tools/external/spirv-headers/include)
     target_compile_definitions(benchllm PRIVATE _XOPEN_SOURCE=600 _GNU_SOURCE GGML_SCHED_MAX_COPIES=4
-        GGML_USE_CPU GGML_USE_OPENCL GGML_USE_CPU_REPACK GGML_USE_LLAMAFILE
-        GGML_OPENCL_SOA_Q GGML_OPENCL_TARGET_VERSION=300 GGML_OPENCL_USE_ADRENO_KERNELS GGML_OPENCL_EMBED_KERNELS)
+        GGML_USE_CPU GGML_USE_OPENCL GGML_USE_VULKAN GGML_USE_CPU_REPACK GGML_USE_LLAMAFILE
+        GGML_OPENCL_SOA_Q GGML_OPENCL_TARGET_VERSION=300 GGML_OPENCL_USE_ADRENO_KERNELS GGML_OPENCL_EMBED_KERNELS
+        ${VK_FEATURES})
     target_compile_options(benchllm PRIVATE -O3 -w -fvisibility=hidden -fvisibility-inlines-hidden)
     set_source_files_properties(${GGML_CPU_SRC} PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod+fp16")
-    target_link_libraries(benchllm log dl)
+    target_link_libraries(benchllm log dl vulkan)
     target_link_options(benchllm PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL)
 endif()

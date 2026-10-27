@@ -15,8 +15,10 @@ internal object LlmNative {
     @JvmStatic external fun cpuSupported(): Boolean
     /** Where the GPU's compiled kernels are kept between runs; before the first [create]. */
     @JvmStatic external fun setCacheDir(dir: String)
-    /** The OpenCL GPU llama.cpp found, "" if none. */
+    /** The GPU llama.cpp found, "" if none. */
     @JvmStatic external fun gpuName(): String
+    /** How llama.cpp runs on it: "OpenCL" (Adreno) or "Vulkan" (other GPUs), "" if there's none. */
+    @JvmStatic external fun gpuApi(): String
     /** Builds the model (weights from [seed]) on the CPU or the GPU; 0 with the reason in error[0]. */
     @JvmStatic external fun create(gpu: Boolean, threads: Int, seed: Long, error: Array<String?>): Long
     /** [decode threads, prefill threads] that ran fastest; null if a trial failed. */
@@ -31,6 +33,8 @@ internal object LlmNative {
     /** Makes a running [prefill] or [next] fail early (any thread). */
     @JvmStatic external fun cancel(handle: Long)
     @JvmStatic external fun error(handle: Long): String
+    /** How closely the GPU's last prompt matched the CPU's (1 = the same, or nothing to compare). */
+    @JvmStatic external fun agreement(handle: Long): Double
     @JvmStatic external fun destroy(handle: Long)
     /** The largest common 4-bit model (billions of parameters) that fits in [bytes]; 0 if none. */
     @JvmStatic external fun largestModel(bytes: Double): Int

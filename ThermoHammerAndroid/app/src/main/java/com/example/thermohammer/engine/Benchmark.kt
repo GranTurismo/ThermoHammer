@@ -489,7 +489,7 @@ object AiScore {
 
 /**
  * Where the model runs: the CPU (ggml's Arm dot-product kernels), or every layer on the GPU — llama.cpp's OpenCL
- * backend, which is written for Adreno GPUs (elsewhere it scores 0, and the CPU's result counts).
+ * backend on Adreno GPUs, its Vulkan backend on the others (where neither runs it scores 0, and the CPU's result counts).
  */
 enum class LlmAccel(val label: String, val seconds: Int) { CPU("CPU", 20), GPU("GPU", 16) }
 

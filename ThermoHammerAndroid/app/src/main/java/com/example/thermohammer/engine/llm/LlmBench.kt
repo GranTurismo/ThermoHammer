@@ -19,8 +19,9 @@ import kotlin.concurrent.thread
 //     prefill — the 512-token prompt in one batch, again until 3 s are measured;
 //     decode  — 32-token replies, token by token, until 4 s are measured.
 //   The CPU first tries thread counts (phones' core layouts differ too much for
-//   one rule); the GPU (OpenCL, Adreno) first runs a prompt and a reply to
-//   compile and warm its kernels.
+//   one rule); the GPU (OpenCL on Adreno, Vulkan on the others) first runs a
+//   prompt and a reply to compile and warm its kernels, and its answer to the
+//   prompt has to agree with the CPU's (BenchCore/llm).
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum class LlmPhase { BUILD, WARMUP, PREFILL, DECODE }
@@ -54,16 +55,11 @@ class LlmBench(private val context: Context) {
     }
 
     /** Why the GPU can't run it (the CPU still can), or null. */
-    fun gpuProblem(): String? {
-        val name = gpuName()
-        return when {
-            name.isEmpty() -> "no OpenCL GPU driver"
-            !name.contains("Adreno", ignoreCase = true) -> "llama.cpp's GPU code is written for Adreno GPUs ($name)"
-            else -> null
-        }
-    }
+    fun gpuProblem(): String? = if (gpuName().isEmpty()) "no GPU driver llama.cpp can use (OpenCL or Vulkan)" else null
 
     fun gpuName(): String = if (LlmNative.loaded) LlmNative.gpuName() else ""
+
+    fun gpuApi(): String = if (LlmNative.loaded) LlmNative.gpuApi() else ""
 
     /** Memory the app could take now: what's free plus what the system can reclaim at once. */
     fun freeBytes(): Long = memory().availMem
@@ -73,7 +69,7 @@ class LlmBench(private val context: Context) {
     /** Prefill and decode tokens/s on [accel]; a run that fails keeps its reason. Null if the test was stopped. */
     fun run(accel: LlmAccel, threads: Int, isActive: () -> Boolean, onProgress: (LlmProgress) -> Unit): LlmRun? {
         val gpu = accel == LlmAccel.GPU
-        val where = if (gpu) "GPU · OPENCL" else "CPU"
+        val where = if (gpu) "GPU · ${gpuApi().uppercase()}" else "CPU"
         if (gpu) LlmNative.setCacheDir(File(context.cacheDir, "llm-opencl").path)
         onProgress(LlmProgress(LlmPhase.BUILD, 0f, -1.0, "$where · BUILDING THE MODEL · 1.8 GB OF WEIGHTS FROM A SEED"))
         val error = arrayOfNulls<String>(1)

@@ -52,8 +52,27 @@ class LlmBenchTest {
         val why = bench.gpuProblem()
         if (why != null) { report("llm gpu", "skipped: $why"); return }
         val run = requireNotNull(bench.run(LlmAccel.GPU, 4, { true }) {})
-        report("llm gpu", run.error ?: "prefill %.1f, decode %.1f tok/s on %s".format(run.prefill, run.decode, bench.gpuName()))
+        report("llm gpu", run.error ?: "prefill %.1f, decode %.1f tok/s on %s (%s)".format(run.prefill, run.decode,
+            bench.gpuName(), bench.gpuApi()))
         assertTrue(run.error ?: "", run.decode > 0)
+    }
+
+    @Test
+    fun gpuAgreesWithTheCpu() {
+        assumeTrue(bench.problem() == null && bench.gpuProblem() == null)
+        val error = arrayOfNulls<String>(1)
+        val cpu = LlmNative.create(false, 4, LlmNative.SEED, error)
+        assertTrue(error[0] ?: "", cpu != 0L)
+        assertTrue(LlmNative.error(cpu), LlmNative.prefill(cpu, LlmNative.PROMPT) > 0)
+        LlmNative.destroy(cpu)
+        val gpu = LlmNative.create(true, 4, LlmNative.SEED, error)
+        assertTrue(error[0] ?: "", gpu != 0L)
+        val s = LlmNative.prefill(gpu, LlmNative.PROMPT)
+        val agreement = LlmNative.agreement(gpu)
+        report("llm agreement", "%s on %s: %.6f%s".format(bench.gpuApi(), bench.gpuName(), agreement,
+            if (s < 0) " — " + LlmNative.error(gpu) else ""))
+        LlmNative.destroy(gpu)
+        assertTrue("agreement $agreement", s > 0 && agreement >= 0.9)
     }
 
     @Test

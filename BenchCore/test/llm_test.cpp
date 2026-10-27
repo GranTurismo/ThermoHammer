@@ -33,6 +33,10 @@ static void run(int gpu) {
     int passes = 0;
     while (total < 3 && s > 0) { s = bc_llm_prefill(llm, BC_LLM_PROMPT); total += s; passes++; }
     if (s > 0) std::printf("        prefill %.1f tokens/s (%d × %d)\n", passes * BC_LLM_PROMPT / total, passes, int(BC_LLM_PROMPT));
+    if (gpu) {
+        std::printf("        agreement with the CPU %.6f\n", bc_llm_agreement(llm));
+        check(s > 0 && bc_llm_agreement(llm) >= 0.9, "GPU agrees with the CPU");
+    }
     else std::printf("        %s\n", bc_llm_error(llm));
 
     int first[8] = {}, again[8] = {};

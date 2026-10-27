@@ -733,7 +733,7 @@ fun BenchmarkInfoCard(
                 Column(Modifier.weight(1f)) {
                     Text("LLM · ${a.label}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
                     Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Llama 3.2 3B, 4-bit · a 512-token prompt, then the reply token by token"
-                        else "The same model with every layer on the GPU · llama.cpp OpenCL, Adreno",
+                        else "The same model with every layer on the GPU · llama.cpp OpenCL (Adreno) or Vulkan",
                         style = ThermoType.annotation(8f, Forge.ink2))
                 }
                 Text("${a.seconds}s", style = ThermoType.data(10f, Forge.ink1))

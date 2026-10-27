@@ -8,7 +8,8 @@
 //   Decode: one token at a time, each sampled and fed back as the next input — every token reads all the
 //   weights, so it is bound by memory bandwidth.
 //   The CPU runs ggml's Arm kernels (the weights repacked for the dot-product instructions every phone has), the
-//   GPU llama.cpp's Metal (iPhone) or OpenCL (Adreno) backend with every layer on it.
+//   GPU llama.cpp's Metal (iPhone), OpenCL (Adreno) or Vulkan (other Android GPUs) backend with every layer on it.
+//   A GPU's answer to the prompt has to agree with the CPU's: a driver that computes wrong numbers fast doesn't count.
 #include "bench_llm.h"
 
 #include <algorithm>
@@ -18,10 +19,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
@@ -37,11 +43,17 @@ constexpr double PI = 3.14159265358979323846;
 constexpr int Q4_0_BLOCK = 18;          // bytes per 32 weights: an fp16 scale and 16 bytes of nibbles
 constexpr int TOP_K = 40;
 constexpr double TEMPERATURE = 0.8;
+constexpr uint32_t SAMPLE_STEP = 97;    // every 97th logit: what the finiteness and agreement checks look at
+constexpr double MIN_AGREEMENT = 0.9;   // correlation with the CPU's logits a GPU's must reach
 
 std::mutex g_log_mutex;
 std::string g_log_error;                 // llama.cpp's last error line, for the reason a step failed
 
 void on_log(ggml_log_level level, const char* text, void*) {
+#ifdef __ANDROID__
+    if (text && (level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR))   // the whole story, in logcat
+        __android_log_print(level == GGML_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_WARN, "llama", "%s", text);
+#endif
     if (level != GGML_LOG_LEVEL_ERROR || !text) return;
     std::lock_guard<std::mutex> lock(g_log_mutex);
     g_log_error = text;
@@ -61,13 +73,41 @@ void init_once() {
     });
 }
 
+/**
+ * The GPU to run on: OpenCL's when it has one (it takes only Adreno GPUs, which its kernels are written for —
+ * Vulkan lists the Adreno too), otherwise the first: Vulkan's on other Android GPUs, Metal's on iOS.
+ */
 ggml_backend_dev_t gpu_device() {
+    ggml_backend_dev_t first = nullptr;
     for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
         ggml_backend_dev_t dev = ggml_backend_dev_get(i);
         const auto type = ggml_backend_dev_type(dev);
-        if (type == GGML_BACKEND_DEVICE_TYPE_GPU || type == GGML_BACKEND_DEVICE_TYPE_IGPU) return dev;
+        if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU) continue;
+        if (std::strcmp(ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev)), "OpenCL") == 0) return dev;
+        if (!first) first = dev;
     }
-    return nullptr;
+    return first;
+}
+
+// The CPU's logits for each prompt it ran (by seed and length), sampled: what a GPU's must agree with.
+std::mutex g_ref_mutex;
+std::map<std::pair<uint64_t, int>, std::vector<float>> g_ref;
+
+/** Pearson correlation of two samples. */
+double correlation(const std::vector<float>& a, const std::vector<float>& b) {
+    const size_t n = std::min(a.size(), b.size());
+    double ma = 0, mb = 0;
+    for (size_t i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= double(n);
+    mb /= double(n);
+    double ab = 0, aa = 0, bb = 0;
+    for (size_t i = 0; i < n; i++) {
+        const double x = a[i] - ma, y = b[i] - mb;
+        ab += x * y;
+        aa += x * x;
+        bb += y * y;
+    }
+    return aa > 0 && bb > 0 ? ab / std::sqrt(aa * bb) : 0;
 }
 
 uint64_t mix(uint64_t z) {
@@ -211,6 +251,8 @@ struct bc_llm {
     llama_token next = 0;
     uint64_t seed = 0, rng = 0;
     std::string error;
+    bool gpu = false;
+    double agreement = 1;                    // the last prefill's correlation with the CPU's output
     int threads = 0, batch_threads = 0;
     // the CPU's worker threads, kept for the whole run as llama-bench keeps them: without a pool ggml starts and
     // ends its threads for every graph — every token — and on a phone threads that new never look busy enough
@@ -249,12 +291,21 @@ const char* bc_llm_gpu_name(void) {
     return name.c_str();
 }
 
+const char* bc_llm_gpu_api(void) {
+    init_once();
+    ggml_backend_dev_t dev = gpu_device();
+    if (!dev) return "";
+    const char* name = ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev));
+    return std::strcmp(name, "MTL") == 0 ? "Metal" : name;
+}
+
 bc_llm* bc_llm_create(int gpu, int threads, uint64_t seed, char* err, int err_size) {
     init_once();
     ggml_backend_dev_t dev = gpu ? gpu_device() : nullptr;
-    if (gpu && !dev) { put(err, err_size, "llama.cpp found no GPU it can run on"); return nullptr; }
+    if (gpu && !dev) { put(err, err_size, "llama.cpp found no GPU it can run on (Metal, OpenCL or Vulkan)"); return nullptr; }
 
     auto* llm = new bc_llm();
+    llm->gpu = gpu != 0;
     llm->seed = seed;
     llm->rng = mix(seed);
     llm->prompt.resize(BC_LLM_PROMPT);
@@ -371,8 +422,22 @@ double bc_llm_prefill(bc_llm* llm, int tokens) {
     if (r != 0) { llm->fail("the prompt did not run", r); return -1; }
     const float* logits = llama_get_logits_ith(llm->ctx, -1);
     if (!logits) { llm->fail("no output"); return -1; }
-    for (uint32_t i = 0; i < VOCAB; i += 97) {
+    std::vector<float> sample;
+    for (uint32_t i = 0; i < VOCAB; i += SAMPLE_STEP) {
         if (!std::isfinite(logits[i])) { llm->error = "the model's output was not a number"; return -1; }
+        sample.push_back(logits[i]);
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_ref_mutex);
+        const auto key = std::make_pair(llm->seed, tokens);
+        if (!llm->gpu) g_ref[key] = sample;
+        else if (const auto ref = g_ref.find(key); ref != g_ref.end()) llm->agreement = correlation(ref->second, sample);
+    }
+    if (llm->agreement < MIN_AGREEMENT) {
+        char why[96];
+        std::snprintf(why, sizeof why, "the GPU's results differ from the CPU's (correlation %.2f)", llm->agreement);
+        llm->error = why;
+        return -1;
     }
     llm->error.clear();
     return s;
@@ -428,6 +493,8 @@ double bc_llm_next(bc_llm* llm, int* token) {
 void bc_llm_cancel(bc_llm* llm) { llm->cancelled = true; }
 
 const char* bc_llm_error(const bc_llm* llm) { return llm->error.c_str(); }
+
+double bc_llm_agreement(const bc_llm* llm) { return llm->agreement; }
 
 void bc_llm_destroy(bc_llm* llm) {
     if (!llm) return;
