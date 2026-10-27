@@ -432,4 +432,12 @@ public class BenchmarkMappingTests
         Assert.Equal(3, board[1].Id);
         Assert.True(board[0].Score > board[1].Score);
     }
+
+    [Fact]
+    public void UnverifiedBenchmarkRunsAreRejected()
+    {
+        Assert.Null(BenchmarkScoring.Problem(Request(r => r.ValidityFlags = 0)));
+        Assert.Equal("Only verified runs are accepted", BenchmarkScoring.Problem(Request(r => r.ValidityFlags = 128)));
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.ValidityFlags = 2)));
+    }
 }

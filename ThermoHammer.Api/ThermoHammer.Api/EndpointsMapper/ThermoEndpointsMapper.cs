@@ -36,6 +36,8 @@ public static class ThermoEndpointsMapper
 
             if (!isValid)
                 return Results.BadRequest("Invalid data");
+            if (!HammerExtensions.IsVerified(hammerRequest.ValidityFlags))
+                return Results.BadRequest("Only verified runs are accepted");
 
             session.State = SessionState.Closed;
 
@@ -50,6 +52,7 @@ public static class ThermoEndpointsMapper
         app.MapGet("/leaderboard", async (ThermoDbContext db) =>
         {
             var hammers = await db.Hammers
+            .Where(o => o.ValidityFlags == null || (o.ValidityFlags & ~HammerExtensions.FreqMissing) == 0)
             .OrderByDescending(o => o.StabilityPercentage)
             .Select(o => o.ToDto())
             .ToListAsync();

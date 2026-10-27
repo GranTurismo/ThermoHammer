@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using ThermoHammer.Api.Models;
 
 namespace ThermoHammer.Api.Tests;
@@ -166,4 +167,29 @@ public class HammerMappingTests
     [Fact]
     public void DeliveredCapacityIsPreferredForStability()
         => Assert.Equal(87.5, Request(r => r.DeliveredCapacity = 87.5).ToDao().StabilityPercentage, 6);
+
+    [Fact]
+    public void OnlyVerifiedStressRunsAreAccepted()
+    {
+        Assert.True(HammerExtensions.IsVerified(0));
+        Assert.True(HammerExtensions.IsVerified(HammerExtensions.FreqMissing));   // the phone hides its clocks — not the run's fault
+        Assert.True(HammerExtensions.IsVerified(null));                          // legacy clients send no flags
+        Assert.False(HammerExtensions.IsVerified(1 << 7));                       // cooldown timeout
+        Assert.False(HammerExtensions.IsVerified(HammerExtensions.FreqMissing | 1));
+    }
+
+    // the leaderboard's filter has to become SQL (checked without a database: ToQueryString never connects)
+    [Fact]
+    public void LeaderboardFilterTranslatesToSql()
+    {
+        var options = new DbContextOptionsBuilder<ThermoDbContext>()
+            .UseSqlServer("Server=none;Database=none").Options;
+        using var db = new ThermoDbContext(options);
+        var sql = db.Hammers
+            .Where(o => o.ValidityFlags == null || (o.ValidityFlags & ~HammerExtensions.FreqMissing) == 0)
+            .OrderByDescending(o => o.StabilityPercentage)
+            .ToQueryString();
+        Assert.Contains("ValidityFlags", sql);
+        Assert.Contains("&", sql);
+    }
 }

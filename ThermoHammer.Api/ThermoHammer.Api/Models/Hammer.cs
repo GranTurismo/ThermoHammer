@@ -70,7 +70,8 @@ public enum OsPlatform
 {
     iOS = 1,
     Android = 2,
-    macOS = 3      // the iPhone app running on an Apple-silicon Mac
+    macOS = 3,     // the iPhone app running on an Apple-silicon Mac
+    Windows = 4    // the Windows app (ThermoHammerWindows)
 }
 
 public class HammerStamp
@@ -92,6 +93,15 @@ public enum ThermalState
 
 public static class HammerExtensions
 {
+    /// <summary>The validity bit for "no clock data": it describes the phone (iOS, stock Android 16), not the run.</summary>
+    public const int FreqMissing = 1 << 3;
+
+    /// <summary>
+    /// Only verified stress runs are accepted and shown: no validity flag but FreqMissing. Legacy clients that send no
+    /// flags (null) can't be told apart and stay accepted.
+    /// </summary>
+    public static bool IsVerified(int? validityFlags) => validityFlags is null || (validityFlags.Value & ~FreqMissing) == 0;
+
     public static Hammer ToDao(this HammerRequestBase request)
     {
         double maxScore = request.Stamps != null && request.Stamps.Count > 0 ? request.Stamps.Max(s => s.Score) : 0;

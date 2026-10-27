@@ -483,6 +483,8 @@ public static class BenchmarkScoring
     public static string? Problem(BenchmarkRequest r)
     {
         if (r.BenchmarkVersion != CurrentVersion) return $"Unsupported benchmark version {r.BenchmarkVersion}";
+        // only verified runs: started cool, nothing else running, no charger change or power saving (the apps don't offer the rest)
+        if (r.ValidityFlags != 0) return "Only verified runs are accepted";
         if (string.IsNullOrWhiteSpace(r.DeviceModel) || string.IsNullOrWhiteSpace(r.GpuName)) return "Missing device";
         foreach (var (fps, low) in new[] { (r.Test1Fps, r.Test1LowFps), (r.Test2Fps, r.Test2LowFps) })
         {
