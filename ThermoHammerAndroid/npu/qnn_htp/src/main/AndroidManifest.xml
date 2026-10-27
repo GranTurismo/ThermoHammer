@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dist="http://schemas.android.com/apk/distribution">
+    <!-- Every Snapdragon in app/device_targeting_configuration.xml: the union of the qnn_v* modules' groups -->
+    <dist:module dist:instant="false" dist:title="@string/npu_qnn_htp">
+        <dist:delivery>
+            <dist:install-time>
+                <dist:conditions>
+                    <dist:device-groups>
+                        <dist:device-group dist:name="Qualcomm_SM8350"/>
+                        <dist:device-group dist:name="Qualcomm_SM8350P"/>
+                        <dist:device-group dist:name="Qualcomm_SM8325"/>
+                        <dist:device-group dist:name="Qualcomm_SM7325"/>
+                        <dist:device-group dist:name="Qualcomm_SM7350"/>
+                        <dist:device-group dist:name="Qualcomm_SM7315"/>
+                        <dist:device-group dist:name="Qualcomm_SM8450"/>
+                        <dist:device-group dist:name="Qualcomm_SM8475"/>
+                        <dist:device-group dist:name="Qualcomm_SM7450"/>
+                        <dist:device-group dist:name="Qualcomm_SM7475"/>
+                        <dist:device-group dist:name="Qualcomm_SM8550"/>
+                        <dist:device-group dist:name="Qualcomm_SM8635"/>
+                        <dist:device-group dist:name="Qualcomm_SM7675"/>
+                        <dist:device-group dist:name="Qualcomm_SM6450"/>
+                        <dist:device-group dist:name="Qualcomm_SM8650"/>
+                        <dist:device-group dist:name="Qualcomm_SM8750"/>
+                        <dist:device-group dist:name="Qualcomm_SM8850"/>
+                        <dist:device-group dist:name="Qualcomm_SM8845"/>
+                        <dist:device-group dist:name="Qualcomm_SM8735"/>
+                        <dist:device-group dist:name="Qualcomm_SM7750"/>
+                        <dist:device-group dist:name="Qualcomm_SM7550"/>
+                        <dist:device-group dist:name="Qualcomm_SM7635"/>
+                        <dist:device-group dist:name="Qualcomm_SM7435"/>
+                        <dist:device-group dist:name="Qualcomm_SM6650"/>
+                        <dist:device-group dist:name="Qualcomm_SM6475"/>
+                    </dist:device-groups>
+                </dist:conditions>
+            </dist:install-time>
+        </dist:delivery>
+        <dist:fusing dist:include="true"/>
+    </dist:module>
+    <!-- native libraries only -->
+    <application android:hasCode="false"/>
+</manifest>

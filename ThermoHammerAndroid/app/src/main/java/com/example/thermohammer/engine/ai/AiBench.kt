@@ -1,6 +1,7 @@
 package com.example.thermohammer.engine.ai
 
 import android.content.Context
+import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.example.thermohammer.engine.AiAccel
@@ -20,8 +21,9 @@ import kotlin.math.min
 //   three accelerators: the CPU runs it in INT8 (XNNPACK), the GPU in FP16, the
 //   NPU in INT8. A run compiles the model (not timed), warms up, then counts
 //   inferences for a fixed time. The NPU is used only where LiteRT finds a
-//   vendor runtime: Qualcomm (QNN — bundled in bench builds only), MediaTek or
-//   Google Tensor; elsewhere it scores 0.
+//   vendor runtime it can compile for on the phone: Qualcomm (QNN) or MediaTek (NeuroPilot), both
+//   from Play modules for the chips they support. Google Tensor runs only precompiled models, so it
+//   scores 0 like phones without one.
 //   Inputs are the benchmark's own renders (assets/media) and a synthesized
 //   piano phrase (assets/ai/yamnet_input.bin); the first run's outputs become
 //   the picture on the stage.
@@ -76,14 +78,19 @@ class AiBench(private val context: Context) {
     /**
      * Why the NPU can't run here, or null when it can. LiteRT quietly runs an "NPU" model on the CPU when
      * no vendor dispatch library loads, so the libraries have to be on disk: the dispatch library for the
-     * chip's vendor and, for Qualcomm, the QNN runtime (both extracted only in bench builds).
+     * chip's vendor and its runtime: Qualcomm's QNN or MediaTek's NeuroPilot adapter (the npu/ Play modules,
+     * installed only on the chips in their device groups; QNN is bundled in the bench build).
      */
     fun npuProblem(): String? {
         val runtime = npuRuntime() ?: return "no NPU runtime for this chip"
         val dir = java.io.File(context.applicationInfo.nativeLibraryDir)
         val vendor = when (runtime) { "Qualcomm QNN" -> "Qualcomm"; "MediaTek NeuroPilot" -> "MediaTek"; else -> "GoogleTensor" }
+        if (vendor == "GoogleTensor") return "Google Tensor's NPU runs only precompiled models, not supported yet"
         if (!java.io.File(dir, "libLiteRtDispatch_$vendor.so").exists()) return "$runtime dispatch library not in this build"
-        if (vendor == "Qualcomm" && !java.io.File(dir, "libQnnHtp.so").exists()) return "Qualcomm's QNN runtime is only in the test build"
+        val chip = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else "chip"
+        if (vendor == "Qualcomm" && !java.io.File(dir, "libQnnHtp.so").exists()) return "no Qualcomm NPU runtime for the $chip"
+        if (vendor == "MediaTek" && dir.list()?.any { it.startsWith("libneuronusdk_adapter") } != true)
+            return "no MediaTek NPU runtime for the $chip"
         if (AiAccel.NPU !in available()) return "LiteRT found no NPU accelerator"
         return null
     }

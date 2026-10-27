@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dist="http://schemas.android.com/apk/distribution">
+    <dist:module dist:instant="false" dist:title="@string/npu_qnn_v68">
+        <dist:delivery>
+            <dist:install-time>
+                <dist:conditions>
+                    <dist:device-groups>
+                        <dist:device-group dist:name="Qualcomm_SM8350"/>
+                        <dist:device-group dist:name="Qualcomm_SM8350P"/>
+                        <dist:device-group dist:name="Qualcomm_SM8325"/>
+                        <dist:device-group dist:name="Qualcomm_SM7325"/>
+                        <dist:device-group dist:name="Qualcomm_SM7350"/>
+                        <dist:device-group dist:name="Qualcomm_SM7315"/>
+                    </dist:device-groups>
+                </dist:conditions>
+            </dist:install-time>
+        </dist:delivery>
+        <dist:fusing dist:include="true"/>
+    </dist:module>
+    <!-- native libraries only -->
+    <application android:hasCode="false"/>
+</manifest>

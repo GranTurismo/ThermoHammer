@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dist="http://schemas.android.com/apk/distribution">
+    <!-- Dimensity 9400 and older (Google's list; MT6895, MT6886, MT6853 are LiteRT-supported extras) -->
+    <dist:module dist:instant="false" dist:title="@string/npu_mtk_v8">
+        <dist:delivery>
+            <dist:install-time>
+                <dist:conditions>
+                    <dist:device-groups>
+                        <dist:device-group dist:name="Mediatek_MT6991"/>
+                        <dist:device-group dist:name="Mediatek_MT6989"/>
+                        <dist:device-group dist:name="Mediatek_MT6985"/>
+                        <dist:device-group dist:name="Mediatek_MT6983"/>
+                        <dist:device-group dist:name="Mediatek_MT6897"/>
+                        <dist:device-group dist:name="Mediatek_MT6893"/>
+                        <dist:device-group dist:name="Mediatek_MT6878"/>
+                        <dist:device-group dist:name="Mediatek_MT6877"/>
+                        <dist:device-group dist:name="Mediatek_MT6879"/>
+                        <dist:device-group dist:name="Mediatek_MT6895"/>
+                        <dist:device-group dist:name="Mediatek_MT6886"/>
+                        <dist:device-group dist:name="Mediatek_MT6853"/>
+                    </dist:device-groups>
+                </dist:conditions>
+            </dist:install-time>
+        </dist:delivery>
+        <dist:fusing dist:include="true"/>
+    </dist:module>
+    <!-- native libraries only -->
+    <application android:hasCode="false"/>
+</manifest>

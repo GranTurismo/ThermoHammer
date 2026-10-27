@@ -717,7 +717,7 @@ fun BenchmarkInfoCard(
             }
         }
         Text("AI runs open 8-bit models through LiteRT. The NPU counts where the phone has a supported one " +
-            "(Snapdragon in this test build, MediaTek, Google Tensor); elsewhere it scores 0.",
+            "(most Snapdragon and Dimensity chips from 2021 on); elsewhere it scores 0.",
             style = ThermoType.annotation(8f, Forge.ink2))
         for (a in com.example.thermohammer.engine.LlmAccel.entries) {
             Row(verticalAlignment = Alignment.CenterVertically) {

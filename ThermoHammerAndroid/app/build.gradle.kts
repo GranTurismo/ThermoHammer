@@ -13,7 +13,7 @@ android {
         applicationId = "com.granturismo.thermohammer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 12
+        versionCode = 13
         versionName = "2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -88,15 +88,18 @@ android {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
       jniLibs {
-        // Qualcomm's QNN runtime (bench builds only): just the HTP backend for Snapdragon 8 Gen 2 – 8 Elite Gen 5
+        // The NPU loads QNN's Hexagon libraries from files, so the native libraries are extracted on install
+        useLegacyPackaging = true
+        // Qualcomm's QNN runtime in the bench build: just the HTP backend for Snapdragon 8 Gen 2 – 8 Elite Gen 5
         excludes += listOf("**/libQnnDsp*.so", "**/libQnnGpu.so", "**/libQnnHtpV68*.so", "**/libQnnHtpV69*.so")
       }
     }
-}
 
-androidComponents {
-    // The NPU loads QNN's Hexagon libraries from files, so the bench build extracts its native libraries
-    onVariants(selector().withBuildType("bench")) { it.packaging.jniLibs.useLegacyPackaging.set(true) }
+    // Play builds get the NPU runtimes (Qualcomm QNN, MediaTek NeuroPilot) through the npu/ modules, installed only
+    // on the chips in these device groups
+    dynamicFeatures += listOf(":npu:qnn_htp", ":npu:qnn_v68", ":npu:qnn_v69", ":npu:qnn_v73", ":npu:qnn_v75",
+        ":npu:qnn_v79", ":npu:qnn_v81", ":npu:mtk_v8", ":npu:mtk_v9")
+    bundle { deviceTargetingConfig = file("device_targeting_configuration.xml") }
 }
 
 kotlin {
@@ -154,7 +157,7 @@ dependencies {
 
 
   // AI tests: LiteRT on the CPU, the GPU and the NPU (vendor dispatch libraries). Qualcomm's QNN runtime
-  // goes only into the sideloaded bench build; Play builds are to get it through Play AI packs.
+  // goes into the sideloaded bench build; Play builds get it, and MediaTek's adapter, from the npu/ modules.
   implementation(libs.litert)
   implementation(libs.litert.gpu)
   implementation(libs.litert.npu.qualcomm)

@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">ThermoHammer</string>
+    <!-- titles of the NPU runtime modules (npu/) -->
+    <string name="npu_mtk_v8" translatable="false">MediaTek NPU runtime (NeuroPilot 8)</string>
+    <string name="npu_mtk_v9" translatable="false">MediaTek NPU runtime (NeuroPilot 9)</string>
+    <string name="npu_qnn_htp" translatable="false">Qualcomm NPU runtime</string>
+    <string name="npu_qnn_v68" translatable="false">Qualcomm NPU runtime (Hexagon v68)</string>
+    <string name="npu_qnn_v69" translatable="false">Qualcomm NPU runtime (Hexagon v69)</string>
+    <string name="npu_qnn_v73" translatable="false">Qualcomm NPU runtime (Hexagon v73)</string>
+    <string name="npu_qnn_v75" translatable="false">Qualcomm NPU runtime (Hexagon v75)</string>
+    <string name="npu_qnn_v79" translatable="false">Qualcomm NPU runtime (Hexagon v79)</string>
+    <string name="npu_qnn_v81" translatable="false">Qualcomm NPU runtime (Hexagon v81)</string>
 </resources>
