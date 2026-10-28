@@ -75,6 +75,10 @@ enum ValidityFlag {
     static let suspiciousBoost  = 1 << 6  // huge peak with no state change — possible benchmark whitelisting
     static let cooldownTimeout  = 1 << 7  // cooldown ended without reaching nominal thermal state
     static let baselineExceeded = 1 << 8  // measured run sustained >105% of calibration baseline
+
+    /// Only verified runs go to the leaderboard: nothing set but freqMissing, which describes iOS (it shows apps
+    /// no clocks), not the run.
+    static func submittable(_ flags: Int) -> Bool { flags & ~freqMissing == 0 }
 }
 
 // MARK: - Per-stamp environment bitfield
@@ -145,7 +149,7 @@ struct Scorecard {
     var validityFlags: Int = 0
     var warmStarted: Bool = false
 
-    var isVerified: Bool { validityFlags == 0 }
+    var isVerified: Bool { ValidityFlag.submittable(validityFlags) }
 }
 
 // MARK: - Live state published to UI
@@ -414,7 +418,6 @@ final class StressEngine: ObservableObject {
         gates.append(GateResult(id: "thermal", title: "THERMAL", blocking: false,
                                 passed: true,
                                 detail: ts == .nominal ? "nominal" : "\(ts.name.lowercased()) — cooldown will run first"))
-        if ts != .nominal { hints |= ValidityFlag.warmStarted }
         // Low power mode
         let lpm = ProcessInfo.processInfo.isLowPowerModeEnabled
         gates.append(GateResult(id: "lowpower", title: "LOW POWER MODE", blocking: false,
@@ -835,8 +838,7 @@ final class StressEngine: ObservableObject {
 
         // validity flags
         var flags = ValidityFlag.freqMissing // iOS exposes no cpufreq — always true here
-        if thermalEscalatedAtStart { flags |= ValidityFlag.warmStarted }
-        if cooldownTimedOut { flags |= ValidityFlag.cooldownTimeout }
+        // a warm start lowers the confidence, it doesn't flag the run (as on Android)
         if Double(contentionStamps) / Double(stamps.count) > 0.10 { flags |= ValidityFlag.interference }
         if powerEventSeen { flags |= ValidityFlag.powerEvent }
         if envAcc & EnvFlag.lowPowerMode != 0 { flags |= ValidityFlag.envCapped }
@@ -846,11 +848,11 @@ final class StressEngine: ObservableObject {
 
         // confidence
         var conf = 100
-        if flags & ValidityFlag.warmStarted != 0 { conf -= 15 }
+        if thermalEscalatedAtStart { conf -= 15 }
         if flags & ValidityFlag.interference != 0 { conf -= 20 }
         if flags & ValidityFlag.shortRun != 0 { conf -= 25 }
         if flags & ValidityFlag.envCapped != 0 { conf -= 10 }
-        if flags & ValidityFlag.cooldownTimeout != 0 { conf -= 15 }
+        if cooldownTimedOut { conf -= 15 }
         if flags & ValidityFlag.baselineExceeded != 0 { conf -= 10 }
         conf -= 10 // freq telemetry unavailable — permanent honesty tax on iOS
         sc.confidence = max(0, conf)

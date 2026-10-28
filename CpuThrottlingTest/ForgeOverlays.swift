@@ -171,7 +171,8 @@ struct VerdictOverlay: View {
     let submitting: Bool
     let submitMsg: String?
     let submitError: String?
-    let canSubmit: Bool
+    let canSubmit: Bool        // a verified run, not submitted yet
+    var online = true
     let onSubmit: () -> Void
     let onDismiss: () -> Void
 
@@ -237,6 +238,12 @@ struct VerdictOverlay: View {
                             ProgressView().tint(Forge.phaseMeasured).scaleEffect(0.8)
                             Text("SUBMITTING…").font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Forge.ink1)
                         }
+                    } else if !scorecard.isVerified {
+                        Text("Only verified runs go to the leaderboard. This one is kept on your \(LeaderboardService.isMac ? "Mac" : "iPhone") for your own comparisons.")
+                            .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
+                    } else if canSubmit && !online {
+                        Text("No internet connection. Turn on Wi-Fi or mobile data to submit this result — until then it's saved on your \(LeaderboardService.isMac ? "Mac" : "iPhone"), and you can submit it later from the leaderboard.")
+                            .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
                     } else if canSubmit {
                         Button(action: onSubmit) {
                             Text("SUBMIT TO LEADERBOARD")
@@ -305,9 +312,9 @@ struct ConnectionOverlay: View {
         ForgeOverlayScrim {
             ForgeCard {
                 VStack(spacing: 12) {
-                    Engraved(text: "OFFLINE", color: Ramp.at(0.5), size: 11)
-                    Engraved(text: "result saved locally — submit from leaderboard when online",
-                             color: Forge.ink1, size: 8)
+                    Engraved(text: "NO INTERNET CONNECTION", color: Ramp.at(0.5), size: 11)
+                    Text("Turn on Wi-Fi or mobile data to submit this result. Until then it's saved on this device — submit it from the leaderboard when you're online.")
+                        .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1)
                         .multilineTextAlignment(.center)
                     HStack(spacing: 10) {
                         Button(action: onDismiss) {

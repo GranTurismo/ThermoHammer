@@ -23,11 +23,11 @@ targets:
       - path: BenchCore/third_party/llama.cpp/src
         compilerFlags: ["-O3", "-w", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"]
       - path: BenchCore/third_party/llama.cpp/ggml/src
-        excludes: ["ggml-cpu/**", "ggml-metal/**", "ggml-opencl/**"]
+        excludes: ["ggml-cpu/**", "ggml-metal/**", "ggml-opencl/**", "ggml-vulkan/**"]
         compilerFlags: ["-O3", "-w", "-D_XOPEN_SOURCE=600", "-D_DARWIN_C_SOURCE", "-DGGML_SCHED_MAX_COPIES=4",
                         "-DGGML_USE_CPU", "-DGGML_USE_METAL", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"]
       - path: BenchCore/third_party/llama.cpp/ggml/src/ggml-cpu
-        excludes: ["arch/arm/cpu-feats.cpp"]
+        excludes: ["arch/arm/cpu-feats.cpp", "arch/x86/**"]
         compilerFlags: ["-O3", "-w", "-D_XOPEN_SOURCE=600", "-D_DARWIN_C_SOURCE", "-DGGML_SCHED_MAX_COPIES=4",
                         "-DGGML_USE_CPU", "-DGGML_USE_METAL", "-DGGML_USE_CPU_REPACK", "-DGGML_USE_LLAMAFILE",
                         "-march=armv8.2-a+dotprod+fp16", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-cpu"]
@@ -107,8 +107,8 @@ targets:
       CODE_SIGNING_ALLOWED: YES
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       GENERATE_INFOPLIST_FILE: YES
-      MARKETING_VERSION: "1.8"
-      CURRENT_PROJECT_VERSION: "36"
+      MARKETING_VERSION: "2.0.1"
+      CURRENT_PROJECT_VERSION: "38"
       INFOPLIST_KEY_CFBundleDisplayName: "ThermoHammer"
       INFOPLIST_KEY_CFBundleName: "ThermoHammer"
       INFOPLIST_KEY_UILaunchScreen_Generation: YES

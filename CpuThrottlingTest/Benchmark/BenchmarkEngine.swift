@@ -231,13 +231,12 @@ final class BenchmarkEngine: ObservableObject {
         var r = BenchmarkResult()
         r.gpuName = BenchmarkUpload.gpuName()
         if ProcessInfo.processInfo.isLowPowerModeEnabled { r.validityFlags |= BenchFlag.envCapped }
-        if ProcessInfo.processInfo.thermalState != .nominal { r.validityFlags |= BenchFlag.warmStarted }
 
-        // getting ready: cool, and nothing else eating the CPU
-        var cooled = coolDown()
+        // getting ready: cool, and nothing else eating the CPU. Not cooling all the way doesn't flag the run: the wait
+        // is a courtesy, not a condition (as on Android)
+        let cooled = coolDown()
         let quiet = waitUntilQuiet()
-        if cooled && quiet.waited >= 20 { cooled = coolDown() }   // it had cooled; the busy spell may have warmed it
-        if !cooled { r.validityFlags |= BenchFlag.cooldownTimeout }
+        if cooled && quiet.waited >= 20 { _ = coolDown() }   // it had cooled; the busy spell may have warmed it
         if !quiet.quiet { r.validityFlags |= BenchFlag.interference }
         r.startCpuShare = quiet.share
         r.quietWaitSec = quiet.waited

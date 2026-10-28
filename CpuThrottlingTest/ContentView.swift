@@ -99,7 +99,8 @@ struct ContentView: View {
                     submitting: isSubmittingScore,
                     submitMsg: submitSuccessMessage,
                     submitError: submitErrorMessage,
-                    canSubmit: networkMonitor.isConnected && submitSuccessMessage == nil,
+                    canSubmit: retainedScorecard!.isVerified && submitSuccessMessage == nil,
+                    online: networkMonitor.isConnected,
                     onSubmit: submitScore,
                     onDismiss: {
                         withAnimation(.easeOut(duration: 0.2)) { showVerdict = false }
@@ -664,7 +665,8 @@ struct ContentView: View {
         } else if engine.wasCancelledDueToBackground || engine.abortedByUser {
             withAnimation(.easeOut(duration: 0.2)) { showAbort = true }
         }
-        if !networkMonitor.isConnected {
+        // offline: ask for a connection — unless the run is unverified and can't be submitted anyway
+        if !networkMonitor.isConnected && sc?.isVerified == true {
             withAnimation(.easeOut(duration: 0.2)) { showConnectionRequest = true }
         }
     }

@@ -8,6 +8,7 @@ struct BenchmarkResultView: View {
     let onDismiss: () -> Void
 
     @State private var submitting = false
+    @StateObject private var network = NetworkMonitor.shared
     @State private var submitMessage: String?
     @State private var copied = false
 
@@ -369,7 +370,16 @@ struct BenchmarkResultView: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 12).background(Forge.interact).cornerRadius(10)
                 }
             }
-            if let record, record.complete {
+            if let record, record.complete, !result.isVerified {
+                Text("Only verified runs can be submitted. This one is kept on your \(LeaderboardService.isMac ? "Mac" : "iPhone") for your own comparisons.")
+                    .font(ThermoFont.mono(9)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
+            } else if let record, record.complete, !network.isConnected, submitMessage == nil {
+                VStack(spacing: 4) {
+                    Text("NO INTERNET CONNECTION").font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Ramp.at(0.5))
+                    Text("Turn on Wi-Fi or mobile data to submit this result. Until then it's saved on your \(LeaderboardService.isMac ? "Mac" : "iPhone").")
+                        .font(ThermoFont.mono(9)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
+                }
+            } else if let record, record.complete {
                 Button {
                     submitting = true
                     Task {

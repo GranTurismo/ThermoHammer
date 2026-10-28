@@ -7,7 +7,7 @@ struct BenchmarkDto: Decodable, Identifiable {
     let deviceModel: String
     let socModel: String?
     let gpuName: String?
-    let os: Int                 // 1 iOS · 2 Android
+    let os: Int                 // 1 iOS · 2 Android · 3 macOS · 4 Windows
     let osVersion: String
     let score: Int              // GPU
     let uxScore: Int
@@ -97,6 +97,15 @@ struct BenchmarkBoardView: View {
     @State private var errorMessage: String?
     @State private var searchText = ""
     @StateObject private var networkMonitor = NetworkMonitor.shared
+    @ObservedObject private var history = BenchmarkHistoryStore.shared
+    @State private var submittingId: UUID?
+    @State private var submitNote: String?
+    @State private var selected: BenchmarkDto?
+
+    /// This device's verified runs that haven't reached the leaderboard yet (made offline, or not submitted).
+    private var unsubmitted: [BenchmarkRecord] {
+        history.records.filter { $0.version == BenchmarkScore.version && $0.complete && $0.validityFlags == 0 && !$0.submitted }.reversed()
+    }
 
     private var shown: [(Int, BenchmarkDto)] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -129,6 +138,7 @@ struct BenchmarkBoardView: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(Forge.ink0.opacity(0.04)).cornerRadius(12)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Forge.ink0.opacity(0.08), lineWidth: 1))
+                if !unsubmitted.isEmpty { unsubmittedSection }
                 if isLoading {
                     ProgressView().tint(Forge.phasePreFlight).padding(40)
                 } else if let errorMessage {
@@ -148,12 +158,59 @@ struct BenchmarkBoardView: View {
                     let mine = LeaderboardService.shared.getDeviceModelName()
                     ForEach(shown, id: \.1.id) { rank, e in
                         row(rank, e, fraction: Double(e.totalScore) / Double(top), mine: e.deviceModel.caseInsensitiveCompare(mine) == .orderedSame)
+                            .contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.spring()) { selected = e } }
                     }
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .task { await load() }
+        .overlay {
+            if let e = selected {
+                BenchmarkDetailOverlay(entry: e) { withAnimation(.spring()) { selected = nil } }.transition(.opacity)
+            }
+        }
+    }
+
+    private var unsubmittedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("YOUR UNSUBMITTED RUNS (\(unsubmitted.count))").font(ThermoFont.mono(11, weight: .black)).foregroundColor(Ramp.at(0.5))
+            ForEach(unsubmitted) { r in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(r.score.formatted()).font(ThermoFont.mono(15, weight: .black)).foregroundColor(Forge.ink0)
+                        Text(r.timestamp.formatted(date: .abbreviated, time: .shortened)).font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
+                    }
+                    Spacer()
+                    if submittingId == r.id {
+                        ProgressView().tint(Forge.phasePreFlight)
+                    } else if networkMonitor.isConnected {
+                        Button {
+                            submittingId = r.id
+                            Task {
+                                do {
+                                    let res = try await BenchmarkUpload.submit(r)
+                                    history.markSubmitted(r.id)
+                                    submitNote = "Submitted · \(res.score.formatted()) points · rank #\(res.rank)"
+                                    await load()
+                                } catch { submitNote = error.localizedDescription }
+                                submittingId = nil
+                            }
+                        } label: {
+                            Text("SUBMIT").font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Forge.bg)
+                                .padding(.horizontal, 12).padding(.vertical, 6).background(Forge.phaseMeasured).cornerRadius(8)
+                        }
+                    } else {
+                        Text("TURN ON INTERNET\nTO SUBMIT").font(ThermoFont.mono(8, weight: .bold)).foregroundColor(Ramp.at(0.5))
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                .padding(12).background(Ramp.at(0.5).opacity(0.06)).cornerRadius(14)
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Ramp.at(0.5).opacity(0.25), lineWidth: 1))
+            }
+            if let submitNote { Text(submitNote).font(ThermoFont.mono(9)).foregroundColor(Forge.ink1) }
+        }
     }
 
     private func load() async {

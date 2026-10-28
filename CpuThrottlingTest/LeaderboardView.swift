@@ -859,7 +859,11 @@ struct LeaderboardView: View {
                                     )
                             }
                             
-                            if networkMonitor.isConnected {
+                            if !ValidityFlag.submittable(pending.validityFlags ?? 0) {
+                                Text("NOT VERIFIED")
+                                    .font(ThermoFont.mono(9, weight: .bold))
+                                    .foregroundColor(Ramp.at(0.5))
+                            } else if networkMonitor.isConnected {
                                 Button(action: { submitPendingRun(pending) }) {
                                     Text("SUBMIT")
                                         .font(ThermoFont.mono(9, weight: .bold))

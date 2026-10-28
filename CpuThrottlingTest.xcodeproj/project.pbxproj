@@ -144,6 +144,7 @@
 		5EFC60FC28F1976EC3518E81 /* llada-moe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4C4696A3EE9BAD2E5A9B613A /* llada-moe.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		5F63C0FBC9DB5F4BA7BD6343 /* Barcode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 43F77CC5BB0BF945A194B97D /* Barcode.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		60B7EAAF866A32B864C196F2 /* QRMatrixUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 40596119E2FD8B94656BFF91 /* QRMatrixUtil.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		61DD076DE3D8125E57AF75CE /* BenchmarkDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD39E9555E7CA885E244920 /* BenchmarkDetailView.swift */; };
 		62379B2635C15F490A619AD3 /* k2-horizon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 266ACE06CA4F0FFB0334B508 /* k2-horizon.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		62545A216DAED7062851CF19 /* eurobert.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 47569961C749112F0E5F7CB9 /* eurobert.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		626B535726DE9758AE32B2D3 /* paddleocr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E785E31AEE94AC44AA7540B5 /* paddleocr.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -289,6 +290,7 @@
 		C009678D94D9473927807FEF /* LakeValley.metal in Sources */ = {isa = PBXBuildFile; fileRef = BA2AA68DB5802370BFCC2601 /* LakeValley.metal */; };
 		C0352E4A3EC4FA08E951A90F /* llama-model.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8CE48FA193A8525A4C0F2433 /* llama-model.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		C242B7725B97F40F1287AEF0 /* seed-oss.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DE2612E71B9AF625D8C5551F /* seed-oss.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		C2B5C3D3DB4B69C8D1CA9085 /* crypto_x86.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17F731AE67A051986BDB63E8 /* crypto_x86.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		C2F823369A119B94D5F2BEFB /* llama-grammar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E811D96D8FA1A38619FBC4F6 /* llama-grammar.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		C3C9474278A74EC444584CDC /* deepseek32.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3CCDF58A5EE99ED35AEDA0F0 /* deepseek32.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		C3D4621462DC8075C5E5DDD7 /* GpuSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E161CD6C4F5F923CA79878ED /* GpuSection.swift */; };
@@ -451,6 +453,7 @@
 		171A4D5F298D2A4646D78235 /* modern-bert.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "modern-bert.cpp"; sourceTree = "<group>"; };
 		176A869F8ABD8D3D43DA7EEF /* llama-kv-cache.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "llama-kv-cache.cpp"; sourceTree = "<group>"; };
 		17DB00A0AFEE080333A169BE /* zueci_gbk.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_gbk.h; sourceTree = "<group>"; };
+		17F731AE67A051986BDB63E8 /* crypto_x86.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = crypto_x86.cpp; sourceTree = "<group>"; };
 		19E57C9562E41299962B7919 /* olmo.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = olmo.cpp; sourceTree = "<group>"; };
 		19F2D66435FF606948474069 /* command-r.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "command-r.cpp"; sourceTree = "<group>"; };
 		1ACD6D3F39C0CBE47D021FB7 /* fa_aux.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = fa_aux.metal; sourceTree = "<group>"; };
@@ -924,6 +927,7 @@
 		F982AB920D34491987356376 /* binbcast.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = binbcast.metal; sourceTree = "<group>"; };
 		FA1F035ED1F44FD16929752E /* QREncoder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QREncoder.h; sourceTree = "<group>"; };
 		FABA5B1E853903B3A244AE28 /* vec.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = vec.h; sourceTree = "<group>"; };
+		FBD39E9555E7CA885E244920 /* BenchmarkDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkDetailView.swift; sourceTree = "<group>"; };
 		FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResultStore.swift; sourceTree = "<group>"; };
 		FDDE3D4C708D7DA24D31B026 /* QRReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRReader.h; sourceTree = "<group>"; };
 		FEEA76557BED25EF380D49D4 /* TritMatrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TritMatrix.h; sourceTree = "<group>"; };
@@ -1462,6 +1466,7 @@
 				113BB4CCBBD259771C8B8339 /* bench_core.cpp */,
 				744A4A04B7D2B3499F5E239C /* core.hpp */,
 				D5489199479B80ECCD209569 /* crypto_arm.cpp */,
+				17F731AE67A051986BDB63E8 /* crypto_x86.cpp */,
 				D39E99FDAA487107CBCA5437 /* kernels_crypto.cpp */,
 				9432213FADCA16B1A733F593 /* kernels_data.cpp */,
 				F069BD9BCEAB83C698A9046D /* kernels_math.cpp */,
@@ -1709,6 +1714,7 @@
 			children = (
 				BE0601568C4D0E610C3C22CD /* BenchCore-Bridging.h */,
 				76C351D8CFE88EEC4201B631 /* BenchmarkBoardView.swift */,
+				FBD39E9555E7CA885E244920 /* BenchmarkDetailView.swift */,
 				760E779BE0685479EC6806BA /* BenchmarkEngine.swift */,
 				ADE6806A0DF2FCFAD47092E9 /* BenchmarkModels.swift */,
 				1D9603AED6EA84CA742CD0E6 /* BenchmarkReport.swift */,
@@ -1845,6 +1851,7 @@
 				5F63C0FBC9DB5F4BA7BD6343 /* Barcode.cpp in Sources */,
 				FFEB1AA8C7E55713EEF33439 /* BarcodeFormat.cpp in Sources */,
 				3652D7711068141F72E01177 /* BenchmarkBoardView.swift in Sources */,
+				61DD076DE3D8125E57AF75CE /* BenchmarkDetailView.swift in Sources */,
 				A1D661B8850E0C2820158343 /* BenchmarkEngine.swift in Sources */,
 				9C28918741C1749FE9E1217C /* BenchmarkModels.swift in Sources */,
 				2A77EF6190DD33FE6CB11BDD /* BenchmarkReport.swift in Sources */,
@@ -1958,6 +1965,7 @@
 				3C129390E4796F9EBFFA8B9C /* command-r.cpp in Sources */,
 				983CDCDCD87C2CDA7D4FD297 /* conv.metal in Sources */,
 				DBFDFC909BF48CC37B8E458C /* crypto_arm.cpp in Sources */,
+				C2B5C3D3DB4B69C8D1CA9085 /* crypto_x86.cpp in Sources */,
 				DC8B3EF63C066D5A4CECEA43 /* dbrx.cpp in Sources */,
 				7B2DCF5040C6E2609B540A0A /* deci.cpp in Sources */,
 				7946F76EFBB0BD430A4EA840 /* deepseek.cpp in Sources */,
@@ -2217,7 +2225,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 38;
 				DEVELOPMENT_TEAM = C58ABB3474;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -2256,7 +2264,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8;
+				MARKETING_VERSION = 2.0.1;
 				MTL_HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal",
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src",
@@ -2337,7 +2345,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 38;
 				DEVELOPMENT_TEAM = C58ABB3474;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -2376,7 +2384,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8;
+				MARKETING_VERSION = 2.0.1;
 				MTL_HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal",
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src",

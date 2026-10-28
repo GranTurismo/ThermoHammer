@@ -152,10 +152,10 @@ class LeaderboardService {
     
     /// The app also runs, unchanged, on Apple-silicon Macs ("Designed for iPad"): there it reports itself as a Mac.
     static var isMac: Bool { ProcessInfo.processInfo.isiOSAppOnMac }
-    /// OsPlatform on the server: 1 iOS, 2 Android, 3 macOS.
+    /// OsPlatform on the server: 1 iOS, 2 Android, 3 macOS (4 Windows is the Windows app's).
     static var osPlatform: Int { isMac ? 3 : 1 }
     static func osLabel(_ os: Int, _ version: String) -> String {
-        "\(os == 2 ? "Android" : os == 3 ? "macOS" : "iOS") \(version)"
+        "\(os == 2 ? "Android" : os == 3 ? "macOS" : os == 4 ? "Windows" : "iOS") \(version)"
     }
 
     func getDeviceModelName() -> String {
