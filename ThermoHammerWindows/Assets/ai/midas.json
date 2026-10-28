@@ -1,0 +1,68 @@
+{
+  "model": "midas",
+  "source": "midas.tflite",
+  "opset": 17,
+  "input": {
+    "name": "x",
+    "dtype": "uint8",
+    "layout": "NCHW",
+    "shape": [
+      1,
+      3,
+      256,
+      256
+    ],
+    "tflite_shape": [
+      1,
+      256,
+      256,
+      3
+    ],
+    "tflite_layout": "NHWC",
+    "scale": 0.00487531116232276,
+    "zero": 24,
+    "note": "TFLite's 8-bit input tensor, transposed from NHWC to planar NCHW; the models dequantize it themselves"
+  },
+  "outputs": [
+    {
+      "name": "out0",
+      "dtype": "float32",
+      "layout": "NHWC",
+      "shape": [
+        1,
+        256,
+        256,
+        1
+      ],
+      "tflite_dtype": "uint8",
+      "scale": 6.512290954589844,
+      "zero": 0
+    }
+  ],
+  "output_note": "float32, TFLite's layout and order; value = (q - zero) * scale, q = round(value / scale) + zero. scale 0: not quantized in TFLite, the float32 holds the integer",
+  "variants": {
+    "q": {
+      "file": "midas.q.onnx",
+      "providers": [
+        "CPU",
+        "QNN"
+      ],
+      "activations": "int8 QDQ on TFLite's grids, int8 per-channel weights, int32 bias"
+    },
+    "f16": {
+      "file": "midas.f16.onnx",
+      "providers": [
+        "DirectML"
+      ],
+      "activations": "float16, weights dequantized, no quantize pairs"
+    }
+  },
+  "input_shape": [
+    1,
+    256,
+    256,
+    3
+  ],
+  "input_scale": 0.00487531116232276,
+  "input_zero": 24
+}

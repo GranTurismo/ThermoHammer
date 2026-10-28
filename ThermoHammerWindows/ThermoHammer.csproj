@@ -1,0 +1,96 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ThermoHammer for Windows: WPF on .NET 10, for x64 and ARM64 PCs. The benchmark's CPU, MEM and QR tests are the
+    same C++ as the phone apps (BenchCore → benchcore.dll, built on a Mac by native/build.sh). Builds on macOS too:
+    dotnet publish -c Release -r win-arm64 (or win-x64).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <StartupObject>ThermoHammer.Program</StartupObject>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <SelfContained>true</SelfContained>
+    <AssemblyName>ThermoHammer</AssemblyName>
+    <RootNamespace>ThermoHammer</RootNamespace>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>ThermoHammer</Product>
+    <Company>GranTurismo</Company>
+    <Version>2.0.0</Version>
+    <!-- the build number, as on the phones (Android versionCode / iOS build) -->
+    <FileVersion>2.0.0.1</FileVersion>
+    <!-- the WPF/WebView2 packages ship every UI language's resources; the app is English -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+    <PackageReference Include="StbImageSharp" Version="2.30.15" />
+    <!-- Neon City RT: Direct3D 12 with DXR, shaders compiled to DXIL by DXC when the test starts -->
+    <PackageReference Include="Vortice.Direct3D12" Version="3.8.3" />
+    <PackageReference Include="Vortice.Dxc" Version="3.8.3" />
+    <PackageReference Include="Microsoft.Direct3D.DXC" Version="1.9.2609.5" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
+    <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+  </ItemGroup>
+
+  <!-- the phone apps' fonts and the app icon -->
+  <ItemGroup>
+    <Resource Include="..\CpuThrottlingTest\Fonts\*.ttf" Link="Fonts\%(Filename)%(Extension)" />
+    <Resource Include="Assets\AppIcon256.png" />
+  </ItemGroup>
+
+  <!-- the benchmark's shaders (compiled when the GPU test starts) and scenes, the same files the phones render -->
+  <ItemGroup>
+    <EmbeddedResource Include="Engine\Gpu\Shaders\*.hlsl;Engine\Ux\Shaders\*.hlsl" LogicalName="Shaders.%(Filename)%(Extension)" />
+    <Content Include="..\ThermoHammerAndroid\app\src\main\assets\lake_valley.bin" Link="assets\lake_valley.bin" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\ThermoHammerAndroid\app\src\main\assets\neon_city.bin" Link="assets\neon_city.bin" CopyToOutputDirectory="PreserveNewest" />
+    <!-- UX tests: the browser pages and the media they and the video tests use (the phones' files), and the editing photo as a JPEG -->
+    <Content Include="..\ThermoHammerAndroid\app\src\main\assets\web\*" Link="assets\web\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\ThermoHammerAndroid\app\src\main\assets\media\*" Link="assets\media\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\media\photo_lake.jpg" Link="assets\media\photo_lake.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\media\photo_city.jpg" Link="assets\media\photo_city.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <!-- the AI test's labels, yamnet's input, and the ONNX models (Assets\ai, made by BenchmarkScene/build_onnx_models.py) -->
+    <Content Include="..\ThermoHammerAndroid\app\src\main\assets\ai\*.txt;..\ThermoHammerAndroid\app\src\main\assets\ai\yamnet_input.bin" Link="assets\ai\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\ai\*" Link="assets\ai\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets\ai')" />
+  </ItemGroup>
+
+  <!-- benchcore.dll for the architecture being built (native/build.sh puts it in runtimes/) -->
+  <ItemGroup>
+    <None Include="runtimes\$(RuntimeIdentifier)\native\benchcore.dll" Condition="'$(RuntimeIdentifier)' != ''" Link="benchcore.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="runtimes\$(RuntimeIdentifier)\native\benchllm.dll" Condition="'$(RuntimeIdentifier)' != '' And Exists('runtimes\$(RuntimeIdentifier)\native\benchllm.dll')" Link="benchllm.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- DXC (the compiler and its validator) for the architecture being built -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <None Include="$(PkgMicrosoft_Direct3D_DXC)\build\native\bin\$(RuntimeIdentifier.Replace('win-', ''))\dxcompiler.dll" Link="dxcompiler.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_Direct3D_DXC)\build\native\bin\$(RuntimeIdentifier.Replace('win-', ''))\dxil.dll" Link="dxil.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- builds benchcore.dll first when it's missing or older than BenchCore's sources (on the Mac that builds the app) -->
+  <Target Name="BuildBenchCore" BeforeTargets="BeforeBuild" Condition="'$(RuntimeIdentifier)' != '' And !$([MSBuild]::IsOSPlatform('Windows'))" Inputs="@(BenchCoreSource)" Outputs="runtimes\$(RuntimeIdentifier)\native\benchcore.dll">
+    <Exec Command="&quot;$(MSBuildProjectDirectory)/native/build.sh&quot; $(RuntimeIdentifier.Replace('win-', ''))" />
+  </Target>
+  <ItemGroup>
+    <BenchCoreSource Include="..\BenchCore\src\*.cpp;..\BenchCore\include\*.h;native\CMakeLists.txt;native\benchcore.def" />
+  </ItemGroup>
+
+  <!-- what the packages bring that a user doesn't need: debug builds of DirectML, symbol files, import libraries, the WinForms WebView2 -->
+  <Target Name="DropDeadWeight" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb' Or '%(Extension)' == '.lib' Or '%(Filename)%(Extension)' == 'DirectML.Debug.dll' Or '%(Filename)%(Extension)' == 'Microsoft.Web.WebView2.WinForms.dll' Or '%(Extension)' == '.xml'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

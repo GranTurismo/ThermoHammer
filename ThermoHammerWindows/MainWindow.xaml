@@ -1,0 +1,9 @@
+<Window x:Class="ThermoHammer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ThermoHammer" Width="1300" Height="860" MinWidth="1000" MinHeight="680"
+        Background="#06090B" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"
+        WindowStartupLocation="CenterScreen" Icon="Assets/AppIcon256.png">
+    <Grid x:Name="Root" Background="#06090B" />
+</Window>

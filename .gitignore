@@ -54,3 +54,13 @@ Vendor/TensorFlowLiteC/
 ## Python caches and Blender backups
 __pycache__/
 *.blend1
+
+## Windows app: the cross-compiler (native/fetch_toolchain.sh) and benchcore.dll builds (native/build.sh)
+ThermoHammerWindows/native/.toolchain/
+ThermoHammerWindows/native/.build/
+ThermoHammerWindows/runtimes/
+
+ThermoHammerWindows/installer/.cache/
+ThermoHammerWindows/installer/out/
+ThermoHammerWindows/bin/
+ThermoHammerWindows/obj/

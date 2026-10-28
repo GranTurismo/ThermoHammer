@@ -1,0 +1,26 @@
+; benchcore.dll's exports: the C API of BenchCore/include/bench_core.h (everything else stays inside the DLL)
+LIBRARY benchcore
+EXPORTS
+    bc_kernel_name
+    bc_kernel_create
+    bc_kernel_run
+    bc_kernel_error
+    bc_kernel_destroy
+    bc_crypto_path
+    bc_mem_error
+    bc_ram_open
+    bc_ram_run
+    bc_ram_close
+    bc_disk_open
+    bc_disk_direct
+    bc_disk_passes
+    bc_disk_run
+    bc_disk_close
+    bc_qr_supported
+    bc_qr_create
+    bc_qr_count
+    bc_qr_luma
+    bc_qr_text
+    bc_qr_corners
+    bc_qr_scan
+    bc_qr_destroy

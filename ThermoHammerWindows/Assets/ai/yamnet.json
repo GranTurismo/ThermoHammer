@@ -1,0 +1,66 @@
+{
+  "model": "yamnet",
+  "source": "yamnet.tflite",
+  "opset": 17,
+  "input": {
+    "name": "x",
+    "dtype": "uint8",
+    "layout": "NCHW",
+    "shape": [
+      1,
+      64,
+      1,
+      96
+    ],
+    "tflite_shape": [
+      1,
+      1,
+      96,
+      64
+    ],
+    "tflite_layout": "NHWC",
+    "scale": 0.04793788492679596,
+    "zero": 144,
+    "note": "TFLite's 8-bit input tensor, transposed from NHWC to planar NCHW; the models dequantize it themselves"
+  },
+  "outputs": [
+    {
+      "name": "out0",
+      "dtype": "float32",
+      "layout": "row-major, TFLite's order",
+      "shape": [
+        1,
+        521
+      ],
+      "tflite_dtype": "uint8",
+      "scale": 0.7587276101112366,
+      "zero": 190
+    }
+  ],
+  "output_note": "float32, TFLite's layout and order; value = (q - zero) * scale, q = round(value / scale) + zero. scale 0: not quantized in TFLite, the float32 holds the integer",
+  "variants": {
+    "q": {
+      "file": "yamnet.q.onnx",
+      "providers": [
+        "CPU",
+        "QNN"
+      ],
+      "activations": "int8 QDQ on TFLite's grids, int8 per-channel weights, int32 bias"
+    },
+    "f16": {
+      "file": "yamnet.f16.onnx",
+      "providers": [
+        "DirectML"
+      ],
+      "activations": "float16, weights dequantized, no quantize pairs"
+    }
+  },
+  "input_shape": [
+    1,
+    1,
+    96,
+    64
+  ],
+  "input_scale": 0.04793788492679596,
+  "input_zero": 144
+}
