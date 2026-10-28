@@ -105,6 +105,13 @@ public static class ThermoEndpointsMapper
             return Results.Ok(BenchmarkScoring.Leaderboard(runs).Take(500));
         });
 
+        // one run opened from the leaderboard: every section's numbers as text (verified runs only, like the board)
+        app.MapGet("/benchmark/{id:int}", async (int id, ThermoDbContext db) =>
+        {
+            var run = await db.BenchmarkRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id && r.ValidityFlags == 0);
+            return run is null ? Results.NotFound() : Results.Ok(BenchmarkDetail.From(run));
+        });
+
         // Phone Health: how a model does — its verified runs, matched by the name submissions are stored under
         app.MapGet("/benchmark/model", async (string model, OsPlatform os, ThermoDbContext db, DeviceModelResolver modelResolver) =>
         {

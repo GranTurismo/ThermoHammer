@@ -434,6 +434,37 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
+    public void DetailShowsEverySectionWithItsScoreAndNumbers()
+    {
+        var run = Request(r => { r.Os = OsPlatform.Windows; r.RayTracing = false; r.ExportAvcPsnr = 22.4; r.VideoHardware = 0b000001; r.AiNpuRuntime = null; }).ToDao();
+        run.Id = 42;
+        var d = BenchmarkDetail.From(run);
+
+        Assert.Equal(42, d.Id);
+        Assert.Equal(OsPlatform.Windows, d.Os);
+        Assert.Equal(run.TotalScore, d.TotalScore);
+        Assert.Equal(["cpu", "mem", "gpu", "ux", "ai", "llm"], d.Sections.Select(s => s.Key));
+        Assert.Equal(run.CpuScore + run.MemScore + run.Score + run.UxScore + run.AiScore + run.LlmScore, d.Sections.Sum(s => s.Score));
+        Assert.All(d.Sections, s => Assert.All(s.Groups, g => Assert.NotEmpty(g.Rows)));
+
+        var gpu = d.Sections.Single(s => s.Key == "gpu");
+        Assert.Equal(run.Test1Score, gpu.Groups[0].Points);
+        Assert.Equal("123 fps", gpu.Groups[0].Rows[0].Value);
+        Assert.Contains("not supported", gpu.Groups[2].Rows[0].Value);          // no ray tracing: nothing to show but the reason
+
+        var ux = d.Sections.Single(s => s.Key == "ux");
+        var playback = ux.Groups.Single(g => g.Title == "Video playback");
+        Assert.EndsWith("hardware", playback.Rows[0].Value);
+        Assert.EndsWith("software", playback.Rows[1].Value);
+        Assert.Equal("not supported", playback.Rows[2].Value);
+        Assert.Contains("quality too low", ux.Groups.Single(g => g.Title == "Video export").Rows[0].Value);
+
+        var npu = d.Sections.Single(s => s.Key == "ai").Groups.Single(g => g.Title == "NPU");
+        Assert.Equal("none ran", npu.Rows[0].Value);
+        Assert.Equal(7, npu.Rows.Count);                                          // the runtime + six models
+    }
+
+    [Fact]
     public void UnverifiedBenchmarkRunsAreRejected()
     {
         Assert.Null(BenchmarkScoring.Problem(Request(r => r.ValidityFlags = 0)));
