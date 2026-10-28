@@ -1,9 +1,10 @@
 llama.cpp b11700 (commit 23f7aab, https://github.com/ggml-org/llama.cpp, MIT, see LICENSE) — only what the LLM test
 needs: `include/`, `src/` (every model's source, which llama-model.cpp links against), ggml's core, its CPU backend
-with the Arm kernels (`ggml-cpu/`, without the x86, RISC-V, … arches, AMX, KleidiAI and SpacemiT code), its Metal
-backend (iOS), its OpenCL backend (Android, Adreno) and its Vulkan backend (Android, other GPUs; with its shader
-generator, which the Android build runs on the computer building it). No CMake: the Android CMakeLists.txt and project.yml list the
-sources, and BenchCore/test/llm_run.sh builds them on a Mac.
+with the Arm kernels and (for Windows) the x86 ones (`ggml-cpu/`, without the RISC-V, … arches, AMX, KleidiAI and
+SpacemiT code), its Metal backend (iOS), its OpenCL backend (Android, Adreno) and its Vulkan backend (Android and
+Windows, other GPUs; with its shader generator, which the builds run on the computer building them). No CMake: the
+Android CMakeLists.txt, ThermoHammerWindows/native/llm/CMakeLists.txt and project.yml list the sources, and
+BenchCore/test/llm_run.sh builds them on a Mac.
 
 Local changes:
 - `ggml/src/ggml-version.h` and `src/llama-version.h` are written by hand (upstream generates them with CMake).
@@ -18,3 +19,7 @@ Local changes:
   dispatcher like every other call — Android's libvulkan exports that Vulkan 1.1 function only from API 28.
 - `ggml/src/ggml-vulkan/ggml-vulkan.cpp`: `VK_KHR_16bit_storage` (core since Vulkan 1.1, its feature checked anyway) is
   enabled only when the driver lists it — the emulator's doesn't, and device creation failed.
+- `ggml/src/ggml-cpu/arch/x86/{quants.c,repack.cpp,cpu-feats.cpp}` are added unchanged from the same commit, for the
+  Windows x64 build (ThermoHammerWindows/native/llm; AVX2). The Android and Windows builds list the arch files they
+  compile; project.yml's `ggml-cpu` path takes the whole directory, so it needs `arch/x86/**` in its `excludes`
+  before the next `xcodegen` (the two x86 sources define what arch/arm's do).

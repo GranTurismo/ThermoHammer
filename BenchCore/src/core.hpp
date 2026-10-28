@@ -50,9 +50,10 @@ bc_kernel* makeZlib();
 bc_kernel* makeAesGcm();
 bc_kernel* makeSha256();
 
-// ── crypto: the CPU's ARMv8 instructions where it has them, portable code otherwise ──
+// ── crypto: the CPU's instructions where it has them (ARMv8 crypto; AES-NI, PCLMULQDQ, SHA-NI), portable code otherwise ──
 
-bool cryptoHw();   // AES, PMULL and SHA-256 instructions present
+bool cryptoHw();   // AES and carry-less multiply instructions present (AES-GCM)
+bool shaHw();      // SHA-256 instructions present (the same CPUs as cryptoHw on Arm; not on every x86)
 
 struct AesKey { uint8_t rk[15][16]; };   // AES-256 round keys
 void aesExpand(const uint8_t key[32], AesKey& out);
@@ -70,5 +71,13 @@ void aesCtrArm(const AesKey& k, const uint8_t j0[16], const uint8_t* in, size_t 
 void ghashArm(const uint8_t h[16], const uint8_t* data, size_t len, uint8_t y[16]);
 void sha256BlocksArm(uint32_t state[8], const uint8_t* data, size_t blocks);
 bool armCryptoCompiled();
+
+// x86-64 kernels (crypto_x86.cpp — each compiled for its instructions; never called without them)
+void aesCtrX86(const AesKey& k, const uint8_t j0[16], const uint8_t* in, size_t len, uint8_t* out);
+void ghashX86(const uint8_t h[16], const uint8_t* data, size_t len, uint8_t y[16]);
+void sha256BlocksX86(uint32_t state[8], const uint8_t* data, size_t blocks);
+bool x86CryptoCompiled();
+bool x86AesSupported();   // CPUID: AES-NI, PCLMULQDQ, SSSE3, SSE4.1
+bool x86ShaSupported();   // CPUID: SHA-NI, SSSE3, SSE4.1
 
 }  // namespace bc

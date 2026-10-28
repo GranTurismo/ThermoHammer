@@ -1,11 +1,20 @@
 // MEM tests — RAM bandwidth and latency, and storage read/write speed. The same code on Android (JNI,
-// engine/mem/MemNative.kt) and iOS (Swift).
+// engine/mem/MemNative.kt), iOS (Swift) and Windows (P/Invoke; Win32 file I/O instead of POSIX).
 //
 // Every measurement runs in short slices (a fraction of a second) so the stage can show a live rate: the RAM
 // buffer and the storage file stay open between slices in a handle.
+#if defined(_WIN32)
+#define _FILE_OFFSET_BITS 64   // a 64-bit off_t, as on the other systems
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <sys/types.h>
+#include <windows.h>
+#include <malloc.h>
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -168,9 +177,17 @@ constexpr size_t kSeqBlock = 4 << 20;   // large-file transfers
 constexpr size_t kRandBlock = 4096;     // what app launches and databases read and write
 constexpr int kMaxRandThreads = 8;
 
+#if defined(_WIN32)
+using File = HANDLE;
+const File kNoFile = INVALID_HANDLE_VALUE;
+#else
+using File = int;
+const File kNoFile = -1;
+#endif
+
 struct Disk {
-    int fd = -1;
-    bool direct = false;   // transfers bypass Android's page cache and reach the flash (checked: see reallyDirect)
+    File fd = kNoFile;
+    bool direct = false;   // transfers bypass the page cache and reach the flash (checked on Android: see reallyDirect)
     bool probed = false;
     size_t size = 0;
     std::string path;
@@ -183,14 +200,64 @@ struct Disk {
 
 
 uint8_t* alignedBuffer(size_t bytes) {
+#if defined(_WIN32)
+    auto* b = static_cast<uint8_t*>(_aligned_malloc(bytes, 4096));
+    if (!b) return nullptr;
+#else
     void* p = nullptr;
     if (posix_memalign(&p, 4096, bytes) != 0) return nullptr;
     auto* b = static_cast<uint8_t*>(p);
+#endif
     uint64_t s = 0x2545F4914F6CDD1Dull;
     for (size_t i = 0; i < bytes; i += 8) { uint64_t v = xorshift(s); std::memcpy(b + i, &v, 8); }   // incompressible
     return b;
 }
 
+void freeBuffer(uint8_t* b) {
+#if defined(_WIN32)
+    _aligned_free(b);
+#else
+    free(b);
+#endif
+}
+
+#if defined(_WIN32)
+// Windows: the file is opened unbuffered (FILE_FLAG_NO_BUFFERING — no cache at all, which Windows always honours)
+// and overlapped, so the random tests' threads really have several requests out at once (a synchronous handle
+// would queue them one by one). Each transfer waits for its own completion on the thread's event.
+
+HANDLE threadEvent() {
+    thread_local struct Event {
+        HANDLE h = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        ~Event() { if (h) CloseHandle(h); }
+    } ev;
+    return ev.h;
+}
+
+bool transfer(File f, bool write, void* buf, size_t n, uint64_t at) {
+    OVERLAPPED o{};
+    o.Offset = DWORD(at);
+    o.OffsetHigh = DWORD(at >> 32);
+    o.hEvent = threadEvent();
+    DWORD done = 0;
+    const BOOL ok = write ? WriteFile(f, buf, DWORD(n), nullptr, &o) : ReadFile(f, buf, DWORD(n), nullptr, &o);
+    if (!ok && GetLastError() != ERROR_IO_PENDING) return false;
+    return GetOverlappedResult(f, &o, &done, TRUE) && done == n;
+}
+
+ssize_t pread(File f, void* buf, size_t n, off_t at) { return transfer(f, false, buf, n, uint64_t(at)) ? ssize_t(n) : -1; }
+ssize_t pwrite(File f, const void* buf, size_t n, off_t at) { return transfer(f, true, const_cast<void*>(buf), n, uint64_t(at)) ? ssize_t(n) : -1; }
+
+int syncData(File f) { return FlushFileBuffers(f) ? 0 : -1; }
+
+std::wstring widePath(const char* utf8) {
+    const int n = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+    std::wstring w(n > 0 ? size_t(n) : 0, L'\0');
+    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, utf8, -1, &w[0], n);
+    if (!w.empty()) w.pop_back();
+    return w;
+}
+#else
 int syncData(int fd) {
 #if defined(__APPLE__)
     return fsync(fd);
@@ -198,6 +265,7 @@ int syncData(int fd) {
     return fdatasync(fd);
 #endif
 }
+#endif
 
 // Without direct I/O reads would come from RAM and writes would only reach RAM. Linux (Android) can drop a
 // file's cached pages and push a range to the flash; Darwin can't do either per range, but F_NOCACHE (set at
@@ -255,7 +323,15 @@ bool reallyDirect(Disk& d) {
 }
 
 bool fail(const char* what) {
+#if defined(_WIN32)
+    const DWORD code = GetLastError();
+    char msg[256] = "";
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, code, 0, msg, sizeof msg, nullptr);
+    for (char* c = msg; *c; c++) if (*c == '\r' || *c == '\n') { *c = 0; break; }
+    lastError = std::string(what) + ": " + (msg[0] ? msg : ("error " + std::to_string(code)).c_str());
+#else
     lastError = std::string(what) + ": " + std::strerror(errno);
+#endif
     return false;
 }
 
@@ -344,8 +420,13 @@ bc_ram* bc_ram_open(int64_t bytes, int threads) {
     auto* r = new bc_ram();
     r->bytes = size_t(bytes) & ~size_t(4095);
     r->threads = threads < 1 ? 1 : threads;
+#if defined(_WIN32)
+    void* p = VirtualAlloc(nullptr, r->bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!p) { fail("VirtualAlloc"); delete r; return nullptr; }
+#else
     void* p = mmap(nullptr, r->bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (p == MAP_FAILED) { fail("mmap"); delete r; return nullptr; }
+#endif
     r->buf = static_cast<uint8_t*>(p);
     std::memset(r->buf, 1, r->bytes);   // fault every page in now, not while timing
     return r;
@@ -356,7 +437,11 @@ double bc_ram_run(bc_ram* r, int mode, double secs) {
 }
 
 void bc_ram_close(bc_ram* r) {
+#if defined(_WIN32)
+    if (r->buf) VirtualFree(r->buf, 0, MEM_RELEASE);
+#else
     if (r->buf) munmap(r->buf, r->bytes);
+#endif
     delete r;
 }
 
@@ -364,7 +449,12 @@ bc_disk* bc_disk_open(const char* path, int64_t bytes) {
     auto* d = new bc_disk();
     d->path = path;
     d->size = size_t(bytes) / kSeqBlock * kSeqBlock;
-#if defined(__APPLE__)
+#if defined(_WIN32)
+    d->fd = CreateFileW(widePath(path).c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                        FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, nullptr);
+    d->direct = d->fd != kNoFile;
+    d->probed = true;   // unbuffered I/O on Windows never goes through the cache: nothing to check
+#elif defined(__APPLE__)
     d->fd = open(path, O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
     d->direct = d->fd >= 0 && fcntl(d->fd, F_NOCACHE, 1) == 0;   // Darwin's way past the cache
 #else
@@ -374,10 +464,14 @@ bc_disk* bc_disk_open(const char* path, int64_t bytes) {
 #endif
     d->seqBuf = alignedBuffer(kSeqBlock);
     d->randBuf = alignedBuffer(kRandBlock * kMaxRandThreads);
-    if (d->fd < 0 || !d->seqBuf || !d->randBuf) {
+    if (d->fd == kNoFile || !d->seqBuf || !d->randBuf) {
         fail("open");
+#if defined(_WIN32)
+        if (d->fd != kNoFile) { CloseHandle(d->fd); DeleteFileW(widePath(path).c_str()); }
+#else
         if (d->fd >= 0) { close(d->fd); unlink(d->path.c_str()); }
-        free(d->seqBuf); free(d->randBuf); delete d;
+#endif
+        freeBuffer(d->seqBuf); freeBuffer(d->randBuf); delete d;
         return nullptr;
     }
     return d;
@@ -398,10 +492,15 @@ double bc_disk_run(bc_disk* d, int mode, int threads, double secs) {
 }
 
 void bc_disk_close(bc_disk* d) {
+#if defined(_WIN32)
+    CloseHandle(d->fd);
+    DeleteFileW(widePath(d->path.c_str()).c_str());
+#else
     close(d->fd);
     unlink(d->path.c_str());
-    free(d->seqBuf);
-    free(d->randBuf);
+#endif
+    freeBuffer(d->seqBuf);
+    freeBuffer(d->randBuf);
     delete d;
 }
 

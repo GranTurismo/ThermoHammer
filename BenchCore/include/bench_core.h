@@ -1,6 +1,6 @@
 // BenchCore — the CPU and MEM tests and the QR scanning test of the ThermoHammer benchmark, one C++ implementation
-// for Android (JNI: engine/cpu/CpuNative.kt, engine/mem/MemNative.kt, engine/ux/QrNative.kt) and iOS (Swift), so
-// every phone does exactly the same work.
+// for Android (JNI: engine/cpu/CpuNative.kt, engine/mem/MemNative.kt, engine/ux/QrNative.kt), iOS (Swift) and
+// Windows (benchcore.dll, P/Invoke: ThermoHammerWindows/Engine/Native.cs), so every device does exactly the same work.
 //
 // Each kernel does a fixed unit of work per call and returns a checksum; the runner compares every call with
 // the first, so a kernel can't get faster by getting wrong. All inputs come from fixed seeds.
@@ -45,7 +45,7 @@ const char* bc_kernel_error(const bc_kernel* kernel);
 
 void bc_kernel_destroy(bc_kernel* kernel);
 
-/** "ARMv8 crypto" when AES-GCM and SHA-256 use the CPU's crypto instructions, "portable" otherwise. */
+/** Which instructions AES-GCM and SHA-256 use: "ARMv8 crypto", on x86 "AES-NI + SHA-NI" (or one of them), else "portable". */
 const char* bc_crypto_path(void);
 
 // ── MEM tests: RAM and storage, measured in slices so the stage can show a live rate ──
@@ -81,6 +81,10 @@ void bc_disk_close(bc_disk* disk);
 enum { BC_QR_W = 1280, BC_QR_H = 720, BC_QR_FRAMES = 32, BC_QR_SEED = 7 };
 
 typedef struct bc_qr bc_qr;
+
+/** 1 when this CPU renders the frames exactly as every other device does. x86-64 Windows builds the renderer with
+ *  FMA3 (Arm fuses multiply-adds, so the frames must too): a PC without it can't run the test. 1 everywhere else. */
+int bc_qr_supported(void);
 
 /** Renders `count` frames from `seed`, each checked to decode; null if they can't be made. */
 bc_qr* bc_qr_create(int count, int seed);

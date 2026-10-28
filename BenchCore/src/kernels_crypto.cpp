@@ -1,6 +1,7 @@
 // CPU Test 3 (COMPRESSION & CRYPTO) kernels: zlib, AES-256-GCM and SHA-256. AES-GCM and SHA-256 use the CPU's
-// ARMv8 crypto instructions where it has them (as the system libraries on Android and iOS do), portable code
-// otherwise; tests check both paths against each other and against published vectors.
+// crypto instructions where it has them (as the system libraries on Android, iOS and Windows do): ARMv8 crypto,
+// or AES-NI, PCLMULQDQ and SHA-NI on x86; portable code otherwise. Tests check both paths against each other and
+// against published vectors.
 #include <cstring>
 #include <vector>
 #include <zlib.h>
@@ -9,27 +10,83 @@
 #include <asm/hwcap.h>
 #include <sys/auxv.h>
 #endif
+#if defined(_WIN32) && defined(__aarch64__)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#ifndef PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE 30
+#endif
+#endif
 
 #include "core.hpp"
 
 namespace bc {
 
+#if defined(__x86_64__) || defined(_M_X64)
+#define BC_X86 1
+// The x86 paths can't be run where they're built (a Mac: Rosetta has no SHA-NI), so each must reproduce a
+// published answer on the CPU before it's used — GCM test case 14, SHA-256("abc").
+bool gcmKnownAnswer();
+bool shaKnownAnswer();
+#endif
+
 bool cryptoHw() {
     static const bool hw = [] {
+#if defined(BC_X86)
+        return x86CryptoCompiled() && x86AesSupported() && gcmKnownAnswer();
+#else
         if (!armCryptoCompiled()) return false;
 #if defined(__APPLE__)
         return true;   // every 64-bit Apple chip has the ARMv8 crypto extension
 #elif defined(__ANDROID__) && defined(__aarch64__)
         const unsigned long caps = getauxval(AT_HWCAP);
         return (caps & HWCAP_AES) && (caps & HWCAP_PMULL) && (caps & HWCAP_SHA2);
+#elif defined(_WIN32) && defined(__aarch64__)
+        return IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE) != 0;
 #else
         return false;
+#endif
 #endif
     }();
     return hw;
 }
 
+bool shaHw() {
+#if defined(BC_X86)
+    static const bool hw = x86CryptoCompiled() && x86ShaSupported() && shaKnownAnswer();
+    return hw;
+#else
+    return cryptoHw();
+#endif
+}
+
 namespace {
+
+// the instruction path of this CPU architecture
+void aesCtrHw(const AesKey& k, const uint8_t j0[16], const uint8_t* in, size_t len, uint8_t* out) {
+#if defined(BC_X86)
+    aesCtrX86(k, j0, in, len, out);
+#else
+    aesCtrArm(k, j0, in, len, out);
+#endif
+}
+
+void ghashHw(const uint8_t h[16], const uint8_t* data, size_t len, uint8_t y[16]) {
+#if defined(BC_X86)
+    ghashX86(h, data, len, y);
+#else
+    ghashArm(h, data, len, y);
+#endif
+}
+
+void sha256BlocksHw(uint32_t st[8], const uint8_t* data, size_t blocks) {
+#if defined(BC_X86)
+    sha256BlocksX86(st, data, blocks);
+#else
+    sha256BlocksArm(st, data, blocks);
+#endif
+}
+
 
 // ── AES-256, portable ───────────────────────────────────────────────────────
 
@@ -151,11 +208,11 @@ void gcmTag(const AesKey& k, const uint8_t j0[16], const uint8_t* cipher, size_t
     uint8_t h[16] = {}, zero[16] = {};
     aesBlockSw(k, zero, h);
     uint8_t y[16] = {};
-    if (hw) ghashArm(h, cipher, len, y); else ghashSw(h, cipher, len, y);
+    if (hw) ghashHw(h, cipher, len, y); else ghashSw(h, cipher, len, y);
     uint8_t lens[16] = {};
     const uint64_t bits = uint64_t(len) * 8;
     for (int i = 0; i < 8; i++) lens[15 - i] = uint8_t(bits >> (8 * i));   // len(A) = 0, then len(C)
-    if (hw) ghashArm(h, lens, 16, y); else ghashSw(h, lens, 16, y);
+    if (hw) ghashHw(h, lens, 16, y); else ghashSw(h, lens, 16, y);
     uint8_t ek[16];
     aesBlockSw(k, j0, ek);
     for (int i = 0; i < 16; i++) tag[i] = y[i] ^ ek[i];
@@ -254,7 +311,7 @@ struct Sha256 final : bc_kernel {
     std::vector<uint8_t> data = corpus(1 << 20);
     int64_t run() override {
         uint8_t d[32];
-        sha256(data.data(), data.size(), d, cryptoHw());
+        sha256(data.data(), data.size(), d, shaHw());
         return int64_t(d[0]) << 8 | d[1];
     }
 };
@@ -283,7 +340,7 @@ void gcmSeal(const AesKey& k, const uint8_t iv[12], const uint8_t* in, size_t le
     uint8_t j0[16] = {};
     std::memcpy(j0, iv, 12);
     j0[15] = 1;
-    if (hw) aesCtrArm(k, j0, in, len, out); else aesCtrSw(k, j0, in, len, out);
+    if (hw) aesCtrHw(k, j0, in, len, out); else aesCtrSw(k, j0, in, len, out);
     gcmTag(k, j0, out, len, tag, hw);
 }
 
@@ -295,14 +352,14 @@ bool gcmOpen(const AesKey& k, const uint8_t iv[12], const uint8_t* in, size_t le
     uint8_t diff = 0;
     for (int i = 0; i < 16; i++) diff |= uint8_t(expect[i] ^ tag[i]);
     if (diff) return false;
-    if (hw) aesCtrArm(k, j0, in, len, out); else aesCtrSw(k, j0, in, len, out);
+    if (hw) aesCtrHw(k, j0, in, len, out); else aesCtrSw(k, j0, in, len, out);
     return true;
 }
 
 void sha256(const uint8_t* data, size_t len, uint8_t digest[32], bool hw) {
     uint32_t st[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
     const size_t full = len / 64;
-    if (hw) sha256BlocksArm(st, data, full); else sha256BlocksSw(st, data, full);
+    if (hw) sha256BlocksHw(st, data, full); else sha256BlocksSw(st, data, full);
     uint8_t tail[128] = {};
     const size_t rest = len - full * 64;
     std::memcpy(tail, data + full * 64, rest);
@@ -310,12 +367,33 @@ void sha256(const uint8_t* data, size_t len, uint8_t digest[32], bool hw) {
     const size_t tailBlocks = rest + 9 > 64 ? 2 : 1;
     const uint64_t bits = uint64_t(len) * 8;
     for (int i = 0; i < 8; i++) tail[tailBlocks * 64 - 1 - i] = uint8_t(bits >> (8 * i));
-    if (hw) sha256BlocksArm(st, tail, tailBlocks); else sha256BlocksSw(st, tail, tailBlocks);
+    if (hw) sha256BlocksHw(st, tail, tailBlocks); else sha256BlocksSw(st, tail, tailBlocks);
     for (int i = 0; i < 8; i++) {
         digest[4 * i] = uint8_t(st[i] >> 24); digest[4 * i + 1] = uint8_t(st[i] >> 16);
         digest[4 * i + 2] = uint8_t(st[i] >> 8); digest[4 * i + 3] = uint8_t(st[i]);
     }
 }
+
+#if defined(BC_X86)
+bool gcmKnownAnswer() {
+    static const uint8_t ct14[16] = {0xce, 0xa7, 0x40, 0x3d, 0x4d, 0x60, 0x6b, 0x6e, 0x07, 0x4e, 0xc5, 0xd3, 0xba, 0xf3, 0x9d, 0x18};
+    static const uint8_t tag14[16] = {0xd0, 0xd1, 0xc8, 0xa7, 0x99, 0x99, 0x6b, 0xf0, 0x26, 0x5b, 0x98, 0xb5, 0xd4, 0x8a, 0xb9, 0x19};
+    AesKey k{};
+    const uint8_t key[32] = {}, iv[12] = {}, pt[16] = {};
+    uint8_t ct[16], tag[16];
+    aesExpand(key, k);
+    gcmSeal(k, iv, pt, 16, ct, tag, true);
+    return !std::memcmp(ct, ct14, 16) && !std::memcmp(tag, tag14, 16);
+}
+
+bool shaKnownAnswer() {
+    static const uint8_t abc[32] = {0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22, 0x23,
+                                    0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad};
+    uint8_t d[32];
+    sha256(reinterpret_cast<const uint8_t*>("abc"), 3, d, true);
+    return !std::memcmp(d, abc, 32);
+}
+#endif
 
 bc_kernel* makeZlib() { return new Zlib(); }
 bc_kernel* makeAesGcm() { return new AesGcm(); }

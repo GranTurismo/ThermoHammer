@@ -30,8 +30,9 @@ static std::string hex(const uint8_t* p, size_t n) {
 int main(int argc, char** argv) {
     const bool emit = argc > 1 && std::string(argv[1]) == "--emit";   // print a vector for an outside check
     std::printf("crypto path: %s\n", bc_crypto_path());
-    std::vector<bool> paths{false};
+    std::vector<bool> paths{false}, shaPaths{false};
     if (bc::cryptoHw()) paths.push_back(true);
+    if (bc::shaHw()) shaPaths.push_back(true);
 
     // AES-256-GCM, test cases 13 and 14 of McGrew & Viega's GCM specification
     bc::AesKey zeroKey{};
@@ -71,7 +72,7 @@ int main(int argc, char** argv) {
     }
 
     // SHA-256: FIPS 180-2 vectors, then paths agree on every tail length
-    for (bool hw : paths) {
+    for (bool hw : shaPaths) {
         const char* p = hw ? "hw" : "sw";
         uint8_t d[32];
         bc::sha256(reinterpret_cast<const uint8_t*>("abc"), 3, d, hw);
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
         bc::sha256(reinterpret_cast<const uint8_t*>(two), std::strlen(two), d, hw);
         expect(hex(d, 32) == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", std::string("SHA-256 two blocks ") + p);
     }
-    if (paths.size() > 1) {
+    if (shaPaths.size() > 1) {
         bool same = true;
         for (size_t len = 0; len < 200; len++) {
             uint8_t a[32], b[32];

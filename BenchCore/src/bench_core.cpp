@@ -29,6 +29,20 @@ const char* bc_kernel_error(const bc_kernel* kernel) { return kernel->error.c_st
 
 void bc_kernel_destroy(bc_kernel* kernel) { delete kernel; }
 
-const char* bc_crypto_path(void) { return bc::cryptoHw() ? "ARMv8 crypto" : "portable"; }
+int bc_qr_supported(void) {
+#if defined(BC_QR_FMA)
+    return __builtin_cpu_supports("fma") && __builtin_cpu_supports("avx") ? 1 : 0;
+#else
+    return 1;
+#endif
+}
+
+const char* bc_crypto_path(void) {
+#if defined(__x86_64__) || defined(_M_X64)
+    return bc::cryptoHw() ? (bc::shaHw() ? "AES-NI + SHA-NI" : "AES-NI, portable SHA") : bc::shaHw() ? "SHA-NI, portable AES" : "portable";
+#else
+    return bc::cryptoHw() ? "ARMv8 crypto" : "portable";
+#endif
+}
 
 }
