@@ -73,8 +73,10 @@ object BenchmarkReport {
                 ux.error?.let { appendLine("UX error: $it") }
             }
             r.ai?.let { ai ->
-                appendLine("AI · %,d pts = CPU %,d · GPU %,d · NPU %,d · NPU %s".format(ai.score, ai.accelScore(AiAccel.CPU),
-                    ai.accelScore(AiAccel.GPU), ai.accelScore(AiAccel.NPU), ai.npuRuntime ?: "not run: ${ai.npuProblem ?: "?"}"))
+                appendLine("AI · %,d pts = CPU %,d · GPU %,d · NPU %,d · NPU %s%s%s".format(ai.score, ai.accelScore(AiAccel.CPU),
+                    ai.accelScore(AiAccel.GPU), ai.accelScore(AiAccel.NPU), ai.npuRuntime ?: "not run: ${ai.npuProblem ?: "?"}",
+                    ai.npuFiles?.let { " ($it)" } ?: "", if (ai.npuBurst) "" else " · default clocks (BURST failed)"))
+                ai.npuLog?.let { appendLine("  NPU log: $it") }
                 for (t in AiTest.entries) {
                     appendLine("AI %d %s · %s".format(t.number, t.title, AiAccel.entries.joinToString(", ") { a ->
                         val run = ai.runs.firstOrNull { it.test == t && it.accel == a }

@@ -7,6 +7,8 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import com.example.thermohammer.ui.xray.XRayMapper
+import com.example.thermohammer.ui.xray.XRayRegion
 import java.io.File
 
 /**
@@ -199,11 +201,17 @@ object StressProbes {
 
     // ── Thermal zones ───────────────────────────────────────────────────────────
 
-    private val cpuZoneHints = listOf(
-        "cpu", "soc", "tsens", "apuss", "cluster", "big", "little",
-        "kryo", "mtktscpu", "exynos", "dynamiq", "a5", "a7"
-    )
     private val skinZoneHints = listOf("skin", "shell", "board", "pa_therm", "xo_therm", "quiet")
+
+    /**
+     * Zones that report something other than a temperature through the thermal framework — Qualcomm's battery
+     * current limiter: "socd" is 100 − the battery's charge in percent (it climbs as the battery drains, reading like
+     * a 60-something °C that never cools), "…-ibat-lvl0", "…-vbat-lvl0", "…-bcl-lvl1" are current and voltage levels.
+     */
+    fun isTemperatureZone(name: String): Boolean {
+        val tokens = name.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        return tokens.none { it == "socd" || it == "bcl" || it == "ibat" || it == "vbat" || it.startsWith("lvl") }
+    }
 
     fun readThermalZones(): List<TempZone> {
         val zones = mutableListOf<TempZone>()
@@ -216,6 +224,7 @@ object StressProbes {
                     if (typeFile.exists() && tempFile.exists()) {
                         try {
                             val type = typeFile.readText().trim()
+                            if (!isTemperatureZone(type)) return@forEach
                             val raw = tempFile.readText().trim().toFloatOrNull() ?: return@forEach
                             val temp = if (raw > 1000f || raw < -1000f) raw / 1000f else raw
                             if (temp in -40f..150f) zones.add(TempZone(type, temp))
@@ -232,10 +241,14 @@ object StressProbes {
         return hints.any { n.contains(it) }
     }
 
-    /** Warmest CPU-adjacent zone temperature, or null if none readable. */
+    /**
+     * The SoC's temperature now: its hottest CPU sensor, picked by the X-ray's rule (whole name tokens, so neither
+     * "socd" nor "btmcpu_therm" passes for the CPU), or the hottest zone of all when no CPU sensor is readable.
+     */
     fun cpuAdjacentTemp(zones: List<TempZone>): Float? {
-        val cpu = zones.filter { matchesHints(it.name, cpuZoneHints) }
-        return (cpu.ifEmpty { zones }).maxOfOrNull { it.tempC }
+        val valid = zones.filter { isTemperatureZone(it.name) }
+        val cpu = valid.filter { XRayMapper.classify(it.name) == XRayRegion.CPU }
+        return (cpu.ifEmpty { valid }).maxOfOrNull { it.tempC }
     }
 
     fun skinTemp(zones: List<TempZone>): Float? =

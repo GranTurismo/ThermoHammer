@@ -413,7 +413,8 @@ private fun DiagnosticsScreenWrapper(
                     }
                 }
 
-                if (isNetworkConnected) {
+                // offline: ask for a connection first — unless the run is unverified and can't be submitted anyway
+                if (isNetworkConnected || !com.example.thermohammer.engine.ValidityFlag.submittable(state.scorecard?.validityFlags ?: 0)) {
                     showSummary = true
                 } else {
                     showConnectionRequest = true
@@ -558,7 +559,8 @@ private fun DiagnosticsScreenWrapper(
                             rayTracingChecked = rtChecked,
                             best = best,
                             last = last,
-                            canSubmitLast = last != null && !last.submitted && isNetworkConnected,
+                            canSubmitLast = last != null && !last.submitted && last.validityFlags == 0 && isNetworkConnected,
+                            lastNeedsConnection = last != null && !last.submitted && last.validityFlags == 0 && !isNetworkConnected,
                             submitting = benchSubmitting && !showBenchResult,
                             onSubmitLast = { last?.let { submitBenchmark(it) } }
                         )
@@ -725,9 +727,7 @@ private fun DiagnosticsScreenWrapper(
                     submitError = benchSubmitErr,
                     onSubmit = { benchRecords.firstOrNull { it.id == benchRecordId }?.let { submitBenchmark(it) } },
                     onCopyReport = {
-                        val version = try {
-                            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
-                        } catch (_: Exception) { "?" }
+                        val version = appBuildLabel(context)
                         val text = com.example.thermohammer.engine.BenchmarkReport.text(
                             result, engine.getDeviceModel(), "${engine.getAndroidVersion()} (${engine.getOsBuild()})",
                             engine.getSocModel().ifBlank { "?" }, version,
@@ -948,3 +948,18 @@ fun PendingRunsBanner(count: Int, onClick: () -> Unit) {
         Text("→", color = Forge.ink2, fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }
+
+/** "2.0 (13) · Play", "2.0 (13) · bench" or "… · sideloaded" — which build a report came from. */
+fun appBuildLabel(context: Context): String = try {
+    val pm = context.packageManager
+    val info = pm.getPackageInfo(context.packageName, 0)
+    val code = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)
+    val installer = if (android.os.Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(context.packageName).installingPackageName
+        else @Suppress("DEPRECATION") pm.getInstallerPackageName(context.packageName)
+    val source = when {
+        context.packageName.endsWith(".bench") -> "bench"
+        installer == "com.android.vending" -> "Play"
+        else -> "sideloaded"
+    }
+    "${info.versionName ?: "?"} ($code) · $source"
+} catch (_: Exception) { "?" }

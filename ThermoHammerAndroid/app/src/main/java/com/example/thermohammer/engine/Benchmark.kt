@@ -455,7 +455,10 @@ data class AiRun(val test: AiTest, val accel: AiAccel, val ips: Double, val erro
 data class AiResult(
     val runs: List<AiRun>,
     val npuRuntime: String?,          // e.g. "Qualcomm QNN" — null when the NPU didn't run
-    val npuProblem: String? = null    // why it didn't
+    val npuProblem: String? = null,   // why it didn't
+    val npuFiles: String? = null,     // the Hexagon DSP images on the phone, e.g. "V79 skel" (reported)
+    val npuLog: String? = null,       // QNN / LiteRT's own error lines when a model failed on the NPU (reported)
+    val npuBurst: Boolean = true      // false: BURST failed, the NPU ran at QNN's default clocks (reported)
 ) {
     fun ips(t: AiTest, a: AiAccel): Double = runs.firstOrNull { it.test == t && it.accel == a }?.ips ?: 0.0
     fun points(t: AiTest, a: AiAccel): Int = AiScore.points(t, a, ips(t, a))

@@ -98,14 +98,37 @@ class AiBench(private val context: Context) {
     /** Inferences per second of `test` on `accel`, and the outputs of its last inference. */
     class Measured(val ips: Double, val outputs: List<ByteArray>)
 
+    /** The Hexagon DSP images QNN can load here, e.g. "V79 skel" — what the npu/ Play modules installed. */
+    fun npuFiles(): String {
+        val skels = java.io.File(context.applicationInfo.nativeLibraryDir).list().orEmpty()
+            .mapNotNull { Regex("libQnnHtp(V\\d+)Skel\\.so").matchEntire(it)?.groupValues?.get(1) }.sorted()
+        return if (skels.isEmpty()) "no Hexagon skel" else skels.joinToString(" ") + " skel" + if (skels.size > 1) "s" else ""
+    }
+
+    /**
+     * This app's own error and warning lines from QNN, LiteRT and FastRPC since [sinceMs] — what the NPU said when a
+     * model failed (LiteRT itself only says "Failed to invoke the compiled model"). An app may read its own log.
+     */
+    fun npuLog(sinceMs: Long): String? = runCatching {
+        val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(sinceMs))
+        val p = ProcessBuilder("logcat", "-d", "-v", "tag", "-T", since, "--pid=${android.os.Process.myPid()}")
+            .redirectErrorStream(true).start()
+        val lines = p.inputStream.bufferedReader().readLines()
+        p.waitFor()
+        val npu = Regex("(?i)qnn|htp|litert|dispatch|fastrpc|rpcmem|dsp|tflite|npu")
+        lines.filter { (it.startsWith("E/") || it.startsWith("W/") || it.startsWith("F/")) && npu.containsMatchIn(it) }
+            .map { it.trim().take(220) }.distinct().takeLast(10).joinToString(" | ").ifBlank { null }
+    }.getOrNull()
+
+    /** `burst`: the NPU at its highest clock (QNN's BURST mode); false leaves QNN's default performance mode. */
     fun run(test: AiTest, accel: AiAccel, input: ByteArray, seconds: Double,
-            isActive: () -> Boolean, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
+            isActive: () -> Boolean, burst: Boolean = true, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
         val options = CompiledModel.Options(when (accel) {
             AiAccel.CPU -> Accelerator.CPU; AiAccel.GPU -> Accelerator.GPU; AiAccel.NPU -> Accelerator.NPU
         })
         when (accel) {
             AiAccel.CPU -> options.cpuOptions = CompiledModel.CpuOptions(CPU_THREADS, null, null)
-            AiAccel.NPU -> options.qualcommOptions = CompiledModel.QualcommOptions(
+            AiAccel.NPU -> if (burst) options.qualcommOptions = CompiledModel.QualcommOptions(
                 htpPerformanceMode = CompiledModel.QualcommOptions.HtpPerformanceMode.BURST)
             AiAccel.GPU -> {}
         }

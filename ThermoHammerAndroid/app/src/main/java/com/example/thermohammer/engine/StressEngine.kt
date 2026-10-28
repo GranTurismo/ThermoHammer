@@ -538,11 +538,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         var flags = 0
         val from = benchFrom
         // Getting ready: cool, and nothing else eating the CPU. If the phone was busy, that work
-        // may have warmed it again, so the temperature is checked once more.
-        var cooled = from != null || coolDown()
+        // may have warmed it again, so the temperature is checked once more. A phone that doesn't get down to the
+        // target (many idle at 45–50 °C) isn't flagged: the wait is a courtesy, not a condition.
+        val cooled = from != null || coolDown()
         val quiet = if (from != null) QuietCheck(false, 1f, 0) else waitUntilQuiet()
-        if (cooled && quiet.waitedSec >= 20) cooled = coolDown()   // it had cooled; the busy spell may have warmed it
-        if (!cooled) flags = flags or ValidityFlag.COOLDOWN_TIMEOUT
+        if (cooled && quiet.waitedSec >= 20) coolDown()   // it had cooled; the busy spell may have warmed it
         if (!quiet.quiet) flags = flags or ValidityFlag.INTERFERENCE   // a partial debug run is never a verified one
         if (!_state.value.isRunning) return
         if (batterySaverAtStart) flags = flags or ValidityFlag.ENV_CAPPED
@@ -922,6 +922,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val crashed = aiCrashedAccels()
         val available = bench.available()
         val npuProblem = bench.npuProblem()
+        var npuBurst = true          // BURST until it fails once: then QNN's default performance mode
+        var npuRetried = false       // the default-clocks retry is tried once, not on every model
+        var npuLog: String? = null   // QNN's own words, the first time the NPU failed
         val runs = ArrayList<AiRun>()
         for (test in AiTest.entries) {
             if (!_state.value.isRunning) return@withContext null
@@ -942,10 +945,21 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 _state.update { it.copy(aiAccel = accel, aiRate = -1.0, aiProgress = k / 3f,
                     aiDetail = "${accel.label}${runtime?.let { r -> " · $r" } ?: ""} · INT8 · ${test.model.uppercase()} · COMPILING") }
                 benchPrefs.edit().putString(KEY_AI_RUNNING, "$installStamp:${test.name}:${accel.name}").commit()
+                fun attempt(burst: Boolean) = bench.run(test, accel, input, AI_SECONDS, { _state.value.isRunning }, burst) { f, ips ->
+                    _state.update { it.copy(aiProgress = (k + f) / 3f, aiRate = ips,
+                        aiDetail = "${accel.label}${runtime?.let { r -> " · $r" } ?: ""} · INT8 · ${test.model.uppercase()}") }
+                }
+                val startedMs = System.currentTimeMillis()
                 val measured = try {
-                    bench.run(test, accel, input, AI_SECONDS, { _state.value.isRunning }) { f, ips ->
-                        _state.update { it.copy(aiProgress = (k + f) / 3f, aiRate = ips,
-                            aiDetail = "${accel.label}${runtime?.let { r -> " · $r" } ?: ""} · INT8 · ${test.model.uppercase()}") }
+                    if (accel != AiAccel.NPU) attempt(true)
+                    else try {
+                        attempt(npuBurst)
+                    } catch (e: Exception) {
+                        // what QNN said, for the report; then once, the NPU without BURST (QNN's default clocks)
+                        if (npuLog == null) npuLog = bench.npuLog(startedMs - 1000)
+                        if (!npuBurst || npuRetried || !_state.value.isRunning) throw e
+                        npuRetried = true
+                        attempt(false).also { npuBurst = false }
                     }
                 } catch (e: Exception) {
                     runs += AiRun(test, accel, 0.0, e.message ?: e.javaClass.simpleName)
@@ -967,7 +981,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 if (left > 0) { _state.update { it.copy(aiProgress = 1f) }; delay(left / 1_000_000) }
             }
         }
-        AiResult(fallbackChecked(runs), bench.npuRuntime().takeIf { npuProblem == null }, npuProblem)
+        AiResult(fallbackChecked(runs), bench.npuRuntime().takeIf { npuProblem == null }, npuProblem,
+            npuFiles = if (bench.npuRuntime() == "Qualcomm QNN") bench.npuFiles() else null,
+            npuLog = npuLog, npuBurst = npuBurst)
     }
 
     /**
@@ -1153,12 +1169,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         gates += GateResult(
             "starttemp", "STARTING TEMPERATURE", blocking = false, passed = true,
             detail = when {
-                cpuTemp == null -> "Thermal sensors unreadable — run flagged unverified"
+                cpuTemp == null -> "Thermal sensors unreadable"
                 cpuTemp <= GATE_TEMP_C -> "Warmest CPU zone %.1f°C".format(cpuTemp)
                 else -> "Warmest CPU zone %.1f°C — cooldown will run first".format(cpuTemp)
             }
         )
-        if (cpuTemp != null && cpuTemp > GATE_TEMP_C) hints = hints or ValidityFlag.WARM_STARTED
 
         // Thermal headroom — the platform's own forecast: 0 = cool, 1.0 = severe throttling. Informational
         // only: a hot start never blocks, the run is flagged instead.
@@ -1168,9 +1183,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             passed = hr == null || hr < GATE_HEADROOM,
             detail = if (hr == null) "Headroom API unavailable (API < 30)"
                      else if (hr < GATE_HEADROOM) "Thermal load %.2f — throttling starts at 1.00".format(hr)
-                     else "Thermal load %.2f — close to throttling, run flagged as a warm start".format(hr)
+                     else "Thermal load %.2f — close to throttling, the cooldown will run first".format(hr)
         )
-        if (hr != null && hr >= GATE_HEADROOM) hints = hints or ValidityFlag.WARM_STARTED
 
         // Power source.
         val batt = StressProbes.battery(appContext)
@@ -1736,8 +1750,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val stamps = _state.value.recordedStamps
         if (stamps.isEmpty() || baseline <= 0) {
             var flags = ValidityFlag.SHORT_RUN
-            if (warmStarted) flags = flags or ValidityFlag.WARM_STARTED
-            if (cooldownTimedOut) flags = flags or ValidityFlag.COOLDOWN_TIMEOUT
             if (freqMissing) flags = flags or ValidityFlag.FREQ_MISSING
             return Scorecard(baselineIps = baseline, confidence = 0, validityFlags = flags)
         }
@@ -1797,10 +1809,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val deltaT = maxCpuT - (firstCpuT ?: maxCpuT)
         val thermalEff = if (maxCpuT > 0) delivered / max(1f, deltaT) else null
 
-        // Validity bitfield.
+        // Validity bitfield. A warm start isn't one of them: phones idle at different temperatures (45–50 °C is
+        // normal for some), so it lowers the confidence instead of flagging the run.
         var flags = 0
-        if (warmStarted) flags = flags or ValidityFlag.WARM_STARTED
-        if (cooldownTimedOut) flags = flags or ValidityFlag.COOLDOWN_TIMEOUT
         if (contentionN > stamps.size / 10) flags = flags or ValidityFlag.INTERFERENCE
         if (powerEvent) flags = flags or ValidityFlag.POWER_EVENT
         if (freqMissing) flags = flags or ValidityFlag.FREQ_MISSING

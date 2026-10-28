@@ -584,6 +584,7 @@ fun BenchmarkInfoCard(
     best: com.example.thermohammer.data.BenchmarkRecord?,
     last: com.example.thermohammer.data.BenchmarkRecord?,
     canSubmitLast: Boolean,
+    lastNeedsConnection: Boolean = false,   // a verified run not yet submitted, and no internet to submit it
     submitting: Boolean,
     onSubmitLast: () -> Unit
 ) {
@@ -752,6 +753,10 @@ fun BenchmarkInfoCard(
                 if (last != null && last.id != best?.id) Column(Modifier.weight(1f)) {
                     Text("%,d".format(last.score), style = ThermoType.data(18f, Forge.ink0, FontWeight.Black))
                     Text("LAST RUN", style = ThermoType.annotation(7f, Forge.ink2))
+                }
+                if (lastNeedsConnection) {
+                    Text("TURN ON INTERNET\nTO SUBMIT", textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        style = TextStyle(color = Ramp.at(0.5f), fontSize = 8.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                 }
                 if (canSubmitLast) {
                     if (submitting) CircularProgressIndicator(Modifier.size(16.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)

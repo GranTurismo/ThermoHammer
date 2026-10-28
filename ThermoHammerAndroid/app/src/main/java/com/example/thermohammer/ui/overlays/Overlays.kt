@@ -563,7 +563,17 @@ fun SummaryOverlay(
             Spacer(Modifier.height(12.dp))
 
             // ── Leaderboard & pending ────────────────────────────────────────
-            if (hasSession) {
+            if (!com.example.thermohammer.engine.ValidityFlag.submittable(validityFlags)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("⌖ NOT VERIFIED", color = Ramp.at(0.5f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Only verified runs go to the leaderboard. This one is kept on your phone for your own comparisons.",
+                        style = TextStyle(color = Forge.ink1, fontSize = 10.sp, textAlign = TextAlign.Center),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+            } else if (hasSession) {
                 if (isNetworkConnected) {
                     when {
                         submitSuccess != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {

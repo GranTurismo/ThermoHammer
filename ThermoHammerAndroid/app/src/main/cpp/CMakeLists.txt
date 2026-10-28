@@ -56,7 +56,7 @@ target_link_libraries(neonrt android log dl)
 # are vendored zxing-cpp (third-party code, so its warnings are off).
 set(BENCH_CORE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../BenchCore)
 set(ZXING ${BENCH_CORE}/third_party/zxing-cpp/src)
-file(GLOB BENCH_CORE_SRC ${BENCH_CORE}/src/*.cpp)
+file(GLOB BENCH_CORE_SRC CONFIGURE_DEPENDS ${BENCH_CORE}/src/*.cpp)   # new BenchCore files join without a clean
 file(GLOB ZXING_SRC ${ZXING}/*.cpp ${ZXING}/qrcode/*.cpp ${ZXING}/libzueci/zueci.c)
 set_source_files_properties(${ZXING_SRC} PROPERTIES COMPILE_OPTIONS "-w")
 add_library(benchcore SHARED ${BENCH_CORE_SRC} ${ZXING_SRC} cpu_jni.cpp mem_jni.cpp qr_jni.cpp)

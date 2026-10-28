@@ -57,6 +57,12 @@ object ValidityFlag {
     const val BASELINE_EXCEEDED = 1 shl 8 // measured run sustained >105% of calibration baseline
                                         // — the "peak" was captured under degraded conditions
                                         //   (capped, starved, or parked on little cores)
+
+    /**
+     * Only verified runs go to the leaderboard: nothing set but FREQ_MISSING, which describes the phone (stock
+     * Android 16 hides the clocks), not the run.
+     */
+    fun submittable(flags: Int): Boolean = flags and FREQ_MISSING.inv() == 0
 }
 
 // ── Per-stamp environment bitfield ─────────────────────────────────────────────
@@ -158,6 +164,6 @@ data class Scorecard(
     val gpuName: String = "",
     val gpuAttribution: Int = 0
 ) {
-    /** Verified = clean run eligible for the global leaderboard. */
-    val isVerified: Boolean get() = validityFlags == 0
+    /** Verified = clean run eligible for the global leaderboard (missing clock data is the phone's, not the run's). */
+    val isVerified: Boolean get() = ValidityFlag.submittable(validityFlags)
 }

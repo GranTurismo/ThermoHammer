@@ -256,6 +256,40 @@ data class BenchmarkDto(
     @SerializedName("runs") val runs: Int
 )
 
+/** One run opened from the leaderboard: the server sends every section as ready-to-show text. */
+data class BenchmarkDetailDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("createdAt") val createdAt: String,
+    @SerializedName("deviceManufacturer") val deviceManufacturer: String,
+    @SerializedName("deviceModel") val deviceModel: String,
+    @SerializedName("socModel") val socModel: String?,
+    @SerializedName("gpuName") val gpuName: String?,
+    @SerializedName("os") val os: Int,
+    @SerializedName("osVersion") val osVersion: String,
+    @SerializedName("osBuild") val osBuild: String?,
+    @SerializedName("appVersion") val appVersion: String?,
+    @SerializedName("totalScore") val totalScore: Int,
+    @SerializedName("sections") val sections: List<DetailSectionDto>
+)
+
+data class DetailSectionDto(
+    @SerializedName("key") val key: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("score") val score: Int,
+    @SerializedName("groups") val groups: List<DetailGroupDto>
+)
+
+data class DetailGroupDto(
+    @SerializedName("title") val title: String,
+    @SerializedName("points") val points: Int?,
+    @SerializedName("rows") val rows: List<DetailRowDto>
+)
+
+data class DetailRowDto(
+    @SerializedName("label") val label: String,
+    @SerializedName("value") val value: String
+)
+
 // ── Retrofit Interface ─────────────────────────────────────────────────────────
 
 interface ThermoApi {
@@ -276,6 +310,10 @@ interface ThermoApi {
 
     @GET("benchmark/leaderboard")
     suspend fun fetchBenchmarkLeaderboard(): List<BenchmarkDto>
+
+    /** Every number of one leaderboard run; 404 once it is no longer a verified run. */
+    @GET("benchmark/{id}")
+    suspend fun fetchBenchmarkDetail(@Path("id") id: Int): BenchmarkDetailDto
 
     /** [os]: 1 iOS, 2 Android, 3 macOS — the server resolves [model] the way it stores submissions. */
     @GET("benchmark/model")

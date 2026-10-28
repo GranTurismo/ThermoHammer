@@ -1,6 +1,7 @@
 package com.example.thermohammer.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.example.thermohammer.data.PendingResultStore
 import com.example.thermohammer.data.PendingTestResult
 import com.example.thermohammer.network.ApiClient
+import com.example.thermohammer.network.BenchmarkDetailDto
 import com.example.thermohammer.network.BenchmarkDto
 import com.example.thermohammer.network.DeviceHammerStamp
 import com.example.thermohammer.network.HammerDto
@@ -93,6 +95,28 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
     }
     LaunchedEffect(isNetworkConnected) { load() }
 
+    // the run opened from a row: its numbers come from the server when it is tapped
+    var openRun by remember { mutableStateOf<BenchmarkDto?>(null) }
+    var lastOpen by remember { mutableStateOf<BenchmarkDto?>(null) }
+    var detail by remember { mutableStateOf<BenchmarkDetailDto?>(null) }
+    var detailLoading by remember { mutableStateOf(false) }
+    var detailError by remember { mutableStateOf<String?>(null) }
+    fun loadDetail(run: BenchmarkDto) {
+        coroutineScope.launch {
+            detailLoading = true; detailError = null
+            try {
+                detail = ApiClient.api.fetchBenchmarkDetail(run.id)
+            } catch (ex: retrofit2.HttpException) {
+                detailError = if (ex.code() == 404) "This run is no longer on the board" else "Server error ${ex.code()}"
+            } catch (ex: Exception) {
+                detailError = if (!isNetworkConnected) "Offline" else ex.message ?: "Couldn't load this run"
+            }
+            detailLoading = false
+        }
+    }
+    if (openRun != null) lastOpen = openRun
+    BackHandler(enabled = openRun != null) { openRun = null }
+
     val top = entries.firstOrNull()?.totalScore?.coerceAtLeast(1) ?: 1
     val shown = remember(entries, searchText) {
         entries.withIndex().filter { (_, e) ->
@@ -100,6 +124,7 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
                 e.deviceManufacturer.contains(searchText, true) || (e.gpuName?.contains(searchText, true) == true)
         }
     }
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -164,19 +189,35 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
             }
             else -> items(shown, key = { it.value.id }) { (i, e) ->
                 BenchmarkRow(rank = i + 1, entry = e, fraction = e.totalScore.toFloat() / top,
-                    mine = e.deviceModel.contains(myModel, ignoreCase = true))
+                    mine = e.deviceModel.contains(myModel, ignoreCase = true),
+                    onClick = { openRun = e; detail = null; loadDetail(e) })
             }
         }
+    }
+    AnimatedVisibility(
+        visible = openRun != null,
+        enter = fadeIn(tween(240)) + slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 },
+        exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 18 }
+    ) {
+        lastOpen?.let { run ->
+            BenchmarkDetailOverlay(
+                entry = run, rank = entries.indexOfFirst { it.id == run.id } + 1,
+                detail = detail?.takeIf { it.id == run.id }, isLoading = detailLoading, error = detailError,
+                onDismiss = { openRun = null }, onRetry = { loadDetail(run) }
+            )
+        }
+    }
     }
 }
 
 @Composable
-private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: Boolean) {
+private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: Boolean, onClick: () -> Unit) {
     val name = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) entry.deviceModel
         else "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.surface)
             .border(1.dp, if (mine) Forge.phaseMeasured.copy(alpha = 0.6f) else Forge.ink0.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -195,6 +236,7 @@ private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: 
                         entry.uxScore, entry.aiScore, entry.llmScore, if (entry.rayTracing) "RT %.0f FPS".format(entry.test3Fps) else "NO RT"),
                     style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 7.sp, fontFamily = InstrumentMono), maxLines = 1)
             }
+            Text("›", color = Forge.ink0.copy(alpha = 0.3f), fontSize = 18.sp, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Forge.ink0.copy(alpha = 0.06f))) {
@@ -662,7 +704,9 @@ private fun PendingResultRow(
                 )
             }
 
-            if (isNetworkConnected) {
+            if (!com.example.thermohammer.engine.ValidityFlag.submittable(pending.validityFlags)) {
+                Text("NOT VERIFIED", style = TextStyle(color = Ramp.at(0.5f), fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+            } else if (isNetworkConnected) {
                 if (isUploading) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(14.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)
@@ -763,6 +807,117 @@ private fun LeaderboardItemRow(
         Column(horizontalAlignment = Alignment.End) {
             Text("%.1f%%".format(item.stability), style = TextStyle(color = stabilityColor(item.stability.toFloat()), fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
             Text("STABILITY", style = TextStyle(color = Forge.ink0.copy(alpha = 0.35f), fontSize = 7.sp, fontFamily = InstrumentMono))
+        }
+    }
+}
+
+/** One leaderboard run: the device, then each section's score that opens onto its groups and numbers. */
+@Composable
+internal fun BenchmarkDetailOverlay(
+    entry: BenchmarkDto,
+    rank: Int,
+    detail: BenchmarkDetailDto?,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val name = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) entry.deviceModel
+        else "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
+    var openSections by remember { mutableStateOf(setOf<String>()) }
+    Box(Modifier.fillMaxSize().background(Forge.bg.copy(alpha = 0.85f)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier
+                .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Forge.raised)
+                .border(1.dp, Forge.ink0.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
+                .clickable(enabled = false) {}
+                .padding(24.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(name, style = TextStyle(color = Forge.ink0, fontSize = 16.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                    Text(listOfNotNull(entry.socModel, entry.gpuName).joinToString(" • "),
+                        style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
+                    Text(listOfNotNull(osLabel(entry.os, entry.osVersion), detail?.osBuild, detail?.appVersion?.let { "app $it" },
+                        detail?.createdAt?.take(10), if (entry.runs > 1) "best of ${entry.runs} runs" else null).joinToString(" • "),
+                        style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
+                }
+                Box(
+                    Modifier.size(32.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.08f)).clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center
+                ) { Text("✕", color = Forge.ink0, fontSize = 12.sp, fontWeight = FontWeight.Black) }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 16.dp), color = Forge.ink0.copy(alpha = 0.1f))
+
+            when {
+                isLoading -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(Modifier.size(32.dp), color = Forge.phasePreFlight, strokeWidth = 3.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Text("LOADING RUN...", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
+                    }
+                }
+                error != null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚠", fontSize = 32.sp, color = Ramp.at(0.5f))
+                        Spacer(Modifier.height(8.dp))
+                        Text(error, style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center))
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = onRetry, shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Forge.ink0)) {
+                            Text("RETRY", style = TextStyle(color = Forge.bg, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                        }
+                    }
+                }
+                detail != null -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Forge.ink0.copy(alpha = 0.03f)).padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("TOTAL SCORE", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                            Text("%,d".format(detail.totalScore), style = TextStyle(color = Forge.ink0, fontSize = 26.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                        }
+                        if (rank > 0) Text("#$rank", style = TextStyle(color = Ramp.at(1f), fontSize = 20.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                    }
+                    Text("TAP A SECTION FOR ITS NUMBERS", style = TextStyle(color = Forge.ink0.copy(alpha = 0.3f), fontSize = 8.sp, fontFamily = InstrumentMono),
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+                    for (section in detail.sections) {
+                        val isOpen = section.key in openSections
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.ink0.copy(alpha = 0.03f))) {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { openSections = if (isOpen) openSections - section.key else openSections + section.key }
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(section.title, modifier = Modifier.weight(1f), style = TextStyle(color = Forge.ink0, fontSize = 11.sp,
+                                    fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 1.sp))
+                                Text("%,d".format(section.score), style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                                Text(if (isOpen) "▾" else "▸", color = Forge.ink0.copy(alpha = 0.4f), fontSize = 12.sp, modifier = Modifier.padding(start = 10.dp))
+                            }
+                            if (isOpen) for (group in section.groups) {
+                                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(group.title.uppercase(), modifier = Modifier.weight(1f), style = TextStyle(color = Forge.ink1, fontSize = 9.sp,
+                                            fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp))
+                                        group.points?.let { Text("%,d pts".format(it), style = TextStyle(color = Forge.ink1, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)) }
+                                    }
+                                    for (row in group.rows) {
+                                        Row {
+                                            Text(row.label, modifier = Modifier.weight(0.45f), style = TextStyle(color = Forge.ink0.copy(alpha = 0.5f), fontSize = 10.sp, fontFamily = InstrumentMono))
+                                            Text(row.value, modifier = Modifier.weight(0.55f), style = TextStyle(color = Forge.ink0, fontSize = 10.sp, fontFamily = InstrumentMono, textAlign = TextAlign.End))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -876,5 +1031,5 @@ fun CustomFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
     }
 }
 
-/** OsPlatform on the server: 1 iOS, 2 Android, 3 macOS (the iPhone app on an Apple-silicon Mac). */
-private fun osLabel(os: Int, version: String): String = "${when (os) { 2 -> "Android"; 3 -> "macOS"; else -> "iOS" }} $version"
+/** OsPlatform on the server: 1 iOS, 2 Android, 3 macOS (the iPhone app on an Apple-silicon Mac), 4 Windows. */
+private fun osLabel(os: Int, version: String): String = "${when (os) { 2 -> "Android"; 3 -> "macOS"; 4 -> "Windows"; else -> "iOS" }} $version"

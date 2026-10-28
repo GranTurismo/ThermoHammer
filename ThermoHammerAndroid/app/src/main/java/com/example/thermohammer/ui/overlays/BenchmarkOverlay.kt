@@ -149,14 +149,24 @@ fun BenchmarkResultOverlay(
                 when {
                     submitMessage != null -> Text(submitMessage, style = ThermoType.data(11f, Forge.phaseMeasured, FontWeight.Bold),
                         textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
+                    // only verified runs reach the leaderboard: no button for the others
+                    !result.isVerified -> Text("Only verified runs can be submitted. This one is kept on your phone for your own comparisons.",
+                        style = ThermoType.annotation(9f, Forge.ink1), textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 6.dp))
                     isSubmitting -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 10.dp)) {
                         CircularProgressIndicator(Modifier.size(16.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                         MonoLabel("SUBMITTING…", size = 10f, alpha = 0.7f)
                     }
                     isNetworkConnected -> PrimaryButton("SUBMIT TO LEADERBOARD", onSubmit, accent = Forge.phaseMeasured)
-                    else -> Text("Offline — the run is saved; submit it from the home screen later.",
-                        style = ThermoType.annotation(9f, Forge.ink1), textAlign = TextAlign.Center)
+                    // the benchmark asks for mobile data off: say how to get it to the leaderboard (the button appears once online)
+                    else -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                        MonoLabel("NO INTERNET CONNECTION", size = 10f, alpha = 1f)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Turn on Wi-Fi or mobile data to submit this result. Until then it's saved on your phone — " +
+                            "you can submit it later from the home screen.",
+                            style = ThermoType.annotation(9f, Forge.ink1), textAlign = TextAlign.Center)
+                    }
                 }
                 if (submitError != null) {
                     Text("⚠ $submitError", style = ThermoType.annotation(9f, Ramp.at(0.85f)),
