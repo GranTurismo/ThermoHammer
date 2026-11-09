@@ -46,6 +46,16 @@ void bc_llm_set_threads(bc_llm* llm, int threads, int batch_threads);
  */
 int bc_llm_tune_threads(bc_llm* llm, int* threads, int* batch_threads);
 
+/**
+ * Called on the tuning thread just before each trial run: `phase` 0 = decode, 1 = prefill; `threads` is the count
+ * about to be timed, `trial` counts from 1 within the phase (0: the warm-up run before the first trial), `cores` is
+ * the most threads there are. A run takes seconds on a slow CPU, so this is what keeps the screen moving.
+ */
+typedef void (*bc_llm_tune_progress)(void* user, int phase, int threads, int trial, int cores);
+
+/** bc_llm_tune_threads, reporting each trial to `progress` (may be null). */
+int bc_llm_tune_threads_progress(bc_llm* llm, int* threads, int* batch_threads, bc_llm_tune_progress progress, void* user);
+
 /** One prompt of `tokens` (≤ BC_LLM_PROMPT) in a single batch, from an empty context: seconds, < 0 on failure. */
 double bc_llm_prefill(bc_llm* llm, int tokens);
 

@@ -377,14 +377,20 @@ void bc_llm_set_threads(bc_llm* llm, int threads, int batch_threads) {
 }
 
 int bc_llm_tune_threads(bc_llm* llm, int* threads, int* batch_threads) {
+    return bc_llm_tune_threads_progress(llm, threads, batch_threads, nullptr, nullptr);
+}
+
+int bc_llm_tune_threads_progress(bc_llm* llm, int* threads, int* batch_threads, bc_llm_tune_progress progress, void* user) {
     // Most threads first, one fewer at a time, until fewer have lost twice in a row. Every op ends with all the
     // threads waiting for the slowest: past the cores that keep up — with memory when decoding, with the rest of
     // the phone (its UI, its system) on a busy chip — more threads only add waiting.
     const int cores = int(std::max(1u, std::thread::hardware_concurrency()));
-    if (bc_llm_prefill(llm, 32) < 0) return 0;                 // first run: buffers, kernels
+    if (progress) progress(user, 0, cores, 0, cores);          // trial 0: the first run, which sets up buffers and kernels
+    if (bc_llm_prefill(llm, 32) < 0) return 0;
     double best = 1e30;
-    int tg = cores, worse = 0;
+    int tg = cores, worse = 0, trial = 0;
     for (int n = cores; n >= 1 && worse < 2; n--) {
+        if (progress) progress(user, 0, n, ++trial, cores);
         bc_llm_set_threads(llm, n, cores);
         bc_llm_reset(llm);
         for (int i = 0; i < 2; i++) if (bc_llm_next(llm, nullptr) < 0) return 0;   // warms the decode path
@@ -399,7 +405,9 @@ int bc_llm_tune_threads(bc_llm* llm, int* threads, int* batch_threads) {
     best = 1e30;
     int pp = cores;
     worse = 0;
+    trial = 0;
     for (int n = cores; n >= 1 && worse < 2; n--) {
+        if (progress) progress(user, 1, n, ++trial, cores);
         bc_llm_set_threads(llm, tg, n);
         const double s = bc_llm_prefill(llm, 64);
         if (s < 0) return 0;

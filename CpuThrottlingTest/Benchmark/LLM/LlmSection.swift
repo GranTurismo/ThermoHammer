@@ -151,7 +151,18 @@ struct LlmSection: BenchmarkSection {
         } else {
             show(.warmup, 0, -1, "\(whereText) · FINDING THE FASTEST THREAD COUNT")
             var t: Int32 = 0, b: Int32 = 0
-            guard bc_llm_tune_threads(h, &t, &b) != 0 else { return failed() }
+            // each trial run takes seconds on a slow CPU: say which one is running
+            let trials = TuneReporter { phase, n, trial, cores in
+                let text = trial == 0 ? "FINDING THE FASTEST THREAD COUNT · WARMING UP"
+                    : "TUNING \(phase == 0 ? "DECODE" : "PREFILL") · TRYING \(n) OF \(cores) THREADS"
+                show(.warmup, 0, -1, "\(whereText) · \(text)")
+            }
+            let tuned = withExtendedLifetime(trials) {
+                bc_llm_tune_threads_progress(h, &t, &b, { user, phase, n, trial, cores in
+                    Unmanaged<TuneReporter>.fromOpaque(user!).takeUnretainedValue().report(phase, n, trial, cores)
+                }, Unmanaged.passUnretained(trials).toOpaque())
+            }
+            guard tuned != 0 else { return failed() }
             decodeThreads = t
             batchThreads = b
             show(.warmup, 0, -1, "\(whereText) · \(t) THREADS DECODE · \(b) PREFILL")
@@ -196,4 +207,10 @@ struct LlmSection: BenchmarkSection {
         return LlmRun(accel: accel, prefill: BenchmarkScore.round2(prefill), decode: BenchmarkScore.round2(Double(tokens) / decodeS),
                       threads: gpu ? 0 : Int(decodeThreads), batchThreads: gpu ? 0 : Int(batchThreads))
     }
+}
+
+/** Carries bc_llm_tune_threads_progress's per-trial callback (a C function pointer, so no captures) back into Swift. */
+private final class TuneReporter {
+    let report: (_ phase: Int32, _ threads: Int32, _ trial: Int32, _ cores: Int32) -> Void
+    init(_ report: @escaping (Int32, Int32, Int32, Int32) -> Void) { self.report = report }
 }

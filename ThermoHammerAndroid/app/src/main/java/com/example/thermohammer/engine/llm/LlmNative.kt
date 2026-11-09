@@ -21,8 +21,13 @@ internal object LlmNative {
     @JvmStatic external fun gpuApi(): String
     /** Builds the model (weights from [seed]) on the CPU or the GPU; 0 with the reason in error[0]. */
     @JvmStatic external fun create(gpu: Boolean, threads: Int, seed: Long, error: Array<String?>): Long
+    /**
+     * Told on the tuning thread just before each trial run: [phase] 0 decode / 1 prefill, the [threads] about to be
+     * timed, the [trial] number in that phase (0: the warm-up run before the first), and the [cores] there are.
+     */
+    fun interface TuneListener { fun onTrial(phase: Int, threads: Int, trial: Int, cores: Int) }
     /** [decode threads, prefill threads] that ran fastest; null if a trial failed. */
-    @JvmStatic external fun tuneThreads(handle: Long): IntArray?
+    @JvmStatic external fun tuneThreads(handle: Long, listener: TuneListener): IntArray?
     @JvmStatic external fun setThreads(handle: Long, threads: Int, batchThreads: Int)
     /** One prompt of [tokens] from an empty context: seconds, < 0 on failure. */
     @JvmStatic external fun prefill(handle: Long, tokens: Int): Double

@@ -14,6 +14,9 @@ internal static unsafe partial class LlmNative
     [LibraryImport(Dll)] public static partial IntPtr bc_llm_create(int gpu, int threads, ulong seed, byte* err, int errSize);
     [LibraryImport(Dll)] public static partial void bc_llm_set_threads(IntPtr llm, int threads, int batchThreads);
     [LibraryImport(Dll)] public static partial int bc_llm_tune_threads(IntPtr llm, int* threads, int* batchThreads);
+    /// <summary>bc_llm_tune_threads, calling `progress(user, phase, threads, trial, cores)` before each trial run.</summary>
+    [LibraryImport(Dll)] public static partial int bc_llm_tune_threads_progress(IntPtr llm, int* threads, int* batchThreads,
+        delegate* unmanaged[Cdecl]<IntPtr, int, int, int, int, void> progress, IntPtr user);
     [LibraryImport(Dll)] public static partial double bc_llm_prefill(IntPtr llm, int tokens);
     [LibraryImport(Dll)] public static partial void bc_llm_reset(IntPtr llm);
     [LibraryImport(Dll)] public static partial double bc_llm_next(IntPtr llm, int* token);

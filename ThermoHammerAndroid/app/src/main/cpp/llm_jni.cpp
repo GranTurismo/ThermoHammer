@@ -37,10 +37,31 @@ LLM_JNI(jlong, create)(JNIEnv* env, jclass, jboolean gpu, jint threads, jlong se
     return reinterpret_cast<jlong>(h);
 }
 
-/** [decode threads, prefill threads], or null when a trial run failed. */
-LLM_JNI(jintArray, tuneThreads)(JNIEnv* env, jclass, jlong h) {
+/** What the tuning callback needs to reach LlmNative.TuneListener.onTrial; it runs on the thread that called tuneThreads. */
+struct TuneCall {
+    JNIEnv* env;
+    jobject listener;
+    jmethodID onTrial;
+};
+
+static void on_trial(void* user, int phase, int threads, int trial, int cores) {
+    auto* c = static_cast<TuneCall*>(user);
+    c->env->CallVoidMethod(c->listener, c->onTrial, phase, threads, trial, cores);
+    if (c->env->ExceptionCheck()) c->env->ExceptionClear();   // a progress message is never worth failing the test
+}
+
+/** [decode threads, prefill threads], or null when a trial run failed. `listener` hears each trial before it runs. */
+LLM_JNI(jintArray, tuneThreads)(JNIEnv* env, jclass, jlong h, jobject listener) {
     int t = 0, b = 0;
-    if (!bc_llm_tune_threads(llm(h), &t, &b)) return nullptr;
+    TuneCall call{env, listener, nullptr};
+    if (listener) {
+        jclass cls = env->GetObjectClass(listener);
+        call.onTrial = env->GetMethodID(cls, "onTrial", "(IIII)V");
+        env->DeleteLocalRef(cls);
+        if (!call.onTrial) env->ExceptionClear();
+    }
+    const bool report = call.onTrial != nullptr;
+    if (!bc_llm_tune_threads_progress(llm(h), &t, &b, report ? on_trial : nullptr, report ? &call : nullptr)) return nullptr;
     jint out[2] = {t, b};
     jintArray a = env->NewIntArray(2);
     env->SetIntArrayRegion(a, 0, 2, out);

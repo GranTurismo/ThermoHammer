@@ -94,7 +94,11 @@ class LlmBench(private val context: Context) {
                 repeat(WARMUP_TOKENS) { if (LlmNative.next(h, null) < 0) return failed() }
             } else {
                 onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · FINDING THE FASTEST THREAD COUNT"))
-                val tuned = LlmNative.tuneThreads(h) ?: return failed()
+                val tuned = LlmNative.tuneThreads(h) { phase, n, trial, cores ->
+                    val text = if (trial == 0) "FINDING THE FASTEST THREAD COUNT · WARMING UP"
+                        else "TUNING ${if (phase == 0) "DECODE" else "PREFILL"} · TRYING $n OF $cores THREADS"
+                    onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · $text"))
+                } ?: return failed()
                 decodeThreads = tuned[0]
                 batchThreads = tuned[1]
                 onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · ${tuned[0]} THREADS DECODE · ${tuned[1]} PREFILL"))

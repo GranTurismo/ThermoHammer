@@ -110,6 +110,14 @@ public sealed unsafe class LlmSection : IBenchmarkSection
         engine.PublishLlm(null, LlmPhase.Build, 0, -1, "");
     }
 
+    /// <summary>The tuning callback: `user` is the GCHandle of an Action(phase, threads, trial, cores).</summary>
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    private static void OnTrial(IntPtr user, int phase, int threads, int trial, int cores)
+    {
+        try { ((Action<int, int, int, int>)GCHandle.FromIntPtr(user).Target!)(phase, threads, trial, cores); }
+        catch { }   // a progress message is never worth failing the test (and an exception must not cross into C)
+    }
+
     /// <summary>Prefill and decode tokens/s on `accel`; a run that fails keeps its reason. Null if the run was stopped.</summary>
     public static LlmRun? Measure(LlmAccel accel, int threads, Func<bool> isActive, Action<LlmPhase, double, double, string, int[]?, int> show, string gpuApi)
     {
@@ -157,7 +165,15 @@ public sealed unsafe class LlmSection : IBenchmarkSection
             {
                 Show(LlmPhase.Warmup, 0, -1, $"{where} · FINDING THE FASTEST THREAD COUNT");
                 int t = 0, b = 0;
-                if (LlmNative.bc_llm_tune_threads(h, &t, &b) == 0) return Failed();
+                // each trial run takes seconds on a slow CPU: say which one is running
+                Action<int, int, int, int> trial = (phase, n, k, cores) => Show(LlmPhase.Warmup, 0, -1, k == 0
+                    ? $"{where} · FINDING THE FASTEST THREAD COUNT · WARMING UP"
+                    : $"{where} · TUNING {(phase == 0 ? "DECODE" : "PREFILL")} · TRYING {n} OF {cores} THREADS");
+                var pin = GCHandle.Alloc(trial);
+                int tuned;
+                try { tuned = LlmNative.bc_llm_tune_threads_progress(h, &t, &b, &OnTrial, GCHandle.ToIntPtr(pin)); }
+                finally { pin.Free(); }
+                if (tuned == 0) return Failed();
                 decodeThreads = t; batchThreads = b;
                 Show(LlmPhase.Warmup, 0, -1, $"{where} · {t} THREADS DECODE · {b} PREFILL");
             }
