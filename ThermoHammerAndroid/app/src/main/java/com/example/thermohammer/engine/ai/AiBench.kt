@@ -48,14 +48,43 @@ class AiBench(private val context: Context) {
         private const val CPU_THREADS = 4
     }
 
-    /** LiteRT's environment, pointed at the bundled vendor libraries (extracted only in bench builds). */
-    private val env: Environment? by lazy {
-        val dir = context.applicationInfo.nativeLibraryDir
-        runCatching {
-            Environment.create(mapOf(Environment.Option.CompilerPluginLibraryDir to dir,
-                Environment.Option.DispatchLibraryDir to dir))
-        }.getOrNull()
-    }
+    private val libDir = context.applicationInfo.nativeLibraryDir
+
+    /** The folder LiteRT loads its dispatch library from: [libDir] narrowed to the phone's NPU vendor (see [dispatchDir]). */
+    private val narrowedDir: String by lazy { dispatchDir(libDir) }
+
+    private fun createEnv(dispatchDir: String): Environment? = runCatching {
+        Environment.create(mapOf(Environment.Option.CompilerPluginLibraryDir to libDir,
+            Environment.Option.DispatchLibraryDir to dispatchDir))
+    }.getOrNull()
+
+    private val narrowedEnv: Environment? by lazy { createEnv(narrowedDir) }
+    private val plainEnv: Environment? by lazy { createEnv(libDir) }
+
+    /** True once the plain [libDir] worked on the NPU where the narrowed folder had failed: then it's used from there on. */
+    private var plain = false
+
+    /** LiteRT's environment, pointed at the bundled vendor libraries (extracted on install, in Play builds too). */
+    private val env: Environment? get() = if (plain) plainEnv else narrowedEnv
+
+    /**
+     * LiteRT loads the first libLiteRtDispatch_*.so it finds in its dispatch directory, in the order the file system
+     * lists them, and gives up if that one fails — it never tries the next. The app carries all three vendors' (the
+     * Play modules only separate QNN and NeuroPilot), so on a Snapdragon whose listing starts with MediaTek's
+     * ("Failed to load NeuronAdapter") the NPU scored 0 though QNN had compiled the model. This folder holds links to
+     * everything in [libDir] except the other vendors' dispatch libraries, so the only candidate is the right one.
+     * Falls back to [libDir] itself when the phone's NPU vendor isn't known or the links can't be made; and [run]
+     * tries [libDir] if the NPU fails through this folder, in case some phone's loader refuses libraries behind links.
+     */
+    private fun dispatchDir(libDir: String): String = runCatching {
+        val vendor = when (npuRuntime()) { "Qualcomm QNN" -> "Qualcomm"; "MediaTek NeuroPilot" -> "MediaTek"; else -> return libDir }
+        val dir = java.io.File(context.codeCacheDir, "npu-dispatch").apply { deleteRecursively(); mkdirs() }
+        for (lib in java.io.File(libDir).listFiles().orEmpty()) {
+            val otherVendor = lib.name.startsWith("libLiteRtDispatch_") && lib.name != "libLiteRtDispatch_$vendor.so"
+            if (!otherVendor) android.system.Os.symlink(lib.path, java.io.File(dir, lib.name).path)
+        }
+        dir.path
+    }.getOrDefault(libDir)
 
     /** Accelerators LiteRT can use on this phone. */
     fun available(): Set<AiAccel> {
@@ -115,14 +144,43 @@ class AiBench(private val context: Context) {
             .redirectErrorStream(true).start()
         val lines = p.inputStream.bufferedReader().readLines()
         p.waitFor()
-        val npu = Regex("(?i)qnn|htp|litert|dispatch|fastrpc|rpcmem|dsp|tflite|npu")
+        // "avc: denied" is the system refusing the app a file or device (e.g. the DSP's /dev/fastrpc-*)
+        val npu = Regex("(?i)qnn|htp|litert|dispatch|fastrpc|adsprpc|rpcmem|dsp|tflite|npu|avc: +denied")
+        // the other vendors' plugins complain on every phone that isn't theirs: those lines would only crowd out the cause
+        val foreign = if (npuRuntime() == "MediaTek NeuroPilot") null else Regex("NeuronAdapter")
+        // LiteRT prefixes each line with its source path ("[third_party/odml/litert/…/compiler_plugin.cc:483]"): keep
+        // the file and line, so the message itself fits. The cause comes first in the log and the symptoms after it:
+        // keep enough lines that the cause isn't cut off.
+        val path = Regex("\\[[^\\]\\s]*/([^/\\]\\s]+:\\d+)\\]")
         lines.filter { (it.startsWith("E/") || it.startsWith("W/") || it.startsWith("F/")) && npu.containsMatchIn(it) }
-            .map { it.trim().take(220) }.distinct().takeLast(10).joinToString(" | ").ifBlank { null }
+            .filterNot { foreign?.containsMatchIn(it) == true }
+            .map { it.trim().replace(path, "[\$1]").take(320) }.distinct().takeLast(24).joinToString(" | ").ifBlank { null }
     }.getOrNull()
 
-    /** `burst`: the NPU at its highest clock (QNN's BURST mode); false leaves QNN's default performance mode. */
+    /**
+     * `burst`: the NPU at its highest clock (QNN's BURST mode); false leaves QNN's default performance mode.
+     * An NPU run that fails through the narrowed dispatch folder is tried once more through the plain library folder
+     * (what the app used before the narrowing); that folder is kept only if it works, so a model that fails for
+     * another reason can't switch the narrowing off for the models after it.
+     */
     fun run(test: AiTest, accel: AiAccel, input: ByteArray, seconds: Double,
             isActive: () -> Boolean, burst: Boolean = true, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
+        try {
+            return runOnce(test, accel, input, seconds, isActive, burst, onProgress)
+        } catch (e: Exception) {
+            if (accel != AiAccel.NPU || plain || narrowedDir == libDir || !isActive()) throw e
+            plain = true
+            try {
+                return runOnce(test, accel, input, seconds, isActive, burst, onProgress)
+            } catch (_: Exception) {
+                plain = false
+                throw e
+            }
+        }
+    }
+
+    private fun runOnce(test: AiTest, accel: AiAccel, input: ByteArray, seconds: Double,
+            isActive: () -> Boolean, burst: Boolean, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
         val options = CompiledModel.Options(when (accel) {
             AiAccel.CPU -> Accelerator.CPU; AiAccel.GPU -> Accelerator.GPU; AiAccel.NPU -> Accelerator.NPU
         })
