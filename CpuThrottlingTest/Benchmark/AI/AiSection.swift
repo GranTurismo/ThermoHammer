@@ -2,8 +2,8 @@ import Foundation
 
 /**
  * The AI tests: each model on the CPU, the GPU and the Neural Engine in turn, its result on the stage — Android's
- * runAi. An accelerator that took the app down last time (TensorFlow Lite's and Core ML's crashes can't be
- * caught) is skipped in this build and scores 0.
+ * runAi. An accelerator that took the app down twice in this build (TensorFlow Lite's and Core ML's crashes can't
+ * be caught) is skipped from then on and scores 0.
  */
 struct AiSection: BenchmarkSection {
     static let seconds = 1.6                    // measured per model and accelerator, as on Android
@@ -16,19 +16,34 @@ struct AiSection: BenchmarkSection {
         return "\(info?["CFBundleShortVersionString"] as? String ?? "?")(\(info?["CFBundleVersion"] as? String ?? "?"))"
     }
 
-    /** Accelerators whose run never finished in this build: a marker was left behind. */
+    /**
+     * Accelerators that took the app down in two runs of this build (BenchmarkEngine's markers). A single one could
+     * still be chance — a foreground app ended mid-test — and skipping on it would zero that accelerator for the whole
+     * release; a crash that comes back is TensorFlow Lite's or Core ML's own.
+     */
     private static func crashedAccels() -> Set<AiAccel> {
         let d = UserDefaults.standard
-        var crashed = Set(d.stringArray(forKey: crashedKey) ?? [])
+        var strikes = d.stringArray(forKey: crashedKey) ?? []                   // build:model:accel, one per run that never finished
         if let running = d.string(forKey: runningKey) {
-            crashed.insert(running)
-            d.set(Array(crashed), forKey: crashedKey)
+            strikes.append(running)
+            d.set(strikes, forKey: crashedKey)
             d.removeObject(forKey: runningKey)
         }
-        return Set(crashed.compactMap { s in
+        var count: [AiAccel: Int] = [:]
+        for s in strikes {
             let p = s.split(separator: ":")
-            return p.count == 3 && p[0] == build ? AiAccel.allCases.first { "\($0)" == p[2] } : nil
-        })
+            if p.count == 3, p[0] == build, let accel = AiAccel.allCases.first(where: { "\($0)" == p[2] }) { count[accel, default: 0] += 1 }
+        }
+        return Set(count.filter { $0.value >= 2 }.map(\.key))
+    }
+
+    /**
+     * This model ran on this accelerator: its earlier unfinished runs were something else. Only its own — one model
+     * that crashes while the others run fine must still add up to the two strikes.
+     */
+    private static func clearStrikes(_ test: AiTest, _ accel: AiAccel) {
+        let d = UserDefaults.standard
+        d.set((d.stringArray(forKey: crashedKey) ?? []).filter { !$0.hasSuffix(":\(test.asset):\(accel)") }, forKey: crashedKey)
     }
 
     func run(_ engine: BenchmarkEngine, _ r: inout BenchmarkResult) throws {
@@ -46,13 +61,13 @@ struct AiSection: BenchmarkSection {
             var decodedAt: UInt64 = 0
             for (k, accel) in AiAccel.allCases.enumerated() {
                 guard engine.isActive else { return }
-                let skip = crashed.contains(accel) ? "crashed the app here last time" : accel == .npu ? npuProblem : nil
+                let skip = crashed.contains(accel) ? "crashed the app twice in this version" : accel == .npu ? npuProblem : nil
                 if let skip { runs.append(AiRun(test: test, accel: accel, ips: 0, error: skip)); continue }
                 let label = accel == .npu ? "NPU · \(AiBench.npuRuntime)" : accel == .gpu ? "GPU · METAL" : "CPU · XNNPACK"
                 let precision = accel == .gpu ? "FP16" : "INT8"
                 engine.publishAi(test, accel: accel, progress: Double(k) / 3, rate: -1, detail: "\(label) · \(precision) · \(test.model.uppercased()) · COMPILING")
-                UserDefaults.standard.set("\(Self.build):\(test.asset):\(accel)", forKey: Self.runningKey)
-                defer { UserDefaults.standard.removeObject(forKey: Self.runningKey) }
+                BenchmarkEngine.setRunningMarker("\(Self.build):\(test.asset):\(accel)", forKey: Self.runningKey)
+                defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
                 let measured: AiBench.Measured
                 do {
                     measured = try bench.run(test, accel, input: input, seconds: Self.seconds, isActive: { engine.isActive }) { f, ips in
@@ -63,6 +78,7 @@ struct AiSection: BenchmarkSection {
                     continue
                 }
                 guard engine.isActive else { return }
+                Self.clearStrikes(test, accel)
                 runs.append(AiRun(test: test, accel: accel, ips: BenchmarkScore.round2(measured.ips)))
                 if decodedAt == 0 {
                     decodedAt = DispatchTime.now().uptimeNanoseconds

@@ -39,19 +39,24 @@ struct LlmSection: BenchmarkSection {
         return "\(info?["CFBundleShortVersionString"] as? String ?? "?")(\(info?["CFBundleVersion"] as? String ?? "?"))"
     }
 
-    /** Accelerators whose run never finished in this build (llama.cpp's crashes can't be caught): a marker was left behind. */
+    /**
+     * Accelerators whose run never finished twice in this build — llama.cpp's crashes can't be caught, so
+     * BenchmarkEngine's marker was left behind — as in AiSection: one unfinished run could still be chance.
+     */
     private static func crashedAccels() -> Set<LlmAccel> {
         let d = UserDefaults.standard
-        var crashed = Set(d.stringArray(forKey: crashedKey) ?? [])
+        var strikes = d.stringArray(forKey: crashedKey) ?? []
         if let running = d.string(forKey: runningKey) {
-            crashed.insert(running)
-            d.set(Array(crashed), forKey: crashedKey)
+            strikes.append(running)
+            d.set(strikes, forKey: crashedKey)
             d.removeObject(forKey: runningKey)
         }
-        return Set(crashed.compactMap { s in
+        var count: [LlmAccel: Int] = [:]
+        for s in strikes {
             let p = s.split(separator: ":")
-            return p.count == 2 && p[0] == build ? LlmAccel.allCases.first { "\($0)" == p[1] } : nil
-        })
+            if p.count == 2, p[0] == build, let accel = LlmAccel.allCases.first(where: { "\($0)" == p[1] }) { count[accel, default: 0] += 1 }
+        }
+        return Set(count.filter { $0.value >= 2 }.map(\.key))
     }
 
     /** What iOS still lets this app allocate (the simulator has no such limit: half the Mac's memory there). */
@@ -97,13 +102,14 @@ struct LlmSection: BenchmarkSection {
         var threads: Int32 = 4
         for accel in LlmAccel.allCases {
             guard engine.isActive else { return }
-            let skip = crashed.contains(accel) ? "crashed the app here last time"
+            let skip = crashed.contains(accel) ? "crashed the app twice in this version"
                 : accel == .gpu && gpuName.isEmpty ? "llama.cpp found no Metal GPU it can run on"
                 : accel == .gpu && Self.simulator ? "the simulator's Metal can't take the model's 1.8 GB of buffers" : nil
             if let skip { runs.append(LlmRun(accel: accel, prefill: 0, decode: 0, error: skip)); continue }
-            UserDefaults.standard.set("\(Self.build):\(accel)", forKey: Self.runningKey)
-            defer { UserDefaults.standard.removeObject(forKey: Self.runningKey) }
+            BenchmarkEngine.setRunningMarker("\(Self.build):\(accel)", forKey: Self.runningKey)
+            defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
             guard let run = Self.measure(accel, threads: threads, engine: engine) else { return }   // stopped
+            UserDefaults.standard.set((UserDefaults.standard.stringArray(forKey: Self.crashedKey) ?? []).filter { !$0.hasSuffix(":\(accel)") }, forKey: Self.crashedKey)
             if run.threads > 0 { threads = Int32(run.threads) }
             runs.append(run)
         }

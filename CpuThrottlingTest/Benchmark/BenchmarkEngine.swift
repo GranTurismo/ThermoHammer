@@ -74,10 +74,48 @@ final class BenchmarkEngine: ObservableObject {
     var isRunning: Bool { phase == .preparing || phase == .running }
 
     private init() {
-        // quitting mid-run (⌘Q on a Mac) isn't a crash: the AI and LLM tests' "running" markers (AiSection, LlmSection)
-        // mustn't outlive a normal exit, or the next run would skip those tests as crashing ones
+        // a marker the last launch left aside in the background: iOS ended the app there, it didn't crash
+        for key in Self.markerKeys { UserDefaults.standard.removeObject(forKey: key + Self.aside) }
+        // quitting mid-run (⌘Q on a Mac) isn't a crash either: the markers mustn't outlive a normal exit
         NotificationCenter.default.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: nil) { _ in
-            for key in ["benchmark.aiRunning", "benchmark.llmRunning"] { UserDefaults.standard.removeObject(forKey: key) }
+            for key in Self.markerKeys { Self.clearRunningMarker(key) }
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { _ in
+            Self.markersAside(true)
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil) { _ in
+            Self.markersAside(false)
+        }
+    }
+
+    // MARK: - the AI and LLM tests' crash markers
+
+    /*
+     * TensorFlow Lite's, Core ML's and llama.cpp's crashes can't be caught: while an accelerator runs, the AI and LLM
+     * tests leave a "running" marker (AiSection, LlmSection), and one found at the next launch means the app went down.
+     * Only the front counts — iOS ends apps suspended in the background, a user swipes one away there — so while the app
+     * is in the background its marker is kept aside, including one set there, and comes back if the app does.
+     */
+    private static let markerKeys = ["benchmark.aiRunning", "benchmark.llmRunning"]
+    private static let aside = ".background"
+    private static let markerLock = NSLock()
+    nonisolated(unsafe) private static var inBackground = false     // guarded by markerLock
+
+    static func setRunningMarker(_ value: String, forKey key: String) {
+        markerLock.withLock { UserDefaults.standard.set(value, forKey: inBackground ? key + aside : key) }
+    }
+
+    static func clearRunningMarker(_ key: String) {
+        markerLock.withLock { for k in [key, key + aside] { UserDefaults.standard.removeObject(forKey: k) } }
+    }
+
+    private static func markersAside(_ background: Bool) {
+        markerLock.withLock {
+            inBackground = background
+            let d = UserDefaults.standard, (from, to) = background ? ("", aside) : (aside, "")
+            for key in markerKeys {
+                if let marker = d.string(forKey: key + from) { d.set(marker, forKey: key + to); d.removeObject(forKey: key + from) }
+            }
         }
     }
 

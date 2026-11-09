@@ -30,10 +30,22 @@ final class AiBench {
     /** Inferences per second, and the outputs of the last inference (TFLite's 8-bit tensors). */
     struct Measured { let ips: Double; let outputs: [[UInt8]] }
 
-    /** Why the Neural Engine can't run here, or nil when it can. */
+    /**
+     * Why the Neural Engine can't run here, or nil when it can. Core ML is asked which engines the chip really has:
+     * A10 iPads run iPadOS 17 without one, and "Core ML fell back to the CPU" would misname that.
+     */
     static var npuProblem: String? {
-        if #available(iOS 17.0, *) { return nil }
-        return "the Neural Engine models need iOS 17"
+        guard #available(iOS 17.0, *) else { return "the Neural Engine models need iOS 17" }
+        #if !targetEnvironment(simulator)                        // the simulator runs Core ML on the CPU: kept for checks
+        let devices = MLComputeDevice.allComputeDevices
+        let hasNeuralEngine = devices.contains { (device: MLComputeDevice) -> Bool in
+            if case .neuralEngine = device { return true }
+            return false
+        }
+        // only a list that names the chip's engines is taken at its word: an empty one mustn't zero a real Neural Engine
+        if !devices.isEmpty && !hasNeuralEngine { return "this chip has no Neural Engine" }
+        #endif
+        return nil
     }
 
     static var npuRuntime: String {
