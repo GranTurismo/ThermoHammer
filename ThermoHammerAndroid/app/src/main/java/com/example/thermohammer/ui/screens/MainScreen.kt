@@ -725,7 +725,12 @@ private fun DiagnosticsScreenWrapper(
                     isSubmitting = benchSubmitting,
                     submitMessage = benchSubmitMsg,
                     submitError = benchSubmitErr,
-                    onSubmit = { benchRecords.firstOrNull { it.id == benchRecordId }?.let { submitBenchmark(it) } },
+                    onSubmit = {
+                        // the run on screen is what gets sent, even if its saved copy can't be read back — never a silent no-op
+                        val saved = benchRecords.firstOrNull { it.id == benchRecordId }
+                        submitBenchmark(saved ?: BenchmarkRecord.of(result, benchRecordId ?: java.util.UUID.randomUUID().toString(),
+                            System.currentTimeMillis()))
+                    },
                     onCopyReport = {
                         val version = appBuildLabel(context)
                         val text = com.example.thermohammer.engine.BenchmarkReport.text(

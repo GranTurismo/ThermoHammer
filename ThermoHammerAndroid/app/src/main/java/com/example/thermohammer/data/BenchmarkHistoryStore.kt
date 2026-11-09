@@ -1,6 +1,7 @@
 package com.example.thermohammer.data
 
 import android.content.Context
+import android.util.Log
 import com.example.thermohammer.engine.AiAccel
 import com.example.thermohammer.engine.AiTest
 import com.example.thermohammer.engine.BenchmarkResult
@@ -11,7 +12,6 @@ import com.example.thermohammer.engine.ExportJob
 import com.example.thermohammer.engine.VideoClip
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import java.io.File
 
 /** One finished benchmark (CPU + MEM + GPU + UX + AI + LLM) as kept on the device (and later submitted from); `score` = total. */
@@ -180,11 +180,13 @@ class BenchmarkHistoryStore(context: Context) {
     fun all(): List<BenchmarkRecord> {
         if (!file.exists()) return emptyList()
         return try {
-            val type = object : TypeToken<List<BenchmarkRecord>>() {}.type
-            val loaded: List<BenchmarkRecord> = gson.fromJson(file.readText(), type) ?: emptyList()
+            // An array class, not a TypeToken<List<…>>: R8 strips the generic signature a TypeToken reads, so in the Play
+            // build every load threw and the catch below turned it into "no history" — Submit then found no run to send.
+            val loaded: List<BenchmarkRecord> = gson.fromJson(file.readText(), Array<BenchmarkRecord>::class.java)?.toList() ?: emptyList()
             // Gson bypasses Kotlin null-safety: drop rows that decoded without their essentials.
             loaded.filter { (it.id as String?) != null && (it.gpuName as String?) != null }
         } catch (e: Exception) {
+            Log.w(TAG, "benchmark history unreadable: $e")           // best-effort history, but never silently
             emptyList()
         }
     }
@@ -206,10 +208,13 @@ class BenchmarkHistoryStore(context: Context) {
                 file.writeText(tmp.readText())
                 tmp.delete()
             }
-        } catch (_: Exception) { /* history is best-effort; never break a finished run */ }
+        } catch (e: Exception) {                                       // history is best-effort; never break a finished run
+            Log.w(TAG, "benchmark history not saved: $e")
+        }
     }
 
     private companion object {
         const val MAX_RECORDS = 30
+        const val TAG = "BenchmarkHistory"
     }
 }

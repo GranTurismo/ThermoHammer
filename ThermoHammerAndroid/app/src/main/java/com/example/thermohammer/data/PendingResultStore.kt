@@ -1,9 +1,9 @@
 package com.example.thermohammer.data
 
 import android.content.Context
+import android.util.Log
 import com.example.thermohammer.engine.StampV2
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import java.io.File
 
 data class PendingTestResult(
@@ -64,8 +64,8 @@ class PendingResultStore(context: Context) {
     fun getAllResults(): List<PendingTestResult> {
         if (!file.exists()) return emptyList()
         return try {
-            val type = object : TypeToken<List<PendingTestResult>>() {}.type
-            val all: List<PendingTestResult> = gson.fromJson(file.readText(), type) ?: emptyList()
+            // An array class, not a TypeToken<List<…>>: R8 strips the generic signature a TypeToken reads (see BenchmarkHistoryStore).
+            val all: List<PendingTestResult> = gson.fromJson(file.readText(), Array<PendingTestResult>::class.java)?.toList() ?: emptyList()
             // Drop legacy (schema v1) entries: their stamps carry {elapsedMs, score,
             // thermalState} which deserializes into StampV2 as all-zero fields.
             // A genuine v2 stamp always has tNs ≈ seconds·1e9 and ipsTotal > 0.
@@ -73,6 +73,7 @@ class PendingResultStore(context: Context) {
                 r.stamps.isEmpty() || r.stamps.any { it.tNs > 0L && it.ipsTotal > 0L }
             }
         } catch (e: Exception) {
+            Log.w("PendingResults", "pending results unreadable: $e")
             emptyList()
         }
     }

@@ -1,8 +1,8 @@
 package com.example.thermohammer.data
 
 import android.content.Context
+import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import java.io.File
 
 /**
@@ -18,11 +18,12 @@ class RunHistoryStore(context: Context) {
     fun all(): List<RunRecord> {
         if (!file.exists()) return emptyList()
         return try {
-            val type = object : TypeToken<List<RunRecord>>() {}.type
-            val loaded: List<RunRecord> = gson.fromJson(file.readText(), type) ?: emptyList()
+            // An array class, not a TypeToken<List<…>>: R8 strips the generic signature a TypeToken reads (see BenchmarkHistoryStore).
+            val loaded: List<RunRecord> = gson.fromJson(file.readText(), Array<RunRecord>::class.java)?.toList() ?: emptyList()
             // Gson bypasses Kotlin null-safety: drop any row that decoded without its essentials.
             loaded.filter { it.id.present() && it.deviceModel.present() && it.osVersion.present() }
         } catch (e: Exception) {
+            Log.w("RunHistory", "run history unreadable: $e")
             emptyList()
         }
     }
@@ -38,7 +39,9 @@ class RunHistoryStore(context: Context) {
                 file.writeText(tmp.readText())
                 tmp.delete()
             }
-        } catch (_: Exception) { /* history is best-effort; never break a finished run */ }
+        } catch (e: Exception) {                                       // history is best-effort; never break a finished run
+            Log.w("RunHistory", "run history not saved: $e")
+        }
     }
 
     fun isDismissed(insight: UpdateImpact.Insight): Boolean =
