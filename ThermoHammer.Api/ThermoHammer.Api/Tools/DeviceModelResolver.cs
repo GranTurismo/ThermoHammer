@@ -14,27 +14,44 @@ public class DeviceModelResolver
         _httpClient.Timeout = TimeSpan.FromSeconds(5);
     }
 
-    public async Task<string> ResolveModelAsync(OsPlatform os, string deviceModel)
+    /// <summary>
+    /// The name a phone is stored and shown under. Android sends its hardware code behind the manufacturer ("HONOR VKP-NX9"),
+    /// and gets the name on the box back ("HONOR 600 Pro"): first from the device-specs service, then from Google's list of
+    /// Play devices that ships with the API (see <see cref="DeviceNames"/>). Whatever neither knows stays as it came.
+    /// [manufacturer] is the one the phone reported, when the caller has it.
+    /// </summary>
+    public async Task<string> ResolveModelAsync(OsPlatform os, string deviceModel, string? manufacturer = null)
     {
         if (os != OsPlatform.Android || string.IsNullOrWhiteSpace(deviceModel))
         {
             return deviceModel;
         }
 
+        // the service looks up model numbers: "VKP-NX9", never "HONOR VKP-NX9"
+        if (await LookupAsync(DeviceNames.Shipped.CodeOf(deviceModel, manufacturer)) is { } found)
+        {
+            return found;
+        }
+
+        return DeviceNames.Shipped.TryResolve(deviceModel, manufacturer, out string name) ? name : deviceModel;
+    }
+
+    private async Task<string?> LookupAsync(string modelNumber)
+    {
         try
         {
-            string url = BaseUrl + Uri.EscapeDataString(deviceModel.Trim());
+            string url = BaseUrl + Uri.EscapeDataString(modelNumber);
             using var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NoContent)
             {
-                return deviceModel;
+                return null;
             }
 
             using var stream = await response.Content.ReadAsStreamAsync();
             if (stream == null || stream.Length == 0)
             {
-                return deviceModel;
+                return null;
             }
 
             using var jsonDoc = await JsonDocument.ParseAsync(stream);
@@ -63,10 +80,10 @@ public class DeviceModelResolver
         }
         catch
         {
-            // Fallback to original model on network/parse error
+            // the service is down or sent something odd: the caller falls back to the table
         }
 
-        return deviceModel;
+        return null;
     }
 
     public static string CleanModel(string model, string? manufacturer)

@@ -8,6 +8,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- phone code -> marketing name, read by Tools/DeviceNames.cs -->
+        <EmbeddedResource Include="Data\play_devices.tsv" LogicalName="play_devices.tsv" />
+        <EmbeddedResource Include="Data\device_name_overrides.tsv" LogicalName="device_name_overrides.tsv" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">

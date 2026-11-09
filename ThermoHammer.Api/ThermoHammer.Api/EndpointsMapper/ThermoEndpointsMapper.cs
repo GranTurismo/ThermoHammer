@@ -41,7 +41,7 @@ public static class ThermoEndpointsMapper
 
             session.State = SessionState.Closed;
 
-            hammerRequest.DeviceModel = await modelResolver.ResolveModelAsync(hammerRequest.Os, hammerRequest.DeviceModel);
+            hammerRequest.DeviceModel = await modelResolver.ResolveModelAsync(hammerRequest.Os, hammerRequest.DeviceModel, hammerRequest.DeviceManufacturer);
 
             await db.Hammers.AddAsync(hammerRequest.ToDao());
             await db.SaveChangesAsync();
@@ -83,7 +83,7 @@ public static class ThermoEndpointsMapper
                 return Results.BadRequest(problem);
 
             session.State = SessionState.Closed;
-            request.DeviceModel = await modelResolver.ResolveModelAsync(request.Os, request.DeviceModel);
+            request.DeviceModel = await modelResolver.ResolveModelAsync(request.Os, request.DeviceModel, request.DeviceManufacturer);
             var run = request.ToDao();
             await db.BenchmarkRuns.AddAsync(run);
             await db.SaveChangesAsync();
@@ -113,10 +113,10 @@ public static class ThermoEndpointsMapper
         });
 
         // Phone Health: how a model does — its verified runs, matched by the name submissions are stored under
-        app.MapGet("/benchmark/model", async (string model, OsPlatform os, ThermoDbContext db, DeviceModelResolver modelResolver) =>
+        app.MapGet("/benchmark/model", async (string model, OsPlatform os, string? manufacturer, ThermoDbContext db, DeviceModelResolver modelResolver) =>
         {
             if (string.IsNullOrWhiteSpace(model)) return Results.BadRequest("Missing model");
-            string resolved = await modelResolver.ResolveModelAsync(os, model);
+            string resolved = await modelResolver.ResolveModelAsync(os, model, manufacturer);
             var runs = await db.BenchmarkRuns
                 .Where(r => r.BenchmarkVersion == BenchmarkScoring.CurrentVersion && r.ValidityFlags == 0
                          && r.DeviceModel == resolved)
@@ -124,22 +124,30 @@ public static class ThermoEndpointsMapper
             return Results.Ok(BenchmarkScoring.ModelStats(resolved, runs));
         });
 
+        // Stores the best-known name again for every Android run, after the name table or the device-specs service improved.
+        // Safe to repeat: a name that is already right resolves to itself.
         app.MapGet("modelfix", async (ThermoDbContext db, DeviceModelResolver modelResolver) =>
         {
-            var models = db.Hammers;
+            int stress = 0, benchmark = 0;
 
-            foreach (var item in models)
+            foreach (var item in await db.Hammers.ToListAsync())
             {
-                var fixedModel = await modelResolver.ResolveModelAsync(item.Os, item.DeviceModel);
-                if (fixedModel != item.DeviceModel)
-                {
-                    item.DeviceModel = fixedModel;
-                    db.Hammers.Update(item);
-                }
+                var fixedModel = await modelResolver.ResolveModelAsync(item.Os, item.DeviceModel, item.DeviceManufacturer);
+                if (fixedModel == item.DeviceModel) continue;
+                item.DeviceModel = fixedModel;
+                stress++;
+            }
+
+            foreach (var run in await db.BenchmarkRuns.ToListAsync())
+            {
+                var fixedModel = await modelResolver.ResolveModelAsync(run.Os, run.DeviceModel, run.DeviceManufacturer);
+                if (fixedModel == run.DeviceModel) continue;
+                run.DeviceModel = fixedModel;
+                benchmark++;
             }
 
             await db.SaveChangesAsync();
-            return Results.Ok("Models updated successfully");
+            return Results.Ok($"Models updated successfully ({stress} stress runs, {benchmark} benchmark runs)");
         });
     }
 }

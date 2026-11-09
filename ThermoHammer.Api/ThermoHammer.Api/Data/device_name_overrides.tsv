@@ -1,0 +1,5 @@
+# Hand-made phone names. They win over play_devices.tsv (which tools/refresh_device_names.py rebuilds from Google's list)
+# and survive every refresh. Use it for a phone Google's list gets wrong, or doesn't have yet.
+# One phone per line: code<TAB>brand<TAB>name. The code is Build.MODEL as the phone reports it. The name is the one on the box;
+# the manufacturer is put in front when the name doesn't start with it. Example (remove the leading '#'):
+# VKP-NX9	Honor	HONOR 600 Pro
