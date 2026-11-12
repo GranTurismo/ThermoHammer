@@ -75,8 +75,14 @@ class PinningDeviceTest {
             assertNotNull("the search returned a report of the expected shape", report)
             report!!
             assertEquals(8, report.pinnable)
-            assertTrue("both passes ran for both phases: ${report.trials}", listOf(true, false).all { d -> listOf(true, false).all { p -> report.trials.any { it.decode == d && it.pinned == p } } })
-            assertTrue("the progress listener heard every pass", trials.any { it.startsWith("0/1/") } && trials.any { it.startsWith("1/1/") })
+            // a phase whose unpinned pass took over 15 s (a slow or busy CPU) legitimately gets no pinned pass, and says so
+            for (decode in listOf(true, false)) {
+                assertTrue("the unpinned pass ran: ${report.trials}", report.trials.any { it.decode == decode && !it.pinned })
+                val skipped = if (decode) report.decodeSkipped else report.promptSkipped
+                assertTrue("the pinned pass ran or was skipped (decode=$decode): ${report.trials}", skipped || report.trials.any { it.decode == decode && it.pinned })
+            }
+            if (!report.decodeSkipped) assertTrue("the progress listener heard the pinned passes", trials.any { it.startsWith("0/1/") })
+            if (!report.promptSkipped) assertTrue("the progress listener heard the pinned passes", trials.any { it.startsWith("1/1/") })
             assertTrue("the chosen counts are within the trials", report.decodeThreads in 1..8 && report.promptThreads in 1..8)
             if (report.decodePinned) assertTrue(report.decodeThreads <= 8)
             // what is adopted is what is pinned now: with nothing adopted the calling thread must have its own mask
