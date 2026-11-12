@@ -6,8 +6,11 @@ import com.example.thermohammer.engine.ai.AiSettings
 import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.ai.AiTuningRow
 import com.example.thermohammer.engine.cpu.CpuTest
+import com.example.thermohammer.engine.llm.LlmProbeResult
+import com.example.thermohammer.engine.llm.LlmProbeRun
 import com.example.thermohammer.engine.cpu.CpuTestRun
 import com.example.thermohammer.engine.ux.QrResult
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,6 +60,25 @@ class BenchmarkReportTest {
                 "MEM 1 RAM", "read 48.20, write 39.50, copy 24.75 GB/s · latency 151.30 ns",
                 "seq read 2890, seq write 1950 MB/s · random read 58000, random write 47000 IOPS · 512 MB file, cached I/O",
                 "MEM 3 DATABASE", "insert 805, update 790 tx/s · query 5100/s", "AI 1 IMAGE CLASSIFICATION · CPU 845.04/s, GPU 0 (Failed to compile model)")) {
+            assertTrue("report lacks '$needle':\n$text", text.contains(needle))
+        }
+    }
+
+    @Test
+    fun `report carries the LLM probe, the CPU's features and the GPU drivers' answers without touching the score`() {
+        val probe = LlmProbeResult(
+            runs = listOf(LlmProbeRun("dotprod", "libbenchllm.so", 45.1, 21.0, 3.2), LlmProbeRun("i8mm", "libbenchllm_i8mm.so", 80.2, 21.5, 3.1, 0.9998)),
+            promptTokens = 112, replyTokens = 16, threads = 6, batchThreads = 8, seconds = 17.4,
+            cpuFeatures = "CPU features · asimddp yes · i8mm yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"), opencl = listOf("OpenCL · 1 platform"))
+        val llm = LlmResult(listOf(LlmRun(LlmAccel.CPU, 44.9, 21.0, threads = 6, batchThreads = 8), LlmRun(LlmAccel.GPU, 23.1, 21.2)),
+            gpuName = "Mali-G1-Ultra MC12", freeGb = 9.1, largestModel = 8)
+        val withProbe = llm.copy(probe = probe)
+        assertEquals("the probe is not part of the score", llm.score, withProbe.score)
+        assertEquals(llm.prefill, withProbe.prefill, 0.0)
+        val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "Mali-G1-Ultra MC12", 0, llm = withProbe), "vivo X300 Pro", "16", "MT6993", "2.1", "2026-11-12 10:00")
+        for (needle in listOf("LLM probe · NOT SCORED · 17.4 s · CPU kernels, a 112-token prompt on 8 threads and a 16-token reply on 6",
+                "CPU i8mm · libbenchllm_i8mm.so · prefill 80.20 tok/s (×1.78)", "answers agree 0.9998",
+                "CPU features · asimddp yes · i8mm yes", "Vulkan · loader 1.3.0 · 1 device", "OpenCL · 1 platform")) {
             assertTrue("report lacks '$needle':\n$text", text.contains(needle))
         }
     }

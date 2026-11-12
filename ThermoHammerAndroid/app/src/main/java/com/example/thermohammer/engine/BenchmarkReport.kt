@@ -2,6 +2,7 @@ package com.example.thermohammer.engine
 
 import com.example.thermohammer.engine.ai.AiTuner
 import com.example.thermohammer.engine.cpu.CpuTest
+import com.example.thermohammer.engine.llm.LlmProbe
 
 /** Plain-text report of a benchmark run — every raw number, for sharing or pasting into a bug report. */
 object BenchmarkReport {
@@ -99,6 +100,7 @@ object BenchmarkReport {
                             if (a == LlmAccel.GPU) " · ${llm.gpuName ?: "?"}" else " · ${run.threads} threads (prompt ${run.batchThreads})", temp)
                     else "LLM ${a.label} · 0 (${run?.error ?: "not run"})$temp")
                 }
+                llm.probe?.let { p -> LlmProbe.lines(p).forEach { appendLine(it) } }
             }
         }
 }

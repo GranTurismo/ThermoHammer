@@ -206,17 +206,6 @@ class AiTuningTest {
             AiTuner.delegationLines(listOf(AiDelegation(AiTest.SOUND, 32, 32, 1, emptyList()))))
     }
 
-    @Test
-    fun `a crash marker turns into a dropped setting for the same install only`() {
-        assertEquals(emptySet<String>(), AiTuner.crashedAfter(null, emptySet(), 7))
-        val after = AiTuner.crashedAfter("7:GPU:opengl", emptySet(), 7)
-        assertEquals(setOf("7:GPU:opengl"), after)
-        assertEquals(setOf("GPU:opengl"), AiTuner.crashedKeys(after, 7))
-        assertEquals("an app update retries it", emptySet<String>(), AiTuner.crashedKeys(after, 8))
-        assertEquals("a marker of another shape is ignored", emptySet<String>(), AiTuner.crashedAfter("7:CLASSIFY:GPU:x", emptySet(), 7))
-        assertEquals(setOf("7:GPU:a", "7:NPU:b"), AiTuner.crashedAfter("7:NPU:b", setOf("7:GPU:a"), 7))
-    }
-
     // ── LiteRT's log ─────────────────────────────────────────────────────────
 
     @Test

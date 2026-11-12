@@ -71,8 +71,8 @@ target_link_libraries(benchcore z dl)
 # the Arm dot-product kernels, its OpenCL backend for Adreno GPUs (the kernels' sources embedded, the phone's
 # OpenCL driver opened at run time by cl_loader.c) and its Vulkan backend for the other GPUs. Its own library
 # (libbenchllm.so), 64-bit Arm only: the
-# other ABIs get none, and the test reports it can't run. Third-party code: optimised in debug builds too, its
-# warnings off, its symbols hidden.
+# other ABIs get none, and the test reports it can't run. A second, CPU-only library (libbenchllm_i8mm.so) holds the
+# same code built for CPUs with i8mm. Third-party code: optimised in debug builds too, its warnings off, its symbols hidden.
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(LLAMA ${BENCH_CORE}/third_party/llama.cpp)
     set(GGML ${LLAMA}/ggml/src)
@@ -159,18 +159,46 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(GGML_VULKAN_SRC ${GGML_VK}/ggml-vulkan.cpp ${GGML_VK}/ggml-vulkan-buffers.cpp ${GGML_VK}/ggml-vulkan-debug.cpp
         ${VK_SHADER_SRC})
 
-    add_library(benchllm SHARED ${LLAMA_SRC} ${GGML_BASE_SRC} ${GGML_CPU_SRC} ${GGML_OPENCL_SRC} ${GGML_VULKAN_SRC}
-        ${BENCH_CORE}/llm/llm.cpp llm_jni.cpp cl_loader.c)
-    target_include_directories(benchllm PRIVATE ${BENCH_CORE}/include ${LLAMA}/include ${LLAMA}/ggml/include ${GGML}
-        ${GGML}/ggml-cpu ${LLAMA}/src ${BENCH_CORE}/third_party/OpenCL-Headers ${CL_EMBED}
+    # The CPU kernels exist in two builds, because the instructions they use are fixed when they are compiled: the Arm dot
+    # product everywhere, and for CPUs that also have i8mm (8-bit matrix multiply, Armv8.6) the Q4_0 kernels llama.cpp
+    # writes for it, which read a prompt in fewer instructions. Loading code with an instruction the CPU lacks kills the
+    # app, so the i8mm build is its own library (libbenchllm_i8mm.so, CPU only, same C API and sources) that the app
+    # opens only after the kernel's own feature word (getauxval) says every core has i8mm: engine/llm/CpuFeatures.kt.
+    # Each library answers to its own Kotlin class (LLM_JNI_CLASS) and hides every other symbol, so they never meet.
+    set(LLM_INCLUDES ${BENCH_CORE}/include ${LLAMA}/include ${LLAMA}/ggml/include ${GGML} ${GGML}/ggml-cpu ${LLAMA}/src)
+    set(LLM_GPU_INCLUDES ${BENCH_CORE}/third_party/OpenCL-Headers ${CL_EMBED}
         ${BENCH_CORE}/third_party/Vulkan-Headers/include ${VK_GEN_DIR}
         ${ANDROID_NDK}/sources/third_party/shaderc/third_party/spirv-tools/external/spirv-headers/include)
-    target_compile_definitions(benchllm PRIVATE _XOPEN_SOURCE=600 _GNU_SOURCE GGML_SCHED_MAX_COPIES=4
-        GGML_USE_CPU GGML_USE_OPENCL GGML_USE_VULKAN GGML_USE_CPU_REPACK GGML_USE_LLAMAFILE
-        GGML_OPENCL_SOA_Q GGML_OPENCL_TARGET_VERSION=300 GGML_OPENCL_USE_ADRENO_KERNELS GGML_OPENCL_EMBED_KERNELS
-        ${VK_FEATURES})
-    target_compile_options(benchllm PRIVATE -O3 -w -fvisibility=hidden -fvisibility-inlines-hidden)
-    set_source_files_properties(${GGML_CPU_SRC} PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+dotprod+fp16")
+    set(LLM_CPU_DEFS _XOPEN_SOURCE=600 _GNU_SOURCE GGML_SCHED_MAX_COPIES=4 GGML_USE_CPU GGML_USE_CPU_REPACK GGML_USE_LLAMAFILE)
+    set(LLM_GPU_DEFS GGML_USE_OPENCL GGML_USE_VULKAN GGML_OPENCL_SOA_Q GGML_OPENCL_TARGET_VERSION=300
+        GGML_OPENCL_USE_ADRENO_KERNELS GGML_OPENCL_EMBED_KERNELS ${VK_FEATURES})
+    set(LLM_COPTS -O3 -w -fvisibility=hidden -fvisibility-inlines-hidden)
+
+    add_library(llm_cpu_dotprod OBJECT ${GGML_CPU_SRC})
+    target_include_directories(llm_cpu_dotprod PRIVATE ${LLM_INCLUDES} ${LLM_GPU_INCLUDES})
+    target_compile_definitions(llm_cpu_dotprod PRIVATE ${LLM_CPU_DEFS} ${LLM_GPU_DEFS})
+    target_compile_options(llm_cpu_dotprod PRIVATE ${LLM_COPTS} -march=armv8.2-a+dotprod+fp16)
+    set_target_properties(llm_cpu_dotprod PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    add_library(llm_cpu_i8mm OBJECT ${GGML_CPU_SRC})
+    target_include_directories(llm_cpu_i8mm PRIVATE ${LLM_INCLUDES})
+    target_compile_definitions(llm_cpu_i8mm PRIVATE ${LLM_CPU_DEFS})
+    target_compile_options(llm_cpu_i8mm PRIVATE ${LLM_COPTS} -march=armv8.2-a+dotprod+fp16+i8mm)
+    set_target_properties(llm_cpu_i8mm PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    add_library(benchllm SHARED ${LLAMA_SRC} ${GGML_BASE_SRC} $<TARGET_OBJECTS:llm_cpu_dotprod> ${GGML_OPENCL_SRC}
+        ${GGML_VULKAN_SRC} ${BENCH_CORE}/llm/llm.cpp llm_jni.cpp probe_jni.cpp cl_loader.c)
+    target_include_directories(benchllm PRIVATE ${LLM_INCLUDES} ${LLM_GPU_INCLUDES})
+    target_compile_definitions(benchllm PRIVATE ${LLM_CPU_DEFS} ${LLM_GPU_DEFS})
+    target_compile_options(benchllm PRIVATE ${LLM_COPTS})
     target_link_libraries(benchllm log dl vulkan)
     target_link_options(benchllm PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL)
+
+    add_library(benchllm_i8mm SHARED ${LLAMA_SRC} ${GGML_BASE_SRC} $<TARGET_OBJECTS:llm_cpu_i8mm>
+        ${BENCH_CORE}/llm/llm.cpp llm_jni.cpp)
+    target_include_directories(benchllm_i8mm PRIVATE ${LLM_INCLUDES})
+    target_compile_definitions(benchllm_i8mm PRIVATE ${LLM_CPU_DEFS} LLM_JNI_CLASS=LlmNativeI8mm)
+    target_compile_options(benchllm_i8mm PRIVATE ${LLM_COPTS})
+    target_link_libraries(benchllm_i8mm log dl)
+    target_link_options(benchllm_i8mm PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL)
 endif()

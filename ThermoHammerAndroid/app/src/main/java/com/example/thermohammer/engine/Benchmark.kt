@@ -4,6 +4,7 @@ import com.example.thermohammer.engine.cpu.CpuTest
 import com.example.thermohammer.engine.ai.AiDelegation
 import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.cpu.CpuTestRun
+import com.example.thermohammer.engine.llm.LlmProbeResult
 import com.example.thermohammer.engine.ux.QrResult
 import kotlin.math.exp
 import kotlin.math.ln
@@ -513,7 +514,10 @@ data class LlmResult(
     val gpuName: String?,             // the GPU llama.cpp ran on (null when it didn't)
     val freeGb: Double,               // memory the app could still take when the test began (reported)
     val largestModel: Int,            // the largest common 4-bit model that fits in it, billions of parameters (reported)
-    val error: String? = null         // why the test couldn't run at all (too little RAM, a 32-bit build, …)
+    val error: String? = null,        // why the test couldn't run at all (too little RAM, a 32-bit build, …)
+    // the short probe of the CPU kernel builds and what this phone's CPU and GPU drivers offer: reported only, never
+    // part of `runs` — the score is the dot-product library's, as it always was
+    val probe: LlmProbeResult? = null
 ) {
     fun run(a: LlmAccel): LlmRun? = runs.firstOrNull { it.accel == a }
     /** The faster of the CPU and the GPU at each — what a chat app on this phone would get. */

@@ -21,6 +21,15 @@ import com.example.thermohammer.engine.ai.AiSettings
 import com.example.thermohammer.engine.ai.AiTuner
 import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.ai.LiteRtLog
+import com.example.thermohammer.engine.llm.CpuFeatures
+import com.example.thermohammer.engine.llm.DotprodLib
+import com.example.thermohammer.engine.llm.I8mmLib
+import com.example.thermohammer.engine.llm.LlmCpuLib
+import com.example.thermohammer.engine.llm.LlmNative
+import com.example.thermohammer.engine.llm.LlmNativeI8mm
+import com.example.thermohammer.engine.llm.LlmPhase
+import com.example.thermohammer.engine.llm.LlmProbe
+import com.example.thermohammer.engine.llm.LlmProbeResult
 import com.example.thermohammer.engine.ux.QrBench
 import com.example.thermohammer.engine.ux.QrFrames
 import com.example.thermohammer.engine.ux.QrResult
@@ -227,6 +236,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         private val AI_GPU_BACKEND_LOG = Regex("OpenCL not supported on this platform")  // and when its GPU delegate falls back to OpenGL
         private const val KEY_LLM_RUNNING = "llm_running"        // "install:accel" while an LLM run is in flight
         private const val KEY_LLM_CRASHED = "llm_crashed"        // {"install:accel"} that took the app down
+        private const val KEY_LLM_PROBE_RUNNING = "llm_probe_running"   // "install:LLM:i8mm" while the i8mm CPU build runs
+        private const val KEY_LLM_PROBE_CRASHED = "llm_probe_crashed"   // {"install:LLM:i8mm"} that took the app down
         private const val LLM_NOTICE_MS = 3_000L                  // how long "not run" stays up when the test can't run
         private const val AI_SHOW_NS = 3_500_000_000L              // each model's result stays up at least this long
     }
@@ -364,11 +375,16 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
      * AI settings (a GPU's backend, an NPU's helpers) whose run took the app down, as "ACCEL:setting": a tuned run
      * leaves its own marker, so the crash costs only that setting — the accelerator itself still runs with its defaults.
      */
-    private fun aiCrashedSettings(): Set<String> {
-        val crashed = AiTuner.crashedAfter(benchPrefs.getString(KEY_AI_PROBE_RUNNING, null),
-            benchPrefs.getStringSet(KEY_AI_PROBE_CRASHED, emptySet()).orEmpty(), installStamp)
-        benchPrefs.edit().remove(KEY_AI_PROBE_RUNNING).putStringSet(KEY_AI_PROBE_CRASHED, crashed).commit()
-        return AiTuner.crashedKeys(crashed, installStamp)
+    private fun aiCrashedSettings(): Set<String> = crashedProbes(KEY_AI_PROBE_RUNNING, KEY_AI_PROBE_CRASHED)
+
+    /** The LLM probe's builds that took the app down, as "LLM:i8mm": the probe skips them, the CPU test is unaffected. */
+    private fun llmCrashedProbes(): Set<String> = crashedProbes(KEY_LLM_PROBE_RUNNING, KEY_LLM_PROBE_CRASHED)
+
+    private fun crashedProbes(runningKey: String, crashedKey: String): Set<String> {
+        val crashed = ProbeCrashes.after(benchPrefs.getString(runningKey, null),
+            benchPrefs.getStringSet(crashedKey, emptySet()).orEmpty(), installStamp)
+        benchPrefs.edit().remove(runningKey).putStringSet(crashedKey, crashed).commit()
+        return ProbeCrashes.keys(crashed, installStamp)
     }
 
     // ── Lifecycle (background cancel) ────────────────────────────────────────
@@ -1126,7 +1142,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             // nothing can run: say why for a moment, every accelerator scores 0
             _state.update { it.copy(llmDetail = "NOT RUN · ${problem.uppercase()}") }
             delay(LLM_NOTICE_MS)
-            return@withContext LlmResult(LlmAccel.entries.map { LlmRun(it, 0.0, 0.0, error = problem) }, null, freeGb, largest, problem)
+            val features = LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }?.let { CpuFeatures.line(it[0], it[1]) }
+            return@withContext LlmResult(LlmAccel.entries.map { LlmRun(it, 0.0, 0.0, error = problem) }, null, freeGb, largest, problem,
+                probe = LlmProbeResult(cpuFeatures = features))
         }
         val crashed = llmCrashedAccels()
         val gpuProblem = bench.gpuProblem()
@@ -1158,7 +1176,43 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             runs += run.copy(startTempC = startTemp)
         }
         val gpuRan = runs.any { it.accel == LlmAccel.GPU && it.decode > 0 }
-        LlmResult(runs, bench.gpuName().takeIf { gpuRan && it.isNotEmpty() }, freeGb, largest)
+        val gpuName = bench.gpuName()
+        // after the scored runs, so what it does to the CPU's clocks and temperature can't touch them
+        val probe = runLlmProbe(runs.firstOrNull { it.accel == LlmAccel.CPU && it.decode > 0 }, gpuName) ?: return@withContext null
+        LlmResult(runs, gpuName.takeIf { gpuRan && it.isNotEmpty() }, freeGb, largest, probe = probe)
+    }
+
+    /**
+     * The CPU kernel builds side by side (dot product, and i8mm where the CPU has it), short and NOT scored, then what
+     * the phone's CPU, Vulkan and OpenCL drivers report. All of it goes to the report only. Null if the run was stopped.
+     */
+    private fun runLlmProbe(cpuRun: LlmRun?, gpuName: String): LlmProbeResult? {
+        val hw = LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }
+        val decision = LlmProbe.i8mmDecision(hw?.get(0), hw?.get(1), "LLM:i8mm" in llmCrashedProbes()) { LlmNativeI8mm.loadError }
+        val libs = if (LlmNative.loaded) listOf<LlmCpuLib>(DotprodLib) + listOfNotNull(I8mmLib.takeIf { decision.use }) else emptyList()
+        val threads = cpuRun?.threads?.takeIf { it > 0 } ?: min(4, Runtime.getRuntime().availableProcessors())
+        val batchThreads = cpuRun?.batchThreads?.takeIf { it > 0 } ?: threads
+        val prefix = "CPU KERNELS · NOT SCORED"
+        _state.update { it.copy(llmAccel = LlmAccel.CPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
+            llmDetail = "$prefix · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
+        val ran = LlmProbe.run(libs, threads, batchThreads, { _state.value.isRunning },
+            around = { lib, start ->
+                // only the i8mm build is the probe's own risk (the dot-product one just ran as the CPU test): its marker
+                // turns a crash into a dropped probe next time, never into a lost CPU score
+                if (lib.variant == "i8mm") {
+                    if (start) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
+                    else benchPrefs.edit().remove(KEY_LLM_PROBE_RUNNING).commit()
+                }
+            }) { label, fraction ->
+            _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
+        }
+        if (!_state.value.isRunning) return null
+        val vulkan = if (LlmNative.loaded) runCatching { LlmNative.vulkanReport(gpuName).lines() }.getOrDefault(listOf("Vulkan · the probe failed")) else emptyList()
+        // llama.cpp's OpenCL kernels are written for Adreno: elsewhere OpenCL is only asked what it is, never run on
+        val opencl = if (LlmNative.loaded && !gpuName.contains("adreno", ignoreCase = true))
+            runCatching { LlmNative.openClReport().lines() }.getOrDefault(listOf("OpenCL · the probe failed")) else emptyList()
+        return ran.copy(skipped = decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap(),
+            cpuFeatures = hw?.let { CpuFeatures.line(it[0], it[1]) }, vulkan = vulkan, opencl = opencl)
     }
 
     /** UI attaches/detaches the stage SurfaceView — forwarded to the GL thread. */
@@ -1177,7 +1231,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         gpuBench.stop()
         vkBench.stop()
         // a stopped run is not a crash: only a process killed inside Test 3, an AI or an LLM run leaves a marker behind
-        benchPrefs.edit().remove(KEY_RT_RUNNING).remove(KEY_AI_RUNNING).remove(KEY_LLM_RUNNING).apply()
+        benchPrefs.edit().remove(KEY_RT_RUNNING).remove(KEY_AI_RUNNING).remove(KEY_LLM_RUNNING)
+            .remove(KEY_AI_PROBE_RUNNING).remove(KEY_LLM_PROBE_RUNNING).apply()
         _state.update { it.copy(gpuActive = false) }
         sessionJob?.cancel()
         sessionJob = null

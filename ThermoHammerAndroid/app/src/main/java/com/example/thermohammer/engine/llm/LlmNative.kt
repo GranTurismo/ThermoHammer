@@ -40,7 +40,17 @@ internal object LlmNative {
     @JvmStatic external fun error(handle: Long): String
     /** How closely the GPU's last prompt matched the CPU's (1 = the same, or nothing to compare). */
     @JvmStatic external fun agreement(handle: Long): Double
+    /** The logits sample of the last [prefill]: what the two CPU libraries' answers are compared by (LlmProbe). */
+    @JvmStatic external fun lastSample(handle: Long): FloatArray
     @JvmStatic external fun destroy(handle: Long)
     /** The largest common 4-bit model (billions of parameters) that fits in [bytes]; 0 if none. */
     @JvmStatic external fun largestModel(bytes: Double): Int
+
+    // What the phone offers, for the report (probe_jni.cpp; nothing here is scored).
+    /** [AT_HWCAP, AT_HWCAP2]: the kernel's words for what every core can do (CpuFeatures decodes them). */
+    @JvmStatic external fun hwcaps(): LongArray
+    /** The Vulkan devices and what they offer llama.cpp's shaders, as text lines; [llamaGpu] marks the one it runs on. */
+    @JvmStatic external fun vulkanReport(llamaGpu: String): String
+    /** What the phone's OpenCL driver says about itself (questions only: no kernel is built or run), as text lines. */
+    @JvmStatic external fun openClReport(): String
 }

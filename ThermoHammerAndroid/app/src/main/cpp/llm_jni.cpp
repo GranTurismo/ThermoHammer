@@ -1,10 +1,21 @@
 // JNI surface of the LLM test in libbenchllm.so — see engine/llm/LlmNative.kt. The code lives in BenchCore/llm.
+// Built twice: into libbenchllm.so (class LlmNative) and, with -DLLM_JNI_CLASS=LlmNativeI8mm, into the CPU-only
+// libbenchllm_i8mm.so (engine/llm/LlmNativeI8mm.kt). A JNI function is found by its class's name, so the two libraries
+// answer to different classes and never to each other's calls.
 #include <jni.h>
 #include <sys/auxv.h>
 
+#include <vector>
+
 #include "bench_llm.h"
 
-#define LLM_JNI(ret, name) extern "C" JNIEXPORT ret JNICALL Java_com_example_thermohammer_engine_llm_LlmNative_##name
+#ifndef LLM_JNI_CLASS
+#define LLM_JNI_CLASS LlmNative
+#endif
+// two steps, because an argument next to ## is pasted unexpanded: the middle macro expands LLM_JNI_CLASS first
+#define LLM_JNI_JOIN(cls, ret, name) extern "C" JNIEXPORT ret JNICALL Java_com_example_thermohammer_engine_llm_##cls##_##name
+#define LLM_JNI_NAMED(cls, ret, name) LLM_JNI_JOIN(cls, ret, name)
+#define LLM_JNI(ret, name) LLM_JNI_NAMED(LLM_JNI_CLASS, ret, name)
 
 static bc_llm* llm(jlong h) { return reinterpret_cast<bc_llm*>(h); }
 
@@ -28,6 +39,18 @@ LLM_JNI(jstring, gpuName)(JNIEnv* env, jclass) { return env->NewStringUTF(bc_llm
 LLM_JNI(jstring, gpuApi)(JNIEnv* env, jclass) { return env->NewStringUTF(bc_llm_gpu_api()); }
 
 LLM_JNI(jdouble, agreement)(JNIEnv*, jclass, jlong h) { return bc_llm_agreement(reinterpret_cast<bc_llm*>(h)); }
+
+/** The logits sample of the last prefill (BenchCore/llm): what the two CPU libraries' answers are compared by. */
+LLM_JNI(jfloatArray, lastSample)(JNIEnv* env, jclass, jlong h) {
+    const int n = bc_llm_last_sample(llm(h), nullptr, 0);
+    jfloatArray a = env->NewFloatArray(n);
+    if (a && n > 0) {
+        std::vector<float> v(static_cast<size_t>(n), 0.0f);
+        bc_llm_last_sample(llm(h), v.data(), n);
+        env->SetFloatArrayRegion(a, 0, n, v.data());
+    }
+    return a;
+}
 
 /** The model handle, or 0 with the reason in error[0]. */
 LLM_JNI(jlong, create)(JNIEnv* env, jclass, jboolean gpu, jint threads, jlong seed, jobjectArray error) {

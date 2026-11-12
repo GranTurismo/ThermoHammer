@@ -267,22 +267,6 @@ object AiTuner {
         "AI %d %s · NPU took %d of %d ops in %d partition%s%s".format(it.test.number, it.test.title, it.selected, it.total, it.partitions,
             if (it.partitions == 1) "" else "s", if (it.notOnNpu.isEmpty()) "" else " · not on the NPU: ${it.notOnNpu.joinToString(", ")}")
     }
-
-    // ── crash guard ──────────────────────────────────────────────────────────
-
-    /**
-     * The probe's crash marker: "install:ACCEL:setting" written before a non-default setting runs. A marker still
-     * there at the next start means that setting took the app down: it joins the crashed set (same install only)
-     * and is never tried again, while the accelerator itself still runs with its defaults.
-     */
-    fun crashedAfter(running: String?, crashed: Set<String>, install: Long): Set<String> {
-        val parts = running?.split(':') ?: return crashed
-        return if (parts.size == 3 && parts[0] == install.toString()) crashed + running else crashed
-    }
-
-    /** "ACCEL:setting" for every crashed entry of this install. */
-    fun crashedKeys(crashed: Set<String>, install: Long): Set<String> =
-        crashed.mapNotNull { e -> e.split(':').takeIf { it.size == 3 && it[0] == install.toString() }?.let { "${it[1]}:${it[2]}" } }.toSet()
 }
 
 // ── LiteRT's log ─────────────────────────────────────────────────────────────
