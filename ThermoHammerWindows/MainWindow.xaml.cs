@@ -34,7 +34,7 @@ public partial class MainWindow : Window
     private readonly ThermalHorizon horizon = new();
     private readonly ThermalXRay xray = new();
     private readonly Flex liveChips = Ui.VStack(6);
-    private readonly ContentControl updateCard = new();
+    private readonly ContentControl updateCard = new(), benchUpdateCard = new(), benchInfo = new();
 
     // chrome
     private readonly TextBlock onlineText = Ui.Text("", 8, Forge.Ink1, Forge.W.Bold);
@@ -42,7 +42,8 @@ public partial class MainWindow : Window
     private readonly TextBlock thermalText = Ui.Text("", 11, Forge.Ink1, Forge.W.Bold);
     private readonly EngravedText subtitle = new() { Label = "PC BENCHMARK · THERMAL STRESS", Size = 9 };
     private readonly ContentControl sidebarNav = new(), runControls = new(), content = new();
-    private readonly Grid overlays = new(), stageLayer = new(), welcomeLayer = new();
+    private readonly Grid overlays = new(), stageLayer = new(), sheetLayer = new(), welcomeLayer = new(), quitLayer = new();
+    private bool quitConfirmed;
     private FrameworkElement? diagnostics;
     private LeaderboardTab? leaderboard;
 
@@ -51,21 +52,34 @@ public partial class MainWindow : Window
     private Scorecard? retainedScorecard;
     private List<StampV2> retainedStamps = [];
     private Guid? currentPendingId;
+    private PendingTestResult? retainedPending;   // the run the verdict shows (kept after its pending copy is submitted and deleted)
+    private int? stressServerId;                  // its id on the board once submitted: the share link
 
     public MainWindow()
     {
         InitializeComponent();
+        // a common laptop (1920×1080 at 150%) has only about 1280×680 device-independent pixels to work with: never open bigger than the screen
+        var work = SystemParameters.WorkArea;
+        MinWidth = Math.Min(MinWidth, work.Width); MinHeight = Math.Min(MinHeight, work.Height);
+        Width = Math.Min(Width, work.Width); Height = Math.Min(Height, work.Height);
         Root.Children.Add(Body());
         Root.Children.Add(overlays);
         Root.Children.Add(stageLayer);
+        Root.Children.Add(sheetLayer);
         Root.Children.Add(welcomeLayer);
+        Sheets.Attach(sheetLayer);
+        // Esc closes the top card opened over everything (share menu, certificate, speed check) before anything under it
+        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape && Sheets.CloseTop()) e.Handled = true; };
+        Root.Children.Add(quitLayer);
 
         engine.Changed += Refresh;
         engine.RunEnded += HandleRunEnd;
         bench.Changed += RefreshBench;
         NetworkMonitor.Shared.Changed += Refresh;
-        Activated += (_, _) => bench.WindowActive(true);
-        Deactivated += (_, _) => bench.WindowActive(false);
+        // Windows is signing out or shutting down: the close question must not hold that up
+        Application.Current.SessionEnding += (_, _) => sessionEnding = true;
+        Activated += (_, _) => { bench.WindowActive(true); engine.WindowActive(true); };
+        Deactivated += (_, _) => { bench.WindowActive(false); engine.WindowActive(false); };
         SourceInitialized += (_, _) => { DarkTitleBar(); Forge.PixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip; };
         DpiChanged += (_, e) => { Forge.PixelsPerDip = e.NewDpi.PixelsPerDip; InvalidateVisualTree(Root); };
 
@@ -92,6 +106,77 @@ public partial class MainWindow : Window
             if (App.Arg("--tab") == "leaderboard") ShowTab(1);
             if (App.Arg("--screenshot") is { } shot) _ = Screenshot(shot);
         };
+    }
+
+    // ── full screen while the benchmark runs ──
+    // The browser tests render at a fixed 1920×1080 physical pixels on the phones. The stage is as big as the window, so on a PC
+    // the window has to give it that room, or a small window would render fewer pixels and score higher: the benchmark runs on
+    // the whole monitor (the phones' stage is full screen too) and the window goes back when it ends.
+
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public int Flags; }
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    private bool fullScreen;
+    private bool wasMaximized;
+    private Rect windowedBounds;
+
+    private void SetFullScreen(bool on)
+    {
+        if (on == fullScreen) return;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        if (on)
+        {
+            // find the monitor first: if that fails the window stays exactly as it is
+            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, 2 /* nearest */), ref info)) return;
+            wasMaximized = WindowState == WindowState.Maximized;
+            windowedBounds = wasMaximized ? RestoreBounds : new Rect(Left, Top, Width, Height);
+            if (wasMaximized) WindowState = WindowState.Normal;
+            fullScreen = true;
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+            // SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW
+            SetWindowPos(hwnd, IntPtr.Zero, info.Monitor.Left, info.Monitor.Top, info.Monitor.Right - info.Monitor.Left,
+                info.Monitor.Bottom - info.Monitor.Top, 0x0004 | 0x0020 | 0x0040);
+        }
+        else
+        {
+            fullScreen = false;
+            WindowStyle = WindowStyle.SingleBorderWindow;
+            ResizeMode = ResizeMode.CanResize;
+            Left = windowedBounds.Left; Top = windowedBounds.Top; Width = windowedBounds.Width; Height = windowedBounds.Height;
+            if (wasMaximized) WindowState = WindowState.Maximized;
+            DarkTitleBar();
+        }
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (!quitConfirmed && !sessionEnding && (engine.IsRunning || bench.IsRunning))
+        {
+            e.Cancel = true;
+            if (quitLayer.Children.Count > 0) return;
+            void Hide() => quitLayer.Children.Clear();
+            var q = new QuitOverlay(Hide, () => { quitConfirmed = true; StopRuns(); Hide(); Close(); });
+            quitLayer.Children.Add(q);
+            Overlays.FadeIn(q);
+            return;
+        }
+        if (sessionEnding) StopRuns();
+        base.OnClosing(e);
+    }
+
+    private bool sessionEnding;
+
+    /// <summary>Ends whatever is running so its workers stop and the PC may sleep again.</summary>
+    private void StopRuns()
+    {
+        if (engine.IsRunning) engine.Abort();
+        if (bench.IsRunning) bench.Stop();
     }
 
     /// <summary>The title bar in the app's dark (Windows 10 2004+; Windows 11 also takes the caption colour).</summary>
@@ -205,9 +290,29 @@ public partial class MainWindow : Window
         var columns = Ui.HStack(16, left, right);
         columns.Stretch = false;
         foreach (FrameworkElement c in columns.Children) c.VerticalAlignment = VerticalAlignment.Top;
-        var page = Ui.VStack(16, updateCard, rail, columns).Pad(20);
+        // the phones' home screen: runs waiting to be submitted, the update comparison, and (benchmark picked) what the benchmark is
+        // made of with your best and last score; a banner that has nothing to say hides itself
+        var page = Ui.VStack(16, new PendingRunsBanner(() => ShowTab(1)), updateCard, benchUpdateCard, SpeedCheckCard(), benchInfo, rail, columns).Pad(20);
         page.MaxWidth = 1080;
         return Ui.Scroll(page);
+    }
+
+    /// <summary>FIND MY LOST SPEED, always on the home screen: a 30-second check of the PC's speed and what's slowing it down.</summary>
+    private FrameworkElement SpeedCheckCard()
+    {
+        var accent = Forge.PhaseMeasured;
+        var words = Ui.VStack(2, Ui.Engraved("FIND MY LOST SPEED", accent, 10),
+            Ui.Text($"A 30-second check of how fast your {ShareLinks.Device} really runs, then what's slowing it down.", 9, Forge.Ink1, wrap: true));
+        // while a test runs the card opens on why it can't start yet
+        var open = Ui.Button("CHECK", SpeedCheckView.Open,
+            accent.WithAlpha(0.12), accent, 10, Forge.W.Black, 8, 8, stroke: accent.WithAlpha(0.45));
+        var row = Ui.HStack(14, words.Grow(), open);
+        row.Stretch = false;
+        foreach (FrameworkElement c in row.Children) c.VerticalAlignment = VerticalAlignment.Center;
+        var g = new Grid();
+        g.Children.Add(Ui.Box(row, Forge.Surface, 12, 14, accent.WithAlpha(0.2)));
+        g.Children.Add(new CornerTicks { Color = accent.WithAlpha(0.4) });
+        return g;
     }
 
     private static FrameworkElement Ticked(UIElement e)
@@ -300,8 +405,22 @@ public partial class MainWindow : Window
 
     private UpdateImpact.Insight? shownInsight;
 
+    private BenchmarkUpdateImpact.Insight? shownBenchInsight;
+
+    /// <summary>The benchmark's update card, beside the stress test's (both can show).</summary>
+    private void RefreshBenchUpdateCard()
+    {
+        var insight = engine.IsRunning || bench.IsRunning ? null : BenchmarkHistoryStore.Shared.UpdateInsight(DeviceInfo.Model, DeviceInfo.OsVersion, DeviceInfo.OsBuild);
+        if (insight?.Signature == shownBenchInsight?.Signature) return;
+        shownBenchInsight = insight;
+        benchUpdateCard.Content = insight == null ? null : new BenchmarkUpdateCard(insight,
+            () => { runBenchmark = true; OpenPreflight(); },
+            () => { BenchmarkHistoryStore.Shared.Dismiss(insight); RefreshBenchUpdateCard(); });
+    }
+
     private void RefreshUpdateCard()
     {
+        RefreshBenchUpdateCard();
         var insight = engine.IsRunning ? null : RunHistoryStore.Shared.Insight(DeviceInfo.Model, DeviceInfo.OsVersion, DeviceInfo.OsBuild);
         if (insight?.DismissKey == shownInsight?.DismissKey && (insight == null) == (shownInsight == null)) return;
         shownInsight = insight;
@@ -326,6 +445,8 @@ public partial class MainWindow : Window
         string key = $"{engine.IsRunning}|{runBenchmark}|{duration}|{threading}|{engine.State.Phase}";
         if (key == controlsKey) return;
         controlsKey = key;
+        bool showInfo = !engine.IsRunning && runBenchmark;
+        if (showInfo != (benchInfo.Content != null)) benchInfo.Content = showInfo ? new BenchmarkInfoPanel() : null;
         var col = Ui.VStack(10, Ui.Engraved(engine.IsRunning ? "RUNNING" : "RUN", size: 8));
         if (!engine.IsRunning)
         {
@@ -339,10 +460,11 @@ public partial class MainWindow : Window
             col.Children.Add(kinds);
             if (runBenchmark)
             {
-                col.Children.Add(Ui.Text("WHOLE PC · SIX SECTIONS · SAME TESTS AS THE PHONES", 8, Forge.Ink2, wrap: true));
+                col.Children.Add(Ui.Text("WHOLE PC · SCORE · SIX SECTIONS, THE SAME TESTS AS THE PHONES", 8, Forge.Ink2, wrap: true));
             }
             else
             {
+                col.Children.Add(Ui.Engraved("TARGET DURATION", size: 8));
                 var durs = Ui.HStack(10);
                 foreach (var d in new[] { TestDuration.Minutes5, TestDuration.Minutes15, TestDuration.Minutes30 })
                 {
@@ -351,12 +473,18 @@ public partial class MainWindow : Window
                         duration == d ? Forge.PhaseMeasured : Forge.Interact, duration == d ? Forge.Bg : Forge.Ink1).Grow());
                 }
                 col.Children.Add(durs);
+                col.Children.Add(Ui.Engraved("THREADING MODE", size: 8));
                 var threads = Ui.HStack(10);
-                foreach (var t in new[] { StressThreadingType.Single, StressThreadingType.Multi })
+                foreach (var t in new[] { StressThreadingType.Multi, StressThreadingType.Single })
                 {
                     var tt = t;
-                    threads.Children.Add(Ui.Button(t == StressThreadingType.Single ? "1 THREAD" : "MULTI THREAD", () => { threading = tt; BuildRunControls(); },
-                        threading == t ? Forge.PhaseCalibration : Forge.Interact, threading == t ? Forge.Bg : Forge.Ink1).Grow());
+                    bool on = threading == t;
+                    // the phones tag Multi as the recommended mode (a blank line keeps the two buttons level)
+                    var label = Ui.VStack(3,
+                        Ui.Text(t == StressThreadingType.Multi ? "RECOMMENDED" : " ", 7, (on ? Forge.Bg : Forge.PhaseMeasured).WithAlpha(0.7), Forge.W.Black, align: TextAlignment.Center),
+                        Ui.Text(t == StressThreadingType.Single ? "1 THREAD" : "MULTI THREAD", 10, on ? Forge.Bg : Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center));
+                    threads.Children.Add(Ui.Button(label, () => { threading = tt; BuildRunControls(); },
+                        on ? Forge.PhaseCalibration : Forge.Interact, 8, 12, 7).Grow());
                 }
                 col.Children.Add(threads);
             }
@@ -448,21 +576,41 @@ public partial class MainWindow : Window
         };
         PendingResultStore.Shared.Save(pending);
         currentPendingId = pending.Id;
-        // local history for the before/after-update comparison (never uploaded)
+        // local history for the before/after-update comparison (never uploaded), with the run's curve for sharing it later
         if (engine.WasCompleted && sc != null)
+        {
+            var curve = StressCurve.Downsample(StressCurve.OfBaseline(s.Stamps.Select(x => (x.ElapsedMs, (double)x.IpsTotal)), sc.BaselineIps));
             RunHistoryStore.Shared.Add(new RunRecord(pending.Id, pending.Timestamp, pending.DeviceModel, pending.OsVersion, pending.OsBuild,
-                pending.TestDurationType, (int)engine.ThreadingType, sc.DeliveredCapacity, sc.ThrottleOnsetSec, sc.ValidityFlags, sc.Confidence));
+                pending.TestDurationType, (int)engine.ThreadingType, sc.DeliveredCapacity, sc.ThrottleOnsetSec, sc.ValidityFlags, sc.Confidence,
+                Curve: StressCurve.Compact(curve), CurveSeconds: Math.Round(s.Stamps[^1].ElapsedMs / 1000.0, 1)));
+        }
         retainedScorecard = sc;
         retainedStamps = s.Stamps.ToList();
-        if (sc != null) ShowVerdict();
+        retainedPending = pending;
+        stressServerId = null;
+        if (sc != null)
+        {
+            // offline: ask for a connection first — unless the run is unverified and can't be submitted anyway (as on the phones)
+            if (!NetworkMonitor.Shared.IsConnected && sc.IsVerified) ShowConnection(); else ShowVerdict();
+        }
         else if (engine.AbortedByUser) ShowOverlay(new AbortOverlay(s.Elapsed, CloseOverlay));
         Refresh();
     }
 
-    private void ShowVerdict()
+    /// <summary>No connection at the end of a verified run: LATER keeps the result for the leaderboard, RETRY submits it once online.</summary>
+    private void ShowConnection() => ShowOverlay(new ConnectionOverlay(
+        onRetry: () => ShowVerdict(autoSubmit: NetworkMonitor.Shared.IsConnected),
+        onDismiss: () => ShowVerdict()));
+
+    private void ShowVerdict(bool autoSubmit = false)
     {
         if (retainedScorecard is not { } sc) return;
         VerdictOverlay? v = null;
+        var stamps = retainedStamps;
+        var run = retainedPending;
+        // the run as the share card and the presentation show it — built when asked, so the link follows a submit
+        ShowcaseRun? Showcase() => run == null || stamps.Count == 0 ? null : ShowcaseRun.ForStress(sc, stamps, run, stressServerId);
+        bool slowedCool = SpeedMath.SlowedWhileCool(sc.DeliveredCapacity, sc.ThrottleOnsetSec, stamps.Select(x => (x.ElapsedMs, x.ThermalState)).ToList());
         v = new VerdictOverlay(sc, NetworkMonitor.Shared.IsConnected,
             onSubmit: async () =>
             {
@@ -471,18 +619,38 @@ public partial class MainWindow : Window
                 {
                     var p = PendingResultStore.Shared.Results.FirstOrDefault(r => r.Id == currentPendingId);
                     if (p == null) throw new BenchException("result not found");
-                    await Api.SubmitStress(p);
+                    var id = await Api.SubmitStress(p);
                     PendingResultStore.Shared.Delete(p.Id);
+                    if (id is { } serverId)
+                    {
+                        stressServerId = serverId;
+                        RunHistoryStore.Shared.SetServerId(p.Id, serverId);
+                    }
                     v.SetSubmitted("SUBMITTED TO LEADERBOARD");
                 }
                 catch (Exception e)
                 {
-                    if (!NetworkMonitor.Shared.IsConnected) { ShowOverlay(new ConnectionOverlay(() => { ShowVerdict(); }, CloseOverlay)); return; }
+                    if (!NetworkMonitor.Shared.IsConnected) { ShowConnection(); return; }
                     v.SetError(e.Message);
                 }
             },
-            onDismiss: () => { CloseOverlay(); retainedScorecard = null; Refresh(); });
+            onDismiss: () => { CloseOverlay(); retainedScorecard = null; Refresh(); },
+            onShare: () => { if (Showcase() is { } r) ShareSheet.Run(r); },
+            onPresent: () => { if (Showcase() is { } r) PresentWindow.Open(r); },
+            onExport: () => ExportStress(sc, stamps, run),
+            onFindSpeed: slowedCool ? SpeedCheckView.Open : null);
         ShowOverlay(v);
+        if (autoSubmit && sc.IsVerified) v.Submit();
+    }
+
+    /// <summary>EXPORT CSV of the stress run just finished: every stamp, against the calibration baseline.</summary>
+    private static void ExportStress(Scorecard sc, List<StampV2> stamps, PendingTestResult? run)
+    {
+        double baseline = Math.Max(1, sc.BaselineIps);
+        var rows = stamps.Select(x => new StressCsvRow(x.TNs / 1e9, x.IpsTotal, x.IpsTotal / baseline * 100, x.ThermalState, x.CpuMhz,
+            x.SchedFracAvg * 100, x.SystemLoad * 100, x.Attribution));
+        var at = run != null ? DateTimeOffset.FromUnixTimeMilliseconds((long)(run.Timestamp * 1000)).LocalDateTime : DateTime.Now;
+        ShareSheet.SaveCsv(ShareLinks.CsvFileName(true, DeviceInfo.FullName, at), RunCsv.Stress(rows));
     }
 
     // ── the benchmark: the stage while it runs, then the result ──
@@ -495,6 +663,7 @@ public partial class MainWindow : Window
         if (bench.Current != shownPhase)
         {
             shownPhase = bench.Current;
+            SetFullScreen(bench.IsRunning);
             stageLayer.Children.Clear();
             stage = null;
             if (bench.IsRunning)
@@ -511,6 +680,13 @@ public partial class MainWindow : Window
             else if (bench.Current == BenchmarkEngine.Phase.Done && bench.Error is { } e)
             {
                 stageLayer.Children.Add(Overlays.Message("BENCHMARK STOPPED", e, bench.DismissResult));
+            }
+            else if (bench.Current == BenchmarkEngine.Phase.Idle && bench.Cancelled)
+            {
+                // stopped by the user: say so and that nothing was kept (the phones' TEST CANCELLED)
+                var o = new ManualCancelled(() => { stageLayer.Children.Clear(); bench.DismissResult(); });
+                stageLayer.Children.Add(o);
+                Overlays.FadeIn(o);
             }
         }
         stage?.Refresh();

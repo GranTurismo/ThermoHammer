@@ -8,6 +8,12 @@ internal static unsafe partial class LlmNative
     private const string Dll = "benchllm";
     public const int Prompt = 512, Seed = 3;
 
+    /// <summary>
+    /// Runs before the first call into benchllm.dll, whichever it is: llama.cpp reads the GPU choice once, when it first lists
+    /// devices, so the variable has to be in place by then (LlmGpuChoice).
+    /// </summary>
+    static LlmNative() => LlmGpuChoice.Select();
+
     [LibraryImport(Dll)] public static partial long bc_llm_weight_bytes();
     [LibraryImport(Dll)] private static partial IntPtr bc_llm_gpu_name();
     [LibraryImport(Dll)] private static partial IntPtr bc_llm_gpu_api();

@@ -23,9 +23,9 @@ public sealed class VideoBench
 
     /// <summary>
     /// Decodes every clip in turn; `onProgress` gets (clip index + fraction, fps so far, the clip, a preview frame, where in
-    /// the clip the decoder is — seconds — or null when the clip didn't run).
+    /// the clip the decoder is — seconds — or null when the clip didn't run, then why if it was skipped for crashing the app, else null).
     /// </summary>
-    public VideoResult Run(Func<bool> isActive, Action<double, double, VideoClip, Preview?, double?> onProgress)
+    public VideoResult Run(Func<bool> isActive, Action<double, double, VideoClip, Preview?, double?, string?> onProgress)
     {
         var results = new List<VideoCodecResult>();
         MediaDevice? media = null;
@@ -38,7 +38,7 @@ public sealed class VideoBench
                 foreach (var clip in VideoClips.All)
                 {
                     results.Add(new VideoCodecResult(clip, 0, null, false, $"Media Foundation is unavailable: {e.Message}"));
-                    onProgress(results.Count, 0, clip, null, null);
+                    onProgress(results.Count, 0, clip, null, null, null);
                 }
                 Thread.Sleep(1000);
                 return new VideoResult(results);
@@ -50,20 +50,25 @@ public sealed class VideoBench
                 if (!isActive()) break;
                 if (crashed.Contains(clip))
                 {
-                    results.Add(new VideoCodecResult(clip, 0, null, false, "crashed the app here last time"));
-                    onProgress(i + 1, 0, clip, null, null);
+                    results.Add(new VideoCodecResult(clip, 0, null, false, CrashGuard.Reason));
+                    onProgress(i + 1, 0, clip, null, null, CrashGuard.Reason);
                     Thread.Sleep(1000);
                     continue;
                 }
-                Settings.Set(RunningKey, new[] { $"{Build}:{clip}" });
-                try { results.Add(Decode(media, clip, isActive, (f, fps, img, pos) => onProgress(i + f, fps, clip, img, pos))); }
+                Guard.Begin(clip.ToString());
+                try
+                {
+                    var result = Decode(media, clip, isActive, (f, fps, img, pos) => onProgress(i + f, fps, clip, img, pos, null));
+                    Guard.Finished(clip.ToString());     // it decoded here: earlier unfinished runs of this clip were chance
+                    results.Add(result);
+                }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
                     results.Add(new VideoCodecResult(clip, 0, null, false, Explain(clip, e)));
-                    onProgress(i + 1, 0, clip, null, null);
+                    onProgress(i + 1, 0, clip, null, null, null);
                     Thread.Sleep(1000);   // the stage says why for a moment
                 }
-                finally { Settings.Set(RunningKey, null); }
+                finally { Guard.End(); }
             }
         }
         finally { media?.Dispose(); }
@@ -81,22 +86,14 @@ public sealed class VideoBench
         return $"{clip.Label()}: {e.Message}";
     }
 
-    private const string RunningKey = "benchmark.videoRunning", CrashedKey = "benchmark.videoCrashed";
-    private static string Build => System.Diagnostics.FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "?";
+    // markers "build:clip" (CrashGuard); a clip is skipped after two runs that never finished, as on iOS
+    private static readonly CrashGuard Guard = new("video");
 
-    /// <summary>Clips whose decode never finished in this build (a decoder's crash can't be caught): a marker was left behind.</summary>
+    /// <summary>Clips whose decode never finished twice in this build (a decoder's crash can't be caught); a marker left by the last launch counts as one.</summary>
     private static HashSet<VideoClip> Crashed()
     {
-        var crashed = Settings.Strings(CrashedKey);
-        var running = Settings.Strings(RunningKey);
-        if (running.Count > 0)
-        {
-            foreach (var r in running) if (!crashed.Contains(r)) crashed.Add(r);
-            Settings.Set(CrashedKey, crashed);
-            Settings.Set(RunningKey, null);
-        }
-        return crashed.Select(s => s.Split(':')).Where(p => p.Length == 2 && p[0] == Build)
-            .Select(p => VideoClips.All.Cast<VideoClip?>().FirstOrDefault(c => c.ToString() == p[1])).OfType<VideoClip>().ToHashSet();
+        var names = Guard.Skipped(1);
+        return VideoClips.All.Where(c => names.Contains(c.ToString())).ToHashSet();
     }
 
     private static Guid Subtype(string fourCC) => VideoFormatGuids.FromFourCC(new FourCC(fourCC));

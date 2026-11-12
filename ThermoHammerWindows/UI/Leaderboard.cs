@@ -6,11 +6,12 @@ using ThermoHammer.Engine;
 
 namespace ThermoHammer.UI;
 
-/// <summary>Leaderboard tab: the benchmark board (default) or the sustained stress board — the phones' LeaderboardScreen.</summary>
+/// <summary>Leaderboard tab: the benchmark board (default) or the sustained stress board — the phones' LeaderboardScreen — filtered by platform.</summary>
 public sealed class LeaderboardTab : Grid
 {
     private int board;
-    private readonly ContentControl tabs = new(), body = new();
+    private int? platform;                       // null: every platform
+    private readonly ContentControl tabs = new(), platformTabs = new(), body = new();
     private readonly BenchmarkBoard benchmark = new();
     private readonly StressBoard stress = new();
 
@@ -19,14 +20,21 @@ public sealed class LeaderboardTab : Grid
         Background = Brushes.Black;
         MaxWidth = 860;
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition());
         Children.Add(tabs);
-        SetRow(body, 1);
+        SetRow(platformTabs, 1);
+        Children.Add(platformTabs);
+        SetRow(body, 2);
         Children.Add(body);
+        ShowPlatforms();
         Show(0);
     }
 
     public void Appeared() { if (board == 0) benchmark.LoadIfEmpty(); else stress.LoadIfEmpty(); }
+
+    /// <summary>The server's OsPlatform as the boards' tabs and empty states call it; null is every platform.</summary>
+    public static string PlatformName(int? p) => p switch { 1 => "iOS", 2 => "Android", 3 => "macOS", 4 => "Windows", _ => "All" };
 
     private void Show(int i)
     {
@@ -45,6 +53,35 @@ public sealed class LeaderboardTab : Grid
         body.Content = board == 0 ? benchmark : stress;
         Appeared();
     }
+
+    /// <summary>ALL, then the platforms: plain text on a hairline, the chosen one underlined — lighter than the board toggle above it.</summary>
+    private void ShowPlatforms()
+    {
+        var row = Ui.HStack(0);
+        foreach (int? p in new int?[] { null, 4, 3, 2, 1 })
+        {
+            bool on = platform == p;
+            var mark = new Border { Height = 2, CornerRadius = new CornerRadius(1), Background = (on ? Forge.PhaseMeasured : Colors.Transparent).Brush() };
+            row.Children.Add(Ui.Button(Ui.VStack(6, Ui.Text(p == null ? "ALL" : PlatformName(p).ToUpperInvariant(), 9, on ? Forge.PhaseMeasured : Forge.Ink1,
+                Forge.W.Bold, align: TextAlignment.Center), mark), () => Pick(p), Colors.Transparent, 0, 4, 8).Grow());
+        }
+        var bar = Ui.VStack(0, row, Ui.Line(Forge.Hairline));
+        bar.Margin = new Thickness(16, 10, 16, 0);
+        platformTabs.Content = bar;
+    }
+
+    private void Pick(int? p)
+    {
+        platform = p;
+        ShowPlatforms();
+        benchmark.Platform = p;
+        stress.Platform = p;
+    }
+
+    /// <summary>A spinner with its caption under it: what an overlay shows while its numbers come from the server.</summary>
+    internal static FrameworkElement Loading(string caption, double pad = 60) =>
+        Ui.VStack(12, new Spinner(Forge.PhasePreFlight).Align(HorizontalAlignment.Center),
+            Ui.Text(caption, 10, Forge.Ink0.WithAlpha(0.4), align: TextAlignment.Center)).Pad(pad);
 
     /// <summary>A search field with a hint, in the forge style.</summary>
     public static (FrameworkElement view, TextBox box) Search(string hint, Action<string> changed)
@@ -69,23 +106,42 @@ public sealed class BenchmarkBoard : Grid
     private List<BenchmarkDto> entries = [];
     private string query = "", error = "";
     private bool loading, loaded;
+    private int? platform;
     private readonly Flex list = Ui.VStack(8);
     private readonly Grid popup = new();
+    private readonly Button refresh;
+    private readonly LazyRows rows;
+    // comparing two runs: click two rows (A, then B), or start from a run's details
+    private bool picking;
+    private readonly List<(BenchmarkDto e, int rank)> picked = [];
+    private readonly ContentControl compareSlot = new();
+
+    /// <summary>The platform tab chosen on the page (null: all); the list is filtered here, so changing it fetches nothing.</summary>
+    public int? Platform { set { platform = value; if (loaded) Render(); } }
 
     public BenchmarkBoard()
     {
-        var refresh = Ui.Button(Ui.Text("↻", 18, Forge.Ink0, Forge.W.Bold), () => _ = Load(), Colors.Transparent, 8, 6, 2);
-        var head = Ui.HStack(0, Ui.VStack(2, Ui.Text("BENCHMARK", 18, Forge.Ink0, Forge.W.Black),
-            Ui.Text("All six sections · best verified run per device", 9, Forge.Ink0.WithAlpha(0.4))), Ui.Spacer(), refresh);
-        var (search, _) = LeaderboardTab.Search("Search device, chip or GPU…", q => { query = q; Render(); });
-        Children.Add(Ui.Scroll(Ui.VStack(8, head, search, list).Pad(16, 12)));
+        refresh = Ui.Button(Ui.Text("↻", 18, Forge.Ink0, Forge.W.Bold), () => _ = Load(), Colors.Transparent, 8, 6, 2);
+        var head = Ui.HStack(0, Ui.VStack(2, Ui.Text("DEVICE BENCHMARK", 18, Forge.Ink0, Forge.W.Black),
+            Ui.Text("All six sections · best verified run per device", 9, Forge.Ink0.WithAlpha(0.4))), Ui.Spacer(), compareSlot, refresh);
+        RenderCompareButton();
+        var (search, _) = LeaderboardTab.Search("Search device or GPU…", q => { query = q; Render(); });
+        var scroll = Ui.Scroll(Ui.VStack(8, head, search, list).Pad(16, 12));
+        rows = new LazyRows(scroll, list);
+        Children.Add(scroll);
         Children.Add(popup);
+        // the board reloads when the connection comes back (and shows "Offline" when it goes), for as long as it is on screen
+        Loaded += (_, _) => { NetworkMonitor.Shared.Changed -= ConnectionChanged; NetworkMonitor.Shared.Changed += ConnectionChanged; };
+        Unloaded += (_, _) => NetworkMonitor.Shared.Changed -= ConnectionChanged;
     }
+
+    private void ConnectionChanged() { if (!loading) _ = Load(); }
 
     public void LoadIfEmpty() { if (!loaded && !loading) _ = Load(); }
 
     private async Task Load()
     {
+        if (loading) return;
         if (!NetworkMonitor.Shared.IsConnected) { error = "Offline"; Render(); return; }
         loading = true; error = ""; Render();
         try { entries = (await BenchmarkUpload.FetchLeaderboard()).OrderByDescending(e => e.TotalScore).ToList(); loaded = true; }
@@ -119,11 +175,11 @@ public sealed class BenchmarkBoard : Grid
 
     private async Task Submit(BenchmarkRecord r)
     {
-        submittingId = r.Id; Render();
+        submittingId = r.Id; Render(true);
         try
         {
             var res = await BenchmarkUpload.Submit(r);
-            BenchmarkHistoryStore.Shared.MarkSubmitted(r.Id);
+            BenchmarkHistoryStore.Shared.MarkSubmitted(r.Id, res.Id);
             submitNote = $"Submitted · {res.Score:N0} points · rank #{res.Rank}";
         }
         catch (Exception e) { submitNote = e.Message; }
@@ -131,9 +187,14 @@ public sealed class BenchmarkBoard : Grid
         await Load();
     }
 
-    private void Render()
+    /// <summary>[keep]: only what is marked on the rows changed (a pick, a submit), so the list stays as far down as it was scrolled.</summary>
+    private void Render(bool keep = false)
     {
+        refresh.IsEnabled = !loading;
+        rows.Stop();
         list.Children.Clear();
+        RenderCompareButton();
+        if (picking) list.Children.Add(PickHint());
         Unsubmitted();
         if (loading) { list.Children.Add(new Spinner(Forge.PhasePreFlight).Align(HorizontalAlignment.Center).Pad(40)); return; }
         if (error.Length > 0)
@@ -143,41 +204,150 @@ public sealed class BenchmarkBoard : Grid
             return;
         }
         string q = query.Trim().ToLowerInvariant();
-        var shown = entries.Select((e, i) => (rank: i + 1, e)).Where(x => q.Length == 0 || x.e.DeviceModel.ToLowerInvariant().Contains(q)
-            || x.e.DeviceManufacturer.ToLowerInvariant().Contains(q) || (x.e.GpuName?.ToLowerInvariant().Contains(q) ?? false)
-            || (x.e.SocModel?.ToLowerInvariant().Contains(q) ?? false)).ToList();
+        var ofPlatform = entries.Where(e => platform == null || e.Os == platform).ToList();
+        var shown = ofPlatform.Select((e, i) => (rank: i + 1, e)).Where(x => q.Length == 0 || x.e.DeviceModel.ToLowerInvariant().Contains(q)
+            || x.e.DeviceManufacturer.ToLowerInvariant().Contains(q) || (x.e.GpuName?.ToLowerInvariant().Contains(q) ?? false)).ToList();
         if (shown.Count == 0)
         {
-            list.Children.Add(Ui.Text(entries.Count == 0 ? "No benchmark runs yet — be the first." : "No devices match.", 11, Forge.Ink0.WithAlpha(0.4),
-                align: TextAlignment.Center).Pad(30));
+            string none = ofPlatform.Count > 0 ? "No devices match." : platform is { } p ? $"No {LeaderboardTab.PlatformName(p)} runs yet." : "No benchmark runs yet — be the first.";
+            list.Children.Add(Ui.Text(none, 11, Forge.Ink0.WithAlpha(0.4), align: TextAlignment.Center).Pad(30));
             return;
         }
-        int top = Math.Max(entries[0].TotalScore, 1);
-        foreach (var (rank, e) in shown.Take(200))
-            list.Children.Add(Row(rank, e, (double)e.TotalScore / top, string.Equals(e.DeviceModel, DeviceInfo.Model, StringComparison.OrdinalIgnoreCase)));
+        int top = Math.Max(ofPlatform[0].TotalScore, 1);
+        rows.Fill(shown.Count, i =>
+        {
+            var (rank, e) = shown[i];
+            return Row(rank, e, (double)e.TotalScore / top, string.Equals(e.DeviceModel, DeviceInfo.Model, StringComparison.OrdinalIgnoreCase));
+        }, keep);
     }
 
     private FrameworkElement Row(int rank, BenchmarkDto e, double fraction, bool mine)
     {
         var rankText = Ui.Text($"#{rank}", 11, rank <= 3 ? Ramp.At(1 - (rank - 1) * 0.2) : Forge.Ink2, Forge.W.Black).Size(40);
-        var name = Ui.VStack(2, Ui.Text(e.Name, 12, Forge.Ink0, Forge.W.Bold),
-            Ui.Text(string.Join(" · ", new[] { e.SocModel, e.GpuName, DeviceInfo.OsLabel(e.Os, e.OsVersion) }.Where(s => !string.IsNullOrEmpty(s))), 8, Forge.Ink0.WithAlpha(0.4)));
-        var score = Ui.VStack(2, Ui.Text(e.TotalScore.N0(), 15, Forge.Ink0, Forge.W.Black, align: TextAlignment.Right),
-            Ui.Text($"CPU {e.CpuScore:N0} · MEM {e.MemScore:N0} · GPU {e.Score:N0} · UX {e.UxScore:N0} · AI {e.AiScore:N0} · LLM {e.LlmScore:N0} · " +
-                    (e.RayTracing ? $"RT {e.Test3Fps:0} FPS" : "NO RT"), 7, Forge.Ink0.WithAlpha(0.4), align: TextAlignment.Right));
-        var top = Ui.HStack(8, rankText, name.Grow(), score);
+        var name = Ui.VStack(2, Ui.Text(e.Name, 12, Forge.Ink0, Forge.W.Bold, wrap: true),
+            Ui.Text(string.Join(" · ", new[] { e.GpuName, DeviceInfo.OsLabel(e.Os, e.OsVersion) }.Where(s => !string.IsNullOrEmpty(s))), 8, Forge.Ink0.WithAlpha(0.4)));
+        var score = Ui.Text(e.TotalScore.N0(), 15, Forge.Ink0, Forge.W.Black, align: TextAlignment.Right);
+        int slot = picking ? picked.FindIndex(p => p.e.Id == e.Id) : -2;
+        // the device and its score share the line; the long list of section scores sits below it, so it can never squeeze the name
+        var top = Ui.HStack(8, rankText, name.Grow(), score, slot >= -1 ? PickMark(slot) : Ui.Text("›", 18, Forge.Ink0.WithAlpha(0.3)));
         top.Stretch = false;
         foreach (FrameworkElement c in top.Children) c.VerticalAlignment = VerticalAlignment.Center;
+        // each label stays with its number when the line wraps (non-breaking spaces)
+        var sections = Ui.Text($"CPU\u00A0{e.CpuScore.N0()} · MEM\u00A0{e.MemScore.N0()} · GPU\u00A0{e.Score.N0()} · UX\u00A0{e.UxScore.N0()} · " +
+            $"AI\u00A0{e.AiScore.N0()} · LLM\u00A0{e.LlmScore.N0()} · " + (e.RayTracing ? $"RT\u00A0{e.Test3Fps.F(0)}\u00A0FPS" : "NO\u00A0RT"),
+            7, Forge.Ink0.WithAlpha(0.4), wrap: true);
         var bar = new ScoreBar(fraction);
-        var b = Ui.Box(Ui.VStack(8, top, bar), Forge.Surface, 14, 12, mine ? Forge.PhaseMeasured.WithAlpha(0.6) : Forge.Ink0.WithAlpha(0.06));
+        Color? pickColor = slot == 0 ? BenchmarkCompareView.ColorA : slot == 1 ? BenchmarkCompareView.ColorB : null;
+        var b = Ui.Box(Ui.VStack(8, top, sections, bar), Forge.Surface, 14, 12,
+            pickColor ?? (mine ? Forge.PhaseMeasured.WithAlpha(0.6) : Forge.Ink0.WithAlpha(0.06)), pickColor != null ? 1.5 : 1);
         b.Cursor = Cursors.Hand;
-        b.MouseLeftButtonUp += (_, _) => OpenDetail(e);
+        b.MouseLeftButtonUp += (_, _) => { if (picking) Pick(e, rank); else OpenDetail(e, rank); };
         return b;
+    }
+
+    // ── picking two runs and comparing them ──
+
+    private void RenderCompareButton() =>
+        compareSlot.Content = Ui.Button(Ui.Text(picking ? "✕ CANCEL" : "⇄ COMPARE", 9, picking ? Forge.Bg : Forge.PhaseMeasured, Forge.W.Black),
+            () => { if (picking) StopPicking(); else { picking = true; picked.Clear(); Render(true); } },
+            picking ? Forge.PhaseMeasured : Forge.PhaseMeasured.WithAlpha(0.1), 8, 10, 7, stroke: Forge.PhaseMeasured.WithAlpha(0.5))
+            .Align(HorizontalAlignment.Right, VerticalAlignment.Center).Pad(0, 0, 8, 0);
+
+    private FrameworkElement PickHint()
+    {
+        string text = picked.Count == 0 ? "Click two devices to compare them" : $"Now click the one to compare with {picked[0].e.Name}";
+        var row = Ui.HStack(8, Ui.Text(text, 11, Forge.Ink0, Forge.W.Bold).Grow(), Ui.Text($"{picked.Count}/2", 12, Forge.PhaseMeasured, Forge.W.Black));
+        row.Stretch = false;
+        return Ui.Box(row, Forge.PhaseMeasured.WithAlpha(0.08), 12, 12, Forge.PhaseMeasured.WithAlpha(0.3));
+    }
+
+    /// <summary>While picking: an empty ring, or the A / B the run was picked as.</summary>
+    private static FrameworkElement PickMark(int slot)
+    {
+        Color? color = slot == 0 ? BenchmarkCompareView.ColorA : slot == 1 ? BenchmarkCompareView.ColorB : null;
+        return new Border
+        {
+            Width = 24, Height = 24, CornerRadius = new CornerRadius(12), VerticalAlignment = VerticalAlignment.Center,
+            Background = (color ?? Colors.Transparent).Brush(),
+            BorderBrush = color == null ? Forge.Ink0.WithAlpha(0.3).Brush() : null, BorderThickness = new Thickness(color == null ? 1.5 : 0),
+            Child = color == null ? null : Ui.Text(slot == 0 ? "A" : "B", 11, Forge.Bg, Forge.W.Black, align: TextAlignment.Center)
+                .Align(HorizontalAlignment.Center, VerticalAlignment.Center),
+        };
+    }
+
+    private void Pick(BenchmarkDto e, int rank)
+    {
+        int i = picked.FindIndex(p => p.e.Id == e.Id);
+        if (i >= 0) picked.RemoveAt(i); else picked.Add((e, rank));
+        Render(true);
+        if (picked.Count == 2) OpenCompare(picked[0], picked[1]);
+    }
+
+    private void StopPicking() { picking = false; picked.Clear(); Render(true); }
+
+    private void OpenCompare((BenchmarkDto e, int rank) a, (BenchmarkDto e, int rank) b)
+    {
+        var window = Window.GetWindow(this);
+        KeyEventHandler? esc = null;
+        void Close() { popup.Children.Clear(); if (window != null && esc != null) window.PreviewKeyDown -= esc; StopPicking(); }
+        esc = (_, k) => { if (k.Key == Key.Escape) { Close(); k.Handled = true; } };
+        if (window != null) window.PreviewKeyDown += esc;
+
+        bool swapped = false;
+        (BenchmarkDetail a, BenchmarkDetail b)? loaded = null;
+        var legend = new ContentControl();
+        var content = new ContentControl();
+        void Show()
+        {
+            var (x, y) = swapped ? (b, a) : (a, b);
+            legend.Content = BenchmarkCompareView.Legend(x.e, y.e);
+            if (loaded is { } d)
+                content.Content = BenchmarkCompareView.Body(swapped ? BenchmarkComparison.Make(d.b, d.a) : BenchmarkComparison.Make(d.a, d.b),
+                    x.e, x.rank, y.e, y.rank);
+        }
+        FrameworkElement Message(string text, bool retry) => Ui.VStack(10, Ui.Text(retry ? $"⚠ {text}" : text, 12, retry ? Ramp.At(0.85) : Forge.Ink1, Forge.W.Bold,
+            wrap: true, align: TextAlignment.Center), retry ? Ui.Button("RETRY", () => _ = Load(), Forge.Ink0.WithAlpha(0.1), Forge.Ink0).Align(HorizontalAlignment.Center) : null).Pad(30);
+        async Task Load()
+        {
+            content.Content = LeaderboardTab.Loading("LOADING BOTH RUNS…");
+            if (!NetworkMonitor.Shared.IsConnected) { content.Content = Message("Offline", true); return; }
+            try
+            {
+                var da = BenchmarkUpload.FetchDetail(a.e.Id);
+                var db = BenchmarkUpload.FetchDetail(b.e.Id);
+                await Task.WhenAll(da, db);
+                if (da.Result is not { } runA || db.Result is not { } runB)
+                {
+                    content.Content = Message("One of these runs is no longer on the board", false);
+                    return;
+                }
+                loaded = (runA, runB);
+                Show();
+            }
+            catch (Exception ex) { content.Content = Message(ex.Message, true); }
+        }
+
+        var swap = Ui.Button(Ui.Text("⇄", 13, Forge.Ink0, Forge.W.Bold), () => { swapped = !swapped; Show(); }, Colors.White.WithAlpha(0.08), 16, 10, 6);
+        var close = Ui.Button(Ui.Text("✕", 12, Forge.Ink0, Forge.W.Bold), Close, Colors.White.WithAlpha(0.08), 16, 10, 6);
+        var head = Ui.HStack(8, Ui.Text("COMPARE", 13, Forge.Ink0, Forge.W.Black).Align(HorizontalAlignment.Left, VerticalAlignment.Center), Ui.Spacer(), swap, close);
+        head.Stretch = false;
+        var card = Ui.Box(Ui.VStack(12, head, legend, Ui.Line(Colors.White.WithAlpha(0.1)), content), Forge.Raised, 24, 24, Colors.White.WithAlpha(0.1));
+        card.MaxWidth = 860;
+        card.Margin = new Thickness(30);
+        card.VerticalAlignment = VerticalAlignment.Center;
+        var scrim = new Grid { Background = Color.FromArgb(217, 0, 0, 0).Brush() };
+        scrim.MouseLeftButtonUp += (s, ev) => { if (ev.OriginalSource == scrim) Close(); };
+        scrim.Children.Add(Ui.Scroll(card));
+        popup.Children.Clear();
+        popup.Children.Add(scrim);
+        Overlays.FadeIn(card);
+        Show();
+        _ = Load();
     }
 
     // ── one run's numbers ──
 
-    private void OpenDetail(BenchmarkDto e)
+    private void OpenDetail(BenchmarkDto e, int rank)
     {
         var window = Window.GetWindow(this);
         KeyEventHandler? esc = null;
@@ -186,10 +356,17 @@ public sealed class BenchmarkBoard : Grid
         if (window != null) window.PreviewKeyDown += esc;
         var content = new ContentControl();
         var close = Ui.Button(Ui.Text("✕", 12, Forge.Ink0, Forge.W.Bold), Close, Colors.White.WithAlpha(0.08), 16, 10, 6).Align(HorizontalAlignment.Right, VerticalAlignment.Top);
+        var compare = Ui.Button(Ui.Text("⇄ COMPARE", 9, Forge.PhaseMeasured, Forge.W.Black), () =>
+        {
+            Close();
+            picking = true;
+            picked.Clear();
+            picked.Add((e, rank));
+            Render(true);
+        }, Forge.PhaseMeasured.WithAlpha(0.1), 8, 10, 7, stroke: Forge.PhaseMeasured.WithAlpha(0.5)).Align(HorizontalAlignment.Right, VerticalAlignment.Top);
         var head = Ui.HStack(10, Ui.VStack(2, Ui.Text(e.Name, 16, Forge.Ink0, Forge.W.Black),
             Ui.Text(string.Join(" · ", new[] { e.SocModel, e.GpuName, DeviceInfo.OsLabel(e.Os, e.OsVersion) }.Where(s => !string.IsNullOrEmpty(s))), 10, Forge.Ink1, wrap: true)).Grow(),
-            Ui.VStack(2, Ui.Text(e.TotalScore.N0(), 22, Forge.Ink0, Forge.W.Black, align: TextAlignment.Right),
-                Ui.Text("TOTAL", 8, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Right)), close);
+            compare, close);
         var card = Ui.Box(Ui.VStack(16, head, Ui.Line(Colors.White.WithAlpha(0.1)), content), Forge.Raised, 24, 24, Colors.White.WithAlpha(0.1));
         card.MaxWidth = 760;
         card.Margin = new Thickness(30);
@@ -200,42 +377,68 @@ public sealed class BenchmarkBoard : Grid
         popup.Children.Clear();
         popup.Children.Add(scrim);
         Overlays.FadeIn(card);
-        _ = LoadDetail(e, content);
+        _ = LoadDetail(e, rank, content);
     }
 
-    private async Task LoadDetail(BenchmarkDto e, ContentControl content)
+    private async Task LoadDetail(BenchmarkDto e, int rank, ContentControl content)
     {
         FrameworkElement Message(string text, bool retry) => Ui.VStack(10, Ui.Text(retry ? $"⚠ {text}" : text, 12, retry ? Ramp.At(0.85) : Forge.Ink1, Forge.W.Bold, wrap: true,
-            align: TextAlignment.Center), retry ? Ui.Button("RETRY", () => _ = LoadDetail(e, content), Forge.Ink0.WithAlpha(0.1), Forge.Ink0).Align(HorizontalAlignment.Center) : null).Pad(30);
-        content.Content = new Spinner(Forge.PhasePreFlight).Align(HorizontalAlignment.Center).Pad(60);
+            align: TextAlignment.Center), retry ? Ui.Button("RETRY", () => _ = LoadDetail(e, rank, content), Forge.Ink0.WithAlpha(0.1), Forge.Ink0).Align(HorizontalAlignment.Center) : null).Pad(30);
+        content.Content = LeaderboardTab.Loading("LOADING RUN...");
         if (!NetworkMonitor.Shared.IsConnected) { content.Content = Message("Offline", true); return; }
         try
         {
             var d = await BenchmarkUpload.FetchDetail(e.Id);
-            content.Content = d == null ? Message("This run is no longer on the board", false) : DetailBody(d);
+            content.Content = d == null ? Message("This run is no longer on the board", false) : DetailBody(d, e, rank);
         }
         catch (Exception ex) { content.Content = Message(ex.Message, true); }
     }
 
-    private static FrameworkElement DetailBody(BenchmarkDetail d)
+    /// <summary>The run's total and rank, then each section as a card that opens into its groups and numbers (all closed to begin with).</summary>
+    private static FrameworkElement DetailBody(BenchmarkDetail d, BenchmarkDto e, int rank)
     {
-        var meta = string.Join(" · ", new[] { d.AppVersion is { } v ? $"app {v}" : null, d.OsBuild, d.CreatedAt.ToLocalTime().ToString("d MMM yyyy HH:mm") }.Where(s => !string.IsNullOrEmpty(s)));
-        var col = Ui.VStack(14, Ui.Text(meta, 9, Forge.Ink2, wrap: true));
+        var meta = string.Join(" · ", new[] { d.AppVersion is { } v ? $"app {v}" : null, d.OsBuild, d.Date, e.Runs > 1 ? $"best of {e.Runs} runs" : null }
+            .Where(s => !string.IsNullOrEmpty(s)));
+        var totalRow = Ui.HStack(8, Ui.VStack(2, Ui.Text("TOTAL SCORE", 10, Forge.Ink0.WithAlpha(0.4), Forge.W.Black),
+            Ui.Text(d.TotalScore.N0(), 26, Forge.Ink0, Forge.W.Black)).Grow(), rank > 0 ? Ui.Text($"#{rank}", 20, Ramp.At(1), Forge.W.Black) : null);
+        totalRow.Stretch = false;
+        foreach (FrameworkElement c in totalRow.Children) c.VerticalAlignment = VerticalAlignment.Center;
+        var col = Ui.VStack(8, Ui.Text(meta, 9, Forge.Ink2, wrap: true).Pad(0, 0, 0, 6), Ui.Box(totalRow, Colors.White.WithAlpha(0.03), 16, 14),
+            Ui.HStack(10, Tool("SHARE", () => ShareSheet.Run(ShowcaseRun.ForBoard(d, e))).Grow(),
+                Tool("PRESENT", () => PresentWindow.Open(ShowcaseRun.ForBoard(d, e))).Grow()),
+            Ui.Text("CLICK A SECTION FOR ITS NUMBERS", 8, Forge.Ink0.WithAlpha(0.3)).Pad(4, 4, 0, 0));
         foreach (var s in d.Sections)
         {
-            var box = Ui.VStack(10, Ui.HStack(8, Ui.Text(s.Title, 12, Forge.Ink0, Forge.W.Black), Ui.Spacer(), Ui.Text(s.Score.N0(), 14, Forge.PhaseMeasured, Forge.W.Black)));
+            var chevron = Ui.Text("▸", 12, Forge.Ink0.WithAlpha(0.4));
+            var head = Ui.HStack(8, Ui.Text(s.Title, 12, Forge.Ink0, Forge.W.Black).Grow(), Ui.Text(s.Score.N0(), 14, Forge.PhaseMeasured, Forge.W.Black), chevron);
+            head.Stretch = false;
+            head.Background = Brushes.Transparent;   // the whole line takes the click, not just its text
+            head.Cursor = Cursors.Hand;
+            foreach (FrameworkElement c in head.Children) c.VerticalAlignment = VerticalAlignment.Center;
+            var groups = Ui.VStack(10);
+            groups.Visibility = Visibility.Collapsed;
             foreach (var g in s.Groups)
             {
-                box.Children.Add(Ui.Line(Forge.Hairline));
-                box.Children.Add(Ui.HStack(8, Ui.Text(g.Title.ToUpperInvariant(), 9, Forge.Ink1, Forge.W.Bold), Ui.Spacer(),
+                groups.Children.Add(Ui.Line(Forge.Hairline));
+                groups.Children.Add(Ui.HStack(8, Ui.Text(g.Title.ToUpperInvariant(), 9, Forge.Ink1, Forge.W.Bold), Ui.Spacer(),
                     g.Points is { } p ? Ui.Text($"{p.N0()} PTS", 9, Forge.Ink1, Forge.W.Bold) : null));
                 foreach (var r in g.Rows)
-                    box.Children.Add(Ui.HStack(12, Ui.Text(r.Label, 10, Forge.Ink1), Ui.Text(r.Value, 10, Forge.Ink0, Forge.W.Bold, wrap: true, align: TextAlignment.Right).Grow()));
+                    groups.Children.Add(Ui.HStack(12, Ui.Text(r.Label, 10, Forge.Ink1), Ui.Text(r.Value, 10, Forge.Ink0, Forge.W.Bold, wrap: true, align: TextAlignment.Right).Grow()));
             }
-            col.Children.Add(Ui.Box(box, Colors.White.WithAlpha(0.03), 16, 14, Forge.Hairline));
+            head.MouseLeftButtonUp += (_, _) =>
+            {
+                bool open = groups.Visibility != Visibility.Visible;
+                groups.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+                chevron.Text = open ? "▾" : "▸";
+            };
+            col.Children.Add(Ui.Box(Ui.VStack(10, head, groups), Colors.White.WithAlpha(0.03), 16, 14, Forge.Hairline));
         }
         return col;
     }
+
+    /// <summary>A run's SHARE / PRESENT / EXPORT CSV in a detail.</summary>
+    internal static Button Tool(string label, Action act) => Ui.Button(label, act, Forge.PhaseMeasured.WithAlpha(0.1), Forge.PhaseMeasured, 10,
+        Forge.W.Black, 8, 9, stroke: Forge.PhaseMeasured.WithAlpha(0.4));
 
     private sealed class ScoreBar(double fraction) : FrameworkElement
     {
@@ -260,29 +463,43 @@ public sealed class StressBoard : Grid
     private readonly Flex list = Ui.VStack(10);
     private readonly ContentControl filters = new(), compareBar = new();
     private readonly Grid popup = new();
+    private readonly Button refresh;
+    private readonly LazyRows rows;
     private readonly List<PendingTestResult> compare = [];
     private string? uploadError;
     private Guid? uploading;
 
+    /// <summary>The platform tab chosen on the page (null: all); the list is filtered here, so changing it fetches nothing.</summary>
+    public int? Platform { set { platform = value; if (loaded) Render(); } }
+
     public StressBoard()
     {
-        var refresh = Ui.Button(Ui.Text("↻", 18, Forge.Ink0, Forge.W.Bold), () => _ = Load(), Colors.Transparent, 8, 6, 2);
+        refresh = Ui.Button(Ui.Text("↻", 18, Forge.Ink0, Forge.W.Bold), () => _ = Load(), Colors.Transparent, 8, 6, 2);
         var head = Ui.HStack(0, Ui.VStack(2, Ui.Text("GLOBAL LEADERBOARD", 18, Forge.Ink0, Forge.W.Black),
-            Ui.Text("Select 2 tests to compare side by side", 10, Forge.Ink1)), Ui.Spacer(), refresh);
-        var (search, _) = LeaderboardTab.Search("Search model, vendor, or OS…", q => { query = q; Render(); });
-        Children.Add(Ui.Scroll(Ui.VStack(10, head, search, filters, list).Pad(16, 12, 16, 80)));
+            Ui.Text("Select 2 Tests to Compare side-by-side", 10, Forge.Ink1)), Ui.Spacer(), refresh);
+        var (search, _) = LeaderboardTab.Search("Search model, vendor, or OS...", q => { query = q; Render(); });
+        var scroll = Ui.Scroll(Ui.VStack(10, head, search, filters, list).Pad(16, 12, 16, 80));
+        rows = new LazyRows(scroll, list);
+        Children.Add(scroll);
         compareBar.VerticalAlignment = VerticalAlignment.Bottom;
         compareBar.Margin = new Thickness(16);
         Children.Add(compareBar);
         Children.Add(popup);
-        PendingResultStore.Shared.Changed += Render;
+        PendingResultStore.Shared.Changed += () => Render(true);
+        // the board reloads when the connection comes back (and shows "Offline" when it goes), for as long as it is on screen
+        Loaded += (_, _) => { NetworkMonitor.Shared.Changed -= ConnectionChanged; NetworkMonitor.Shared.Changed += ConnectionChanged; };
+        Unloaded += (_, _) => NetworkMonitor.Shared.Changed -= ConnectionChanged;
         BuildFilters();
     }
+
+    private void ConnectionChanged() { if (!loading) _ = Load(); }
 
     public void LoadIfEmpty() { if (!loaded && !loading) _ = Load(); else Render(); }
 
     private async Task Load()
     {
+        if (loading) return;
+        if (!NetworkMonitor.Shared.IsConnected) { error = "Offline"; Render(); return; }
         loading = true; error = ""; Render();
         try { entries = await Api.FetchLeaderboard(); loaded = true; }
         catch (Exception e) { error = e.Message; }
@@ -290,7 +507,6 @@ public sealed class StressBoard : Grid
         Render();
     }
 
-    private static string PlatformName(int? p) => p switch { 1 => "iOS", 2 => "Android", 3 => "macOS", 4 => "Windows", _ => "All" };
     private static string DurationName(int t) => t switch { 1 => "15 MIN", 2 => "30 MIN", _ => "5 MIN" };
 
     private void BuildFilters()
@@ -306,18 +522,20 @@ public sealed class StressBoard : Grid
         }
         Chip(myDevice, $"Device: {DeviceInfo.Model}", () => myDevice = !myDevice);
         Chip(myOs, $"OS: Windows {DeviceInfo.OsVersion}", () => myOs = !myOs);
-        Chip(platform != null, $"Platform: {PlatformName(platform)}", () => platform = platform switch { null => 4, 4 => 2, 2 => 1, 1 => 3, _ => null });
         Chip(durationFilter != null, $"Duration: {(durationFilter is { } d ? DurationName(d) : "All")}",
             () => durationFilter = durationFilter switch { null => 0, 0 => 1, 1 => 2, _ => null });
         filters.Content = row;
     }
 
-    private void Render()
+    /// <summary>[keep]: only what is marked changed (a pick, a pending run), so the list stays as far down as it was scrolled.</summary>
+    private void Render(bool keep = false)
     {
+        refresh.IsEnabled = !loading;
+        rows.Stop();
         list.Children.Clear();
         PendingSection();
         list.Children.Add(Ui.Text("ONLINE RANKINGS", 11, Forge.Ink1, Forge.W.Bold).Pad(0, 4));
-        if (loading) { list.Children.Add(new Spinner(Forge.PhasePreFlight).Align(HorizontalAlignment.Center).Pad(30)); }
+        if (loading) { list.Children.Add(LeaderboardTab.Loading("LOADING LEADERBOARD...", 30)); }
         else if (error.Length > 0)
         {
             list.Children.Add(Ui.VStack(10, Ui.Text("COULD NOT LOAD LEADERBOARD", 12, Forge.Ink0, Forge.W.Bold, align: TextAlignment.Center),
@@ -326,21 +544,24 @@ public sealed class StressBoard : Grid
         }
         else
         {
-            var ranked = entries.OrderByDescending(e => e.StabilityPercentage).Select((e, i) => (rank: i + 1, e)).ToList();
+            var ranked = entries.Where(e => platform == null || e.Os == platform).OrderByDescending(e => e.StabilityPercentage)
+                .Select((e, i) => (rank: i + 1, e)).ToList();
             string q = query.Trim().ToLowerInvariant();
             var shown = ranked.Where(x =>
                 (q.Length == 0 || x.e.DeviceModel.ToLowerInvariant().Contains(q) || x.e.DeviceManufacturer.ToLowerInvariant().Contains(q) || x.e.OsVersion.ToLowerInvariant().Contains(q))
                 && (!myDevice || string.Equals(x.e.DeviceModel, DeviceInfo.Model, StringComparison.OrdinalIgnoreCase))
                 && (!myOs || x.e.Os == DeviceInfo.OsPlatform && x.e.OsVersion.Contains(DeviceInfo.OsVersion))
-                && (platform == null || x.e.Os == platform)
-                && (durationFilter == null || x.e.Type == durationFilter)).Take(300).ToList();
-            if (shown.Count == 0) list.Children.Add(Ui.Text("NO ENTRIES FOUND", 11, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center).Pad(0, 40, 0, 0));
-            foreach (var (rank, e) in shown) list.Children.Add(Row(rank, e));
+                && (durationFilter == null || x.e.Type == durationFilter)).ToList();
+            if (ranked.Count == 0 && platform is { } p)
+                list.Children.Add(Ui.Text($"No {LeaderboardTab.PlatformName(p)} runs yet.", 11, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center).Pad(0, 40, 0, 0));
+            else if (shown.Count == 0) list.Children.Add(Ui.Text("NO ENTRIES FOUND", 11, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center).Pad(0, 40, 0, 0));
+            rows.Fill(shown.Count, i => Row(shown[i].rank, shown[i].e), keep);
         }
         RenderCompareBar();
     }
 
-    private static PendingTestResult ToPending(HammerDto e, List<DeviceHammerStamp>? stamps = null) => new()
+    /// <summary>A board row as a run to compare (the online run's curve is fetched when it is needed).</summary>
+    internal static PendingTestResult ToPending(HammerDto e, List<DeviceHammerStamp>? stamps = null) => new()
     {
         Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
         DurationSeconds = e.Type == 0 ? 300 : e.Type == 1 ? 900 : 1800,
@@ -350,7 +571,7 @@ public sealed class StressBoard : Grid
         SessionId = e.Id,
     };
 
-    private static bool Same(PendingTestResult a, PendingTestResult b) => a.SessionId > 0 && b.SessionId > 0 ? a.SessionId == b.SessionId : a.Id == b.Id;
+    internal static bool Same(PendingTestResult a, PendingTestResult b) => a.SessionId > 0 && b.SessionId > 0 ? a.SessionId == b.SessionId : a.Id == b.Id;
 
     private void ToggleCompare(PendingTestResult run)
     {
@@ -361,14 +582,14 @@ public sealed class StressBoard : Grid
             if (compare.Count > 0 && (compare[0].TestThreadingType ?? 1) != (run.TestThreadingType ?? 1))
             {
                 string A(int? t) => (t ?? 1) == 0 ? "Single Thread" : "Multi Thread";
-                MessageBox.Show(Window.GetWindow(this)!, $"Cannot compare {A(compare[0].TestThreadingType)} with {A(run.TestThreadingType)} test! Please select matching test types.",
-                    "Comparison Mismatch");
+                BoardNotice.Show(popup, "COMPARISON MISMATCH",
+                    $"Cannot compare {A(compare[0].TestThreadingType)} with {A(run.TestThreadingType)} test! Please select matching test types.");
                 return;
             }
             compare.Add(run);
             if (compare.Count >= 2) { OpenComparison(); }
         }
-        Render();
+        Render(true);
     }
 
     private void RenderCompareBar()
@@ -376,8 +597,11 @@ public sealed class StressBoard : Grid
         if (compare.Count == 0) { compareBar.Content = null; return; }
         string mode = (compare[0].TestThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI THREAD";
         var text = Ui.VStack(2, Ui.Text($"{compare.Count} / 2 TESTS SELECTED ({mode})", 10, Colors.Black, Forge.W.Black),
-            Ui.Text(compare.Count == 1 ? $"Pick 1 more {mode} test to compare" : "Click to open the side-by-side analysis", 9, Colors.Black.WithAlpha(0.7)));
-        var row = Ui.HStack(8, text.Grow(), Ui.Button("CLEAR", () => { compare.Clear(); Render(); }, Colors.Black.WithAlpha(0.2), Colors.Black, 9, radius: 12, padV: 4));
+            Ui.Text(compare.Count == 1 ? $"Click 1 more {mode} test to compare!" : "Click to view detailed side-by-side analysis", 9, Colors.Black.WithAlpha(0.7)));
+        var row = Ui.HStack(8, Ui.Text("⚖", 16, Colors.Black).Align(HorizontalAlignment.Left, VerticalAlignment.Center), text.Grow(),
+            Ui.Button("CLEAR", () => { compare.Clear(); Render(true); }, Colors.Black.WithAlpha(0.2), Colors.Black, 9, radius: 12, padV: 4));
+        foreach (FrameworkElement c in row.Children) c.VerticalAlignment = VerticalAlignment.Center;
+        row.Stretch = false;
         var b = Ui.Box(row, Forge.PhaseMeasured, 16, 14);
         b.Cursor = Cursors.Hand;
         b.MouseLeftButtonUp += (_, _) => { if (compare.Count >= 2) OpenComparison(); };
@@ -396,7 +620,7 @@ public sealed class StressBoard : Grid
             string thread = (p.TestThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI";
             var top = Ui.HStack(8,
                 Ui.VStack(2, Ui.Text($"OFFLINE RUN · {DurationName(p.TestDurationType)} · {thread}", 9, amber, Forge.W.Black),
-                    Ui.Text($"{p.DeviceManufacturer} {p.DeviceModel}", 13, Forge.Ink0, Forge.W.Bold)).Grow(),
+                    Ui.Text(p.Name, 13, Forge.Ink0, Forge.W.Bold)).Grow(),
                 Ui.VStack(2, Ui.Text($"{p.FinalStability:0.0}%", 14, StabilityChart.ScoreColor(p.FinalStability), Forge.W.Black, align: TextAlignment.Right),
                     Ui.Text("STABILITY", 7, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Right)));
             var actions = Ui.HStack(8, Ui.Button(selected ? "✓" : "⚖", () => ToggleCompare(p), selected ? Forge.PhaseMeasured : Colors.White.WithAlpha(0.08),
@@ -404,8 +628,18 @@ public sealed class StressBoard : Grid
             if (!ValidityFlag.Submittable(p.ValidityFlags ?? 0))
                 actions.Children.Add(Ui.Text("NOT VERIFIED", 9, Ramp.At(0.5), Forge.W.Bold).Align(HorizontalAlignment.Left, VerticalAlignment.Center));
             else if (NetworkMonitor.Shared.IsConnected)
-                actions.Children.Add(Ui.Button(uploading == p.Id ? "SUBMITTING…" : "SUBMIT", () => _ = Submit(p), Forge.PhasePreFlight, Colors.White, 9, padV: 6,
-                    enabled: uploading == null));
+            {
+                if (uploading == p.Id)
+                {
+                    var uploadingRow = Ui.HStack(6, new Spinner(Forge.PhasePreFlight) { LayoutTransform = new ScaleTransform(0.4, 0.4) },
+                        Ui.Text("UPLOADING...", 9, Forge.PhasePreFlight));
+                    uploadingRow.Stretch = false;
+                    foreach (FrameworkElement c in uploadingRow.Children) c.VerticalAlignment = VerticalAlignment.Center;
+                    actions.Children.Add(uploadingRow.Align(HorizontalAlignment.Left, VerticalAlignment.Center));
+                }
+                else
+                    actions.Children.Add(Ui.Button("SUBMIT", () => _ = Submit(p), Forge.PhasePreFlight, Colors.White, 9, padV: 6, enabled: uploading == null));
+            }
             else
                 actions.Children.Add(Ui.Text("TURN ON INTERNET TO SUBMIT", 9, Ramp.At(0.5), Forge.W.Bold).Align(HorizontalAlignment.Left, VerticalAlignment.Center));
             actions.Children.Add(Ui.Spacer());
@@ -419,11 +653,16 @@ public sealed class StressBoard : Grid
 
     private async Task Submit(PendingTestResult p)
     {
-        uploading = p.Id; uploadError = null; Render();
-        try { await Api.SubmitStress(p); PendingResultStore.Shared.Delete(p.Id); }
+        uploading = p.Id; uploadError = null; Render(true);
+        try
+        {
+            var id = await Api.SubmitStress(p);
+            PendingResultStore.Shared.Delete(p.Id);
+            if (id is { } serverId) RunHistoryStore.Shared.SetServerId(p.Id, serverId);   // the run's page, for sharing it
+        }
         catch (Exception e) { uploadError = e.Message; }
         uploading = null;
-        Render();
+        Render(true);
         _ = Load();
     }
 
@@ -435,7 +674,7 @@ public sealed class StressBoard : Grid
         var badge = rank <= 3
             ? (FrameworkElement)new Medal(rank)
             : Ui.Box(Ui.Text($"#{rank}", 9, Forge.Ink1, Forge.W.Bold).Align(HorizontalAlignment.Center, VerticalAlignment.Center), Colors.White.WithAlpha(0.04), 8).Size(28, 28);
-        var info = Ui.VStack(2, Ui.Text($"{e.DeviceManufacturer} {e.DeviceModel}", 12, Forge.Ink0, Forge.W.Bold),
+        var info = Ui.VStack(2, Ui.Text(e.Name, 12, Forge.Ink0, Forge.W.Bold),
             Ui.HStack(4, Ui.Text(DeviceInfo.OsLabel(e.Os, e.OsVersion), 8, Forge.Ink1), Ui.Text("•", 8, Forge.Ink1),
                 Ui.Text(single ? "1 THREAD" : "MULTI", 8, single ? Colors.Orange : Colors.LimeGreen, Forge.W.Bold)));
         var score = Ui.VStack(2, Ui.Text($"{e.StabilityPercentage:0.0}%", 13, StabilityChart.ScoreColor(e.StabilityPercentage), Forge.W.Black, align: TextAlignment.Right),
@@ -473,10 +712,10 @@ public sealed class StressBoard : Grid
 
     private void OpenDetail(HammerDto e)
     {
-        var content = new ContentControl { Content = new Spinner(Forge.PhasePreFlight).Align(HorizontalAlignment.Center).Pad(60) };
+        var content = new ContentControl { Content = LeaderboardTab.Loading("LOADING STAMP DATA...") };
         void Close() => popup.Children.Clear();
         var close = Ui.Button(Ui.Text("✕", 12, Forge.Ink0, Forge.W.Bold), Close, Colors.White.WithAlpha(0.08), 16, 10, 6);
-        var head = Ui.HStack(8, Ui.VStack(2, Ui.Text($"{e.DeviceManufacturer} {e.DeviceModel}", 16, Forge.Ink0, Forge.W.Black),
+        var head = Ui.HStack(8, Ui.VStack(2, Ui.Text(e.Name, 16, Forge.Ink0, Forge.W.Black),
             Ui.Text($"{e.DeviceManufacturer} • {DeviceInfo.OsLabel(e.Os, e.OsVersion)}", 10, Forge.Ink1)).Grow(), close);
         var card = Ui.Box(Ui.VStack(16, head, Ui.Line(Colors.White.WithAlpha(0.1)), content), Color.FromRgb(26, 26, 26), 24, 24, Colors.White.WithAlpha(0.1));
         card.MaxWidth = 760;
@@ -493,6 +732,7 @@ public sealed class StressBoard : Grid
 
     private async Task LoadDetail(HammerDto e, ContentControl content)
     {
+        content.Content = LeaderboardTab.Loading("LOADING STAMP DATA...");
         try
         {
             var stamps = await Api.FetchStamps(e.Id);
@@ -503,12 +743,17 @@ public sealed class StressBoard : Grid
             foreach (var s in stamps)
                 if (s.ThermalState != last) { events.Add((s.ElapsedMs / 1000.0, (ThermalLevel)Math.Clamp(s.ThermalState, 0, 3))); last = s.ThermalState; }
             FrameworkElement R(string l, string v, Color? c = null) => Ui.HStack(0, Ui.Text(l, 10, Forge.Ink1, Forge.W.Bold), Ui.Spacer(), Ui.Text(v, 12, c ?? Forge.Ink0, Forge.W.Bold));
-            var rows = Ui.Box(Ui.VStack(12, R("TEST TYPE", DurationName(e.Type)), R("STABILITY", $"{e.StabilityPercentage:0.0}%", StabilityChart.ScoreColor(e.StabilityPercentage)),
+            var summary = Ui.Box(Ui.VStack(12, R("TEST TYPE", DurationName(e.Type)), R("STABILITY", $"{e.StabilityPercentage:0.0}%", StabilityChart.ScoreColor(e.StabilityPercentage)),
                 R("PEAK SCORE (IPS)", ((long)max).ToString("N0")), R("MIN SCORE (IPS)", ((long)min).ToString("N0")), R("SAMPLES RECORDED", stamps.Count.ToString())),
                 Colors.White.WithAlpha(0.03), 16, 14);
             var add = Ui.Button("⚖ ADD TO COMPARISON", () => { popup.Children.Clear(); ToggleCompare(ToPending(e, stamps)); },
                 Forge.PhaseMeasured.WithAlpha(0.12), Forge.PhaseMeasured, 11, Forge.W.Bold, 14, 12, stroke: Forge.PhaseMeasured.WithAlpha(0.3));
-            content.Content = Ui.VStack(20, rows, Ui.Text("PERFORMANCE CURVE", 10, Forge.Ink1, Forge.W.Black), new StabilityChart(points, events), add);
+            var tools = Ui.HStack(10,
+                BenchmarkBoard.Tool("SHARE", () => ShareSheet.Run(ShowcaseRun.ForBoard(e, stamps))).Grow(),
+                BenchmarkBoard.Tool("PRESENT", () => PresentWindow.Open(ShowcaseRun.ForBoard(e, stamps))).Grow(),
+                BenchmarkBoard.Tool("EXPORT CSV", () => ShareSheet.SaveCsv(ShareLinks.CsvFileName(true, e.Name, e.CreatedAt?.ToLocalTime() ?? DateTime.Now),
+                    RunCsv.BoardStress(stamps.Select(x => (x.ElapsedMs, x.Score, x.ThermalState))))).Grow());
+            content.Content = Ui.VStack(20, summary, tools, Ui.Text("PERFORMANCE CURVE", 10, Forge.Ink1, Forge.W.Black), new StabilityChart(points, events), add);
         }
         catch (Exception ex)
         {
@@ -522,64 +767,11 @@ public sealed class StressBoard : Grid
 
     private void OpenComparison()
     {
-        var a = compare[0];
-        var b = compare[1];
-        void Close() { popup.Children.Clear(); compare.Clear(); Render(); }
-        var view = new ContentControl();
+        void Close() { popup.Children.Clear(); compare.Clear(); Render(true); }
         var scrim = new Grid { Background = Brushes.Black };
-        scrim.Children.Add(Ui.Scroll(view));
+        scrim.Children.Add(Ui.Scroll(new RunComparison(compare.ElementAtOrDefault(0), compare.ElementAtOrDefault(1), entries, Close)));
         popup.Children.Clear();
         popup.Children.Add(scrim);
         Overlays.FadeIn(scrim, 1);
-        _ = FillComparison(a, b, view, Close);
-    }
-
-    private static async Task<PendingTestResult> WithStamps(PendingTestResult r)
-    {
-        if (r.Stamps.Count > 0 || r.SessionId <= 0) return r;
-        try { return r with { Stamps = await Api.FetchStamps(r.SessionId) }; } catch (Exception) { return r; }
-    }
-
-    private static async Task FillComparison(PendingTestResult rawA, PendingTestResult rawB, ContentControl view, Action close)
-    {
-        view.Content = new Spinner(Forge.PhaseMeasured).Align(HorizontalAlignment.Center).Pad(80);
-        var a = await WithStamps(rawA);
-        var b = await WithStamps(rawB);
-        var an = ComparisonEngine.Analyze(a, b);
-        var cyan = DualStabilityChart.ColorA;
-        var amber = DualStabilityChart.ColorB;
-        bool single = (a.TestThreadingType ?? 1) == 0;
-        var modeChip = Ui.Box(Ui.Text(single ? "1 THREAD" : "MULTI", 9, Forge.PhaseMeasured, Forge.W.Bold), Forge.PhaseMeasured.WithAlpha(0.15), 6);
-        modeChip.Padding = new Thickness(7, 3, 7, 3);
-        var titleRow = Ui.HStack(8, Ui.Text("⚖ COMPARISON ENGINE", 14, Colors.White, Forge.W.Black), modeChip);
-        titleRow.Stretch = false;
-        var title = Ui.HStack(8, Ui.VStack(4, titleRow, Ui.Text(single ? "Single Thread Benchmark" : "Multi Thread Benchmark", 10, Forge.Ink1)).Grow(),
-            Ui.Button("✕ CLOSE", close, Colors.White.WithAlpha(0.1), Colors.White, 10, radius: 16, padV: 8));
-        FrameworkElement Picked(string label, Color c, PendingTestResult r) => Ui.Box(Ui.VStack(6, Ui.Text(label, 9, c, Forge.W.Black),
-            Ui.Text($"{r.DeviceManufacturer} {r.DeviceModel}", 12, Forge.Ink0, Forge.W.Bold),
-            Ui.Text($"OS {r.OsVersion}", 9, Forge.Ink1)), c.WithAlpha(0.07), 18, 14, c.WithAlpha(0.3)).Grow();
-        FrameworkElement Metric(string t, string va, string vb, string? delta)
-        {
-            var deltaChip = delta == null ? null : Ui.Text(delta, 7, delta.StartsWith('+') ? Color.FromRgb(51, 230, 102) : Color.FromRgb(255, 89, 89), Forge.W.Bold);
-            return Ui.Box(Ui.VStack(8, Ui.Text(t, 8, Forge.Ink1, Forge.W.Bold),
-                Ui.VStack(2, Ui.Text("RUN A", 7, cyan, Forge.W.Bold), Ui.Text(va, 13, Colors.White, Forge.W.Bold)),
-                Ui.Line(Colors.White.WithAlpha(0.07)),
-                Ui.VStack(2, Ui.HStack(4, Ui.Text("RUN B", 7, amber, Forge.W.Bold), deltaChip), Ui.Text(vb, 13, Colors.White, Forge.W.Bold))),
-                Colors.White.WithAlpha(0.04), 16, 12).Grow();
-        }
-        string Onset(int? s) => s is { } v ? $"{v}s" : "None";
-        var metrics = Ui.Box(Ui.VStack(14, Ui.Text("⚡ COMPARATIVE DIAGNOSTICS", 10, Forge.Ink1, Forge.W.Bold),
-            Ui.HStack(10, Metric("FINAL STABILITY", $"{a.FinalStability:0.0}%", $"{b.FinalStability:0.0}%", null),
-                Metric("PEAK SCORE (IPS)", an.PeakA.ToString("F0"), an.PeakB.ToString("F0"), $"{an.PeakDeltaPct:+0.0;-0.0}%")),
-            Ui.HStack(10, Metric("THROTTLE ONSET", Onset(an.OnsetA), Onset(an.OnsetB), null),
-                Metric("AVG SCORE (IPS)", an.AvgA.ToString("F0"), an.AvgB.ToString("F0"), $"{an.AvgDeltaPct:+0.0;-0.0}%"))),
-            Color.FromArgb(178, 20, 20, 20), 22, 16);
-        var insights = Ui.Box(Ui.VStack(10, Ui.Text("ANALYTICAL INSIGHTS", 11, cyan, Forge.W.Bold), Ui.Text(an.Summary, 11, Colors.White.WithAlpha(0.85), wrap: true)),
-            Color.FromRgb(28, 28, 28), 22, 18, cyan.WithAlpha(0.2));
-        var col = Ui.VStack(20, title, Ui.HStack(12, Picked("RUN A", cyan, a), Picked("RUN B", amber, b)),
-            new DualStabilityChart(ComparisonEngine.Points(a), $"Run A ({a.DeviceModel})", ComparisonEngine.Points(b), $"Run B ({b.DeviceModel})"),
-            metrics, insights).Pad(16);
-        col.MaxWidth = 860;
-        view.Content = col;
     }
 }

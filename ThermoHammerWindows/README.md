@@ -18,6 +18,14 @@ and `Assets/` (the editing photos as JPEG, the ONNX models).
 
 The ONNX models are made from the phones' `.tflite` files by `BenchmarkScene/build_onnx_models.py`.
 
+Unit tests for the logic with no Windows calls in it (share links and texts, CSV export, the stress curve, FIND MY LOST SPEED, the
+benchmark's update impact): `dotnet test Tests` — plain .NET, so they run on a Mac too.
+
+## Microsoft Store
+
+`msix/build.sh` makes the x64 and ARM64 MSIX packages the Store takes (see `msix/README.md`: Partner Center identity, the unsigned-package
+note, trying a package on a PC). The version is `<Version>` in `ThermoHammer.csproj`, kept equal to the phones' (2.1.0).
+
 ## What runs where
 
 | Section | How |
@@ -28,8 +36,12 @@ The ONNX models are made from the phones' `.tflite` files by `BenchmarkScene/bui
 | UX web tests | the phones' pages in WebView2 (`UI/UxStage.cs`), laid out 1280×720 at a device pixel ratio of 1.5 |
 | UX photo editing | Direct3D 11 (`Engine/Ux/PhotoEditScene.cs`) |
 | UX video, export | Media Foundation: DXVA decoders, hardware encoders through the sink writer, a D3D11 video processor between them |
-| AI | ONNX Runtime: CPU (int8), DirectML on the GPU (float16); the NPU row needs a vendor provider (QNN, OpenVINO, Vitis AI) and scores 0 until one is added |
-| LLM | llama.cpp through `benchllm.dll`: CPU and Vulkan |
+| AI | ONNX Runtime from Windows ML (self-contained): CPU (int8), DirectML on the GPU (float16), and the NPU (int8) through the vendor's provider (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI) that Windows ML downloads on Windows 11 24H2+ (`Engine/Ai/AiNpu.cs`: only on a PC that has an NPU, only the NPU providers, the first run may download one). **The NPU row has never run on real NPU hardware**; where it can't run it says why and scores 0 |
+| LLM | llama.cpp through `benchllm.dll`: CPU and Vulkan; the Vulkan device is matched to the adapter the other GPU tests use (`Engine/Llm/LlmGpuChoice.cs`) |
+
+The benchmark runs full screen on the window's monitor: the browser tests render a fixed 1920×1080 physical pixels on the phones, and the
+stage is as big as the window, so a small window would render fewer pixels and score higher. A section that crashed the app twice in the same build
+is skipped with that reason (`Engine/Ux/CrashGuard.cs`); video export falls back to software decoding when no hardware decoder takes the clip.
 
 ## Checks without a window
 

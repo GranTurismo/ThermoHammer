@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the Windows app's pure logic — share links and texts, CSV export, the stress curve, the speed check, the
+    benchmark's update impact and the record's section scores. The app itself is WPF and only builds for Windows, so the tests
+    compile just the engine files with no Windows calls in them (linked below) on plain .NET: `dotnet test` on a Mac works too.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>ThermoHammer.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Engine\BenchmarkModels.cs" Link="Engine\BenchmarkModels.cs" />
+    <Compile Include="..\Engine\BenchmarkRecord.cs" Link="Engine\BenchmarkRecord.cs" />
+    <Compile Include="..\Engine\BenchmarkUpdateImpact.cs" Link="Engine\BenchmarkUpdateImpact.cs" />
+    <Compile Include="..\Engine\Native.cs" Link="Engine\Native.cs" />
+    <Compile Include="..\Engine\RunCsv.cs" Link="Engine\RunCsv.cs" />
+    <Compile Include="..\Engine\ShareLinks.cs" Link="Engine\ShareLinks.cs" />
+    <Compile Include="..\Engine\SpeedCheckLogic.cs" Link="Engine\SpeedCheckLogic.cs" />
+    <Compile Include="..\Engine\StressCurve.cs" Link="Engine\StressCurve.cs" />
+    <Compile Include="..\Engine\Telemetry.cs" Link="Engine\Telemetry.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

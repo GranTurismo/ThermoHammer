@@ -309,6 +309,9 @@ public static class AiTests
     public static readonly AiTest[] All = [AiTest.Classify, AiTest.Detect, AiTest.Segment, AiTest.Upscale, AiTest.Depth, AiTest.Sound];
     public static readonly AiAccel[] Accels = [AiAccel.Cpu, AiAccel.Gpu, AiAccel.Npu];
     public static string Label(this AiAccel a) => a switch { AiAccel.Cpu => "CPU", AiAccel.Gpu => "GPU", _ => "NPU" };
+    /// <summary>What the models run in on this accelerator (AiSection's labels): the phones run INT8 everywhere, the PC's CPU and NPU the
+    /// INT8 (QDQ) model, its GPU (DirectML) the same model as float16 with the weights dequantized.</summary>
+    public static string Precision(this AiAccel a) => a == AiAccel.Gpu ? "FP16" : "INT8";
 }
 
 public sealed record AiRun(AiTest Test, AiAccel Accel, double Ips, string? Error = null);

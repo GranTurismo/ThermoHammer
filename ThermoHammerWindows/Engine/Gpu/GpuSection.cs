@@ -13,9 +13,11 @@ public sealed class GpuSection : IBenchmarkSection
             if (!engine.IsActive) return;
             if (test.RayTracing())
             {
-                // GPU Test 3 runs on Direct3D 12 with DXR ray queries, on its own device
-                var why = Rt.NeonCityRt.Problem();
+                // GPU Test 3 runs on Direct3D 12 with DXR ray queries, on its own device (asked once, when the run was planned)
+                var why = BenchmarkEngine.RayTracingSkipReason;
                 if (why != null) { r.Gpu.Add(GpuTestResult.Unsupported(test)); r.RayTracingProblem = why; continue; }
+                // the test is on the stage before its scene is built, as on Android: the building takes a while and the stage stays on it
+                engine.PublishGpu(test, -1, 0, $"{bench.Name} · {Rt.NeonCityRt.Width}×{Rt.NeonCityRt.Height} offscreen · DXR");
                 GpuTestResult? res;
                 try { res = RunRayTracing(engine, test); }
                 catch (Exception e) when (e is not OperationCanceledException)
@@ -29,10 +31,10 @@ public sealed class GpuSection : IBenchmarkSection
                 r.Gpu.Add(res);
                 continue;
             }
-            using var scene = MakeScene(test, bench);
             float seconds = test.Seconds();
             string detail = $"{bench.Name} · {GpuBench.Width}×{GpuBench.Height} offscreen";
-            engine.PublishGpu(test, -1, 0, detail);
+            engine.PublishGpu(test, -1, 0, detail);   // on the stage first: building the scene compiles its shaders, which takes a moment
+            using var scene = MakeScene(test, bench);
             var (starts, durs) = bench.Run(scene, seconds, () => engine.IsActive, (t, fps) => engine.PublishGpu(test, fps, t / seconds, detail));
             if (!engine.IsActive) return;
             r.Gpu.Add(BenchmarkScore.Summarize(test, starts, durs) ?? throw new GpuError($"{test.Title()}: too few frames rendered"));

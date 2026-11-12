@@ -71,6 +71,24 @@ public sealed class BenchmarkEngine
     public string? Error { get; private set; }
     public BenchmarkRecord? Record { get; private set; }
     public bool IsRunning => Current is Phase.Preparing or Phase.Running;
+    /// <summary>The run was stopped by hand (hold to abort, or the window closed): nothing was scored and nothing is kept. Stays up
+    /// until <see cref="DismissResult"/>, so the window can say "TEST CANCELLED" after the stage is gone.</summary>
+    public bool Cancelled { get; private set; }
+
+    /// <summary>The GPU tests this PC will run, in order: Test 3 needs DirectX Raytracing 1.1 and is left out where it's missing
+    /// (it scores 0 there). All three until the run has worked it out — the progress bar sizes its segments from this.</summary>
+    public GpuTest[] GpuPlan => gpuPlan;
+    private volatile GpuTest[] gpuPlan = GpuTests.All;
+
+    private static readonly Lazy<string?> rayTracingSkip = new(() =>
+    {
+        try { return Gpu.Rt.NeonCityRt.Problem(); }
+        catch (Exception e) { return $"the ray tracing check failed: {e.Message.Trim()}"; }
+    });
+
+    /// <summary>Why this PC can't run GPU Test 3 (no DirectX Raytracing 1.1), or null. Asked once — it builds a Direct3D 12 device — so call it
+    /// from a worker thread the first time (the home screen's benchmark card and the run's plan share the answer).</summary>
+    public static string? RayTracingSkipReason => rayTracingSkip.Value;
 
     /// <summary>Raised on the UI thread whenever something on the stage changed.</summary>
     public event Action? Changed;
@@ -226,7 +244,8 @@ public sealed class BenchmarkEngine
         if (IsRunning) return;
         lock (gate) { active = true; lostFront = false; }
         Result = null; Error = null; Record = null; CpuTest = null; MemTest = null; CpuProgress = null; MemProgress = null;
-        InBackground = false;
+        InBackground = false; Cancelled = false;
+        gpuPlan = GpuTests.All;
         Current = Phase.Preparing;
         Win32.SetThreadExecutionState(Win32.EsContinuous | Win32.EsSystemRequired | Win32.EsDisplayRequired);
         var t = new Thread(RunAll, 8 << 20) { IsBackground = true, Name = "benchmark", Priority = ThreadPriority.AboveNormal };
@@ -238,7 +257,7 @@ public sealed class BenchmarkEngine
 
     public void DismissResult()
     {
-        Current = Phase.Idle; Result = null; Record = null; Error = null;
+        Current = Phase.Idle; Result = null; Record = null; Error = null; Cancelled = false;
         Changed?.Invoke();
     }
 
@@ -275,6 +294,9 @@ public sealed class BenchmarkEngine
             r.StartCpuShare = quiet.share;
             r.QuietWaitSec = quiet.waited;
         }
+        if (!IsActive) { Finish(null, null); return; }
+        // the plan, worked out up front as on the phones: a PC without DirectX Raytracing 1.1 skips Test 3, and the bar and its "ends in" leave it out
+        if (Only == null || Only.Contains("gpu")) gpuPlan = RayTracingSkipReason == null ? GpuTests.All : GpuTests.All.Where(t => !t.RayTracing()).ToArray();
         if (!IsActive) { Finish(null, null); return; }
         Ui(() => Current = Phase.Running);
 
@@ -315,6 +337,7 @@ public sealed class BenchmarkEngine
             Error = error;
             Result = r;
             Record = record;
+            Cancelled = r == null && error == null;   // stopped by hand: the window says so (Android's "TEST CANCELLED")
             if (record != null) BenchmarkHistoryStore.Shared.Add(record);
             Current = r != null || error != null ? Phase.Done : Phase.Idle;
         });

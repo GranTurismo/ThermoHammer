@@ -2,29 +2,22 @@ namespace ThermoHammer.Engine.Ai;
 
 /// <summary>
 /// The AI tests: each model on the CPU, the GPU and the NPU in turn, its result on the stage — the phones' runAi. An
-/// accelerator that took the app down last time (a runtime's crashes can't be caught) is skipped in this build and scores 0.
+/// accelerator that took the app down in two runs of this build (a runtime's crashes can't be caught) is skipped and scores 0.
 /// </summary>
 public sealed class AiSection : IBenchmarkSection
 {
     public const double Seconds = 1.6;          // measured per model and accelerator, as on the phones
     public const double ShowS = 3.5;            // each model's result stays up at least this long
-    private const string RunningKey = "benchmark.aiRunning", CrashedKey = "benchmark.aiCrashed";
+    public const double SkipNoticeS = 1.5;      // how long "crashed the app twice" stays up, once per accelerator
 
-    private static string Build => System.Diagnostics.FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "?";
+    // markers "build:model:accel" (CrashGuard); the strikes are counted per accelerator, as on iOS
+    private static readonly CrashGuard Guard = new("ai");
 
-    /// <summary>Accelerators whose run never finished in this build: a marker was left behind.</summary>
+    /// <summary>Accelerators that took the app down in two runs of this build; a marker left by the last launch counts as one.</summary>
     private static HashSet<AiAccel> CrashedAccels()
     {
-        var crashed = Settings.Strings(CrashedKey);
-        var running = Settings.Strings(RunningKey);
-        if (running.Count > 0)
-        {
-            foreach (var r in running) if (!crashed.Contains(r)) crashed.Add(r);
-            Settings.Set(CrashedKey, crashed);
-            Settings.Set(RunningKey, null);
-        }
-        return crashed.Select(s => s.Split(':')).Where(p => p.Length == 3 && p[0] == Build)
-            .Select(p => AiTests.Accels.Cast<AiAccel?>().FirstOrDefault(a => a.ToString() == p[2])).OfType<AiAccel>().ToHashSet();
+        var names = Guard.Skipped(2);
+        return AiTests.Accels.Where(a => names.Contains(a.ToString())).ToHashSet();
     }
 
     public void Run(BenchmarkEngine engine, BenchmarkResult r)
@@ -33,8 +26,11 @@ public sealed class AiSection : IBenchmarkSection
         var bench = new AiBench();
         var inputs = new AiInputs();
         var crashed = CrashedAccels();
-        string? npuProblem = AiBench.NpuProblem;
+        // the NPU first: it may have to download its runtime, which the stage says while it waits
+        string? npuProblem = AiBench.PrepareNpu(msg => engine.PublishAi(AiTests.All[0], AiAccel.Npu, 0, -1, msg));
+        if (!engine.IsActive) return;
         var runs = new List<AiRun>();
+        var announced = new HashSet<AiAccel>();
         foreach (var test in AiTests.All)
         {
             if (!engine.IsActive) return;
@@ -46,13 +42,23 @@ public sealed class AiSection : IBenchmarkSection
             {
                 var accel = AiTests.Accels[k];
                 if (!engine.IsActive) return;
-                string? skip = crashed.Contains(accel) ? "crashed the app here last time" : accel == AiAccel.Npu ? npuProblem : null;
-                if (skip != null) { runs.Add(new AiRun(test, accel, 0, skip)); continue; }
+                string? skip = crashed.Contains(accel) ? CrashGuard.Reason : accel == AiAccel.Npu ? npuProblem : null;
+                if (skip != null)
+                {
+                    runs.Add(new AiRun(test, accel, 0, skip));
+                    if (crashed.Contains(accel) && announced.Add(accel))     // say why once, so the zero isn't a mystery
+                    {
+                        engine.PublishAi(test, accel, k / 3.0, -1, $"{accel.ToString().ToUpperInvariant()} · SKIPPED · {skip.ToUpperInvariant()} · 0 POINTS");
+                        Thread.Sleep(TimeSpan.FromSeconds(SkipNoticeS));
+                    }
+                    continue;
+                }
                 string label = accel == AiAccel.Npu ? $"NPU · {AiBench.NpuRuntime}" : accel == AiAccel.Gpu ? "GPU · DIRECTML" : "CPU · ONNX RUNTIME";
                 string precision = accel == AiAccel.Gpu ? "FP16" : "INT8";
                 string model = test.Model().ToUpperInvariant();
                 engine.PublishAi(test, accel, k / 3.0, -1, $"{label} · {precision} · {model} · COMPILING");
-                Settings.Set(RunningKey, new[] { $"{Build}:{test.Asset()}:{accel}" });
+                string entry = $"{test.Asset()}:{accel}";
+                Guard.Begin(entry);
                 AiBench.Measured measured;
                 try
                 {
@@ -64,8 +70,9 @@ public sealed class AiSection : IBenchmarkSection
                     runs.Add(new AiRun(test, accel, 0, AiBench.Explain(e, accel)));
                     continue;
                 }
-                finally { Settings.Set(RunningKey, null); }
+                finally { Guard.End(); }
                 if (!engine.IsActive) return;
+                Guard.Finished(entry);      // it ran here: earlier unfinished runs of this model were chance
                 runs.Add(new AiRun(test, accel, BenchmarkScore.Round2(measured.Ips)));
                 if (decodedAt == 0)
                 {
@@ -112,6 +119,11 @@ public static class AiCheck
             var accel = which switch { "gpu" => AiAccel.Gpu, "npu" => AiAccel.Npu, _ => AiAccel.Cpu };
             var inputs = new AiInputs();
             var bench = new AiBench();
+            if (accel == AiAccel.Npu)
+            {
+                string? why = AiBench.PrepareNpu(m => log.AppendLine(m));
+                log.AppendLine(why == null ? $"NPU provider: {AiBench.NpuRuntime}" : $"NPU not available: {why}");
+            }
             foreach (var test in AiTests.All)
             {
                 var (input, picture) = inputs.Input(test);

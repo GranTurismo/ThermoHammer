@@ -12,6 +12,7 @@ public sealed class BenchmarkResultView : Grid
 {
     private readonly BenchmarkResult result;
     private readonly BenchmarkRecord? record;
+    private readonly HealthCard health;
     private readonly TextBlock submitMessage = Ui.Text("", 9, Forge.Ink1, wrap: true, align: TextAlignment.Center);
     private Button? submit;
     private bool submitted;
@@ -20,6 +21,7 @@ public sealed class BenchmarkResultView : Grid
     {
         this.result = result;
         this.record = record;
+        health = new HealthCard(result, record, SpeedCheckView.Open);
         Background = Color.FromArgb(184, 0, 0, 0).Brush();
         var col = Ui.VStack(12,
             Ui.Text("THERMOHAMMER BENCHMARK", 9, Forge.Ink2, Forge.W.Bold, align: TextAlignment.Center),
@@ -33,14 +35,14 @@ public sealed class BenchmarkResultView : Grid
                 Section("UX", result.UxScore, Forge.PhaseMeasured, result.Ux != null),
                 Section("AI", result.AiScore, BenchColor.Ai, result.Ai != null),
                 Section("LLM", result.LlmScore, BenchColor.Llm, result.Llm != null)),
-            Ui.Text($"{DeviceInfo.Manufacturer} {DeviceInfo.Model} · {result.GpuName}", 10, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center));
+            Ui.Text($"{PcHealth.Name()} · {result.GpuName}", 10, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center));
         if (!result.IsComplete)
             col.Children.Add(Ui.Text(result.NotYet.Count > 0
                 ? $"Not run yet on Windows: {string.Join("; ", result.NotYet)}. Until every section runs, a run can't go to the leaderboard."
                 : "Not every section ran — this run can't go to the leaderboard.", 9, Ramp.At(0.5), wrap: true, align: TextAlignment.Center));
         if (!result.IsVerified)
             col.Children.Add(Ui.Text(ValidityNote(result.ValidityFlags), 9, Ramp.At(0.5), wrap: true, align: TextAlignment.Center));
-        col.Children.Add(new HealthCard(result, record));
+        col.Children.Add(health);
         if (result.Cpu is { } cpu) foreach (var t in CpuTests.All) col.Children.Add(CpuCard(t, cpu));
         if (result.Mem is { } mem) foreach (var c in MemCards(mem)) col.Children.Add(c);
         foreach (var g in result.Gpu) col.Children.Add(GpuCard(g));
@@ -70,7 +72,7 @@ public sealed class BenchmarkResultView : Grid
     }
 
     private static FrameworkElement Section(string label, int value, Color color, bool ran) => Ui.VStack(2,
-        Ui.Text(ran ? value.N0() : "—", 14, ran ? color : Forge.Ink2, Forge.W.Black, align: TextAlignment.Center),
+        Ui.Text(ran ? value.N0() : "—", 13, ran ? color : Forge.Ink2, Forge.W.Black, align: TextAlignment.Center),
         Ui.Text(label, 8, Forge.Ink2, align: TextAlignment.Center)).Grow();
 
     private static FrameworkElement Card(string label, string title, int points, Color accent, params UIElement[] content)
@@ -109,14 +111,16 @@ public sealed class BenchmarkResultView : Grid
     {
         yield return Card("MEM TEST 1", "RAM", m.RamPoints, BenchColor.Mem, Metrics(
             Metric("READ GB/S", m.Ram.Read.F(1)), Metric("WRITE GB/S", m.Ram.Write.F(1)), Metric("COPY GB/S", m.Ram.Copy.F(1)),
-            Metric("LATENCY NS", m.Ram.LatencyNs.F(0))));
+            Metric("LATENCY NS", m.Ram.LatencyNs.F(0))),
+            Note("Every core streaming a buffer far bigger than the caches; latency is one random access."));
         yield return Card("MEM TEST 2", "STORAGE", m.StoragePoints, BenchColor.Mem,
             Metrics(Metric("SEQ READ MB/S", m.Storage.SeqRead.N0()), Metric("SEQ WRITE MB/S", m.Storage.SeqWrite.N0())),
             Metrics(Metric("RANDOM READ IOPS", m.Storage.RandomRead.N0()), Metric("RANDOM WRITE IOPS", m.Storage.RandomWrite.N0())),
             Note($"{m.Storage.FileMb} MB test file, deleted afterwards. 4 MB sequential blocks; random 4 KB blocks from 4 threads. " +
                  (m.Storage.Direct ? "Unbuffered I/O: every transfer reached the drive." : "Windows cached the reads.")));
         yield return Card("MEM TEST 3", "DATABASE", m.DbPoints, BenchColor.Mem, Metrics(
-            Metric("MESSAGES SAVED/S", m.Db.Insert.N0()), Metric("MARKED READ/S", m.Db.Update.N0()), Metric("CHATS OPENED/S", m.Db.Query.N0())));
+            Metric("MESSAGES SAVED/S", m.Db.Insert.N0()), Metric("MARKED READ/S", m.Db.Update.N0()), Metric("CHATS OPENED/S", m.Db.Query.N0())),
+            Note("SQLite like a messaging app, with Windows' own SQLite (WAL, synchronous NORMAL): 20,000 messages, each save its own transaction, each chat its latest 30 messages."));
     }
 
     private static FrameworkElement UxCard(UxTest t, int points, params UIElement[] content) =>
@@ -217,9 +221,11 @@ public sealed class BenchmarkResultView : Grid
     private static IEnumerable<FrameworkElement> AiCards(AiResult ai)
     {
         var missing = Ramp.At(0.85);
-        yield return Card("AI · 6 MODELS · INT8", "CPU · GPU · NPU", ai.Score, BenchColor.Ai,
-            Metrics(AiTests.Accels.Select(a => { int pts = ai.AccelScore(a); return Metric($"{a.Label()} POINTS", pts > 0 ? pts.ToString("N0") : "—", pts > 0 ? Forge.Ink0 : missing); }).ToArray()),
-            Note(ai.NpuRuntime != null ? $"NPU: {ai.NpuRuntime}. CPU, GPU and NPU count a third each." : $"NPU: {ai.NpuProblem ?? "not available"} — 0 points there."));
+        // the phones run INT8 everywhere; here the CPU runs the INT8 models and the GPU (DirectML) their float16 conversion — each row says which
+        yield return Card("AI · 6 MODELS · INT8 / FP16", "CPU · GPU · NPU", ai.Score, BenchColor.Ai,
+            Metrics(AiTests.Accels.Select(a => { int pts = ai.AccelScore(a); return Metric($"{a.Label()} {a.Precision()} POINTS", pts > 0 ? pts.ToString("N0") : "—", pts > 0 ? Forge.Ink0 : missing); }).ToArray()),
+            Note("The CPU runs the 8-bit (INT8) models; the GPU runs the same models as float16 through DirectML, with the weights dequantized — as the phones' GPU delegates do."),
+            Note(!string.IsNullOrEmpty(ai.NpuRuntime) ? $"NPU: {ai.NpuRuntime}. CPU, GPU and NPU count a third each." : $"NPU: {ai.NpuProblem ?? "not available"} — 0 points there."));
         foreach (var t in AiTests.All)
         {
             var col = Ui.VStack(8,
@@ -227,7 +233,7 @@ public sealed class BenchmarkResultView : Grid
                 Metrics(AiTests.Accels.Select(a =>
                 {
                     double ips = ai.Ips(t, a);
-                    return Metric($"{a.Label()} INF/S", ips > 0 ? (ips < 100 ? ips.F(1) : ips.N0()) : "—", ips > 0 ? Forge.Ink0 : missing);
+                    return Metric($"{a.Label()} {a.Precision()} INF/S", ips > 0 ? (ips < 100 ? ips.F(1) : ips.N0()) : "—", ips > 0 ? Forge.Ink0 : missing);
                 }).ToArray()));
             foreach (var run in ai.Runs.Where(r => r.Test == t && r.Error != null && r.Accel != AiAccel.Npu))
                 col.Children.Add(Note($"{run.Accel.Label()}: {run.Error}", missing));
@@ -274,6 +280,12 @@ public sealed class BenchmarkResultView : Grid
             Clipboard.SetText(BenchmarkReport.Text(result, DateTime.Now.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)));
             copy!.Content = Ui.Text("COPIED", 11, Forge.Ink0, Forge.W.Black).Align(HorizontalAlignment.Center);
         }, Forge.Interact, Forge.Ink0, 11, Forge.W.Black, 10, 12);
+        // the run as a card to share, full screen to film, or as numbers for a spreadsheet; the link follows the submit
+        col.Children.Add(Ui.HStack(10,
+            Ui.Button("SHARE", () => ShareSheet.Run(ShowcaseRun.ForResult(result, record)), Forge.Interact, Forge.Ink0, 11, Forge.W.Black, 10, 12).Grow(),
+            Ui.Button("PRESENT", () => PresentWindow.Open(ShowcaseRun.ForResult(result, record)), Forge.Interact, Forge.Ink0, 11, Forge.W.Black, 10, 12).Grow(),
+            Ui.Button("EXPORT CSV", () => ShareSheet.SaveCsv(ShareLinks.CsvFileName(false, PcHealth.Name(), record?.Timestamp ?? DateTime.Now),
+                RunCsv.Benchmark(result)), Forge.Interact, Forge.Ink0, 11, Forge.W.Black, 10, 12).Grow()));
         col.Children.Add(Ui.HStack(10, copy.Grow(), Ui.Button("DONE", onDismiss, Forge.Interact, Forge.Ink0, 11, Forge.W.Black, 10, 12).Grow()));
         if (record is { Complete: true } rec)
         {
@@ -283,6 +295,9 @@ public sealed class BenchmarkResultView : Grid
                     wrap: true, align: TextAlignment.Center));
                 return col.Pad(0, 6, 0, 0);
             }
+            // a verified, complete run: its certificate for a buyer (a page on the website, so it needs the run on the leaderboard)
+            col.Children.Add(Ui.Button("HEALTH CERTIFICATE", () => CertificateView.Open(result, rec, () => health.MedianLine, () => Submit(rec)),
+                Forge.PhaseMeasured.WithAlpha(0.1), Forge.PhaseMeasured, 11, Forge.W.Black, 10, 12, stroke: Forge.PhaseMeasured.WithAlpha(0.5)));
             submit = Ui.Button("SUBMIT TO LEADERBOARD", () => _ = Submit(rec), Forge.PhaseMeasured, Forge.Bg, 12, Forge.W.Black, 12, 14);
             var offline = Ui.VStack(4, Ui.Text("NO INTERNET CONNECTION", 10, Ramp.At(0.5), Forge.W.Bold, align: TextAlignment.Center),
                 Ui.Text("Turn on Wi-Fi or Ethernet to submit this result. Until then it's saved on this PC — you can submit it later from the leaderboard.",
@@ -302,23 +317,40 @@ public sealed class BenchmarkResultView : Grid
         return col.Pad(0, 6, 0, 0);
     }
 
-    private async Task Submit(BenchmarkRecord rec)
+    private Task<bool>? submitting;
+
+    /// <summary>Submits the run (the button, or the certificate asking for it) — once at a time; true when it reached the leaderboard.</summary>
+    private Task<bool> Submit(BenchmarkRecord rec) => submitting is { IsCompleted: false } busy ? busy : submitting = SubmitNow(rec);
+
+    /// <summary>The submit itself; keeps the run's id on the board (its page and certificate).</summary>
+    private async Task<bool> SubmitNow(BenchmarkRecord rec)
     {
-        submit!.IsEnabled = false;
-        submit.Content = Ui.Text("SUBMITTING…", 12, Forge.Bg, Forge.W.Black).Align(HorizontalAlignment.Center);
+        if (submitted) return true;
+        if (submit != null)
+        {
+            submit.IsEnabled = false;
+            submit.Content = Ui.Text("SUBMITTING…", 12, Forge.Bg, Forge.W.Black).Align(HorizontalAlignment.Center);
+        }
         try
         {
             var r = await BenchmarkUpload.Submit(rec);
-            BenchmarkHistoryStore.Shared.MarkSubmitted(rec.Id);
+            rec.Submitted = true;
+            if (r.Id > 0) rec.ServerId = r.Id;
+            BenchmarkHistoryStore.Shared.MarkSubmitted(rec.Id, r.Id);
             submitMessage.Text = $"Submitted · {r.Score:N0} points · rank #{r.Rank}";
             submitted = true;
-            submit.Visibility = Visibility.Collapsed;
+            if (submit != null) submit.Visibility = Visibility.Collapsed;
+            return true;
         }
         catch (Exception e)
         {
             submitMessage.Text = e.Message;
-            submit.IsEnabled = true;
-            submit.Content = Ui.Text("SUBMIT TO LEADERBOARD", 12, Forge.Bg, Forge.W.Black).Align(HorizontalAlignment.Center);
+            if (submit != null)
+            {
+                submit.IsEnabled = true;
+                submit.Content = Ui.Text("SUBMIT TO LEADERBOARD", 12, Forge.Bg, Forge.W.Black).Align(HorizontalAlignment.Center);
+            }
+            return false;
         }
     }
 
@@ -336,15 +368,24 @@ public sealed class BenchmarkResultView : Grid
 /// <summary>The run against its model and the PC's own history; the model's statistics load in the background.</summary>
 public sealed class HealthCard : ContentControl
 {
+    /// <summary>The run against its model's median: "{Percent}% of the median {Model} ({Runs} runs)" (the health certificate).</summary>
+    public sealed record Median(int Percent, string Model, int Runs);
+
     private readonly BenchmarkResult result;
     private readonly BenchmarkRecord? record;
+    private readonly Action? onFindSpeed;
     private ModelStats? stats;
     private bool loaded;
 
-    public HealthCard(BenchmarkResult result, BenchmarkRecord? record)
+    /// <summary>Known once the model's statistics have loaded and there are enough runs to compare with.</summary>
+    public Median? MedianLine { get; private set; }
+
+    /// <summary>[onFindSpeed]: FIND MY LOST SPEED, offered when the run is slower than its model.</summary>
+    public HealthCard(BenchmarkResult result, BenchmarkRecord? record, Action? onFindSpeed = null)
     {
         this.result = result;
         this.record = record;
+        this.onFindSpeed = onFindSpeed;
         Build();
         if (NetworkMonitor.Shared.IsConnected) _ = Load();
     }
@@ -358,7 +399,7 @@ public sealed class HealthCard : ContentControl
 
     private void Build()
     {
-        string model = DeviceInfo.Model;
+        string model = DeviceInfo.Model, name = PcHealth.Name(stats);   // the name as the leaderboard shows this PC
         var report = PcHealth.Assess(result, model, stats,
             BenchmarkHistoryStore.Shared.Records.Where(r => r.Version == BenchmarkScore.Version).ToList(), record, DeviceInfo.OsVersion);
         var accent = report.Verdict switch
@@ -369,7 +410,7 @@ public sealed class HealthCard : ContentControl
             _ => Forge.PhaseCooldown,
         };
         bool online = NetworkMonitor.Shared.IsConnected;
-        string head = online && !loaded ? $"Comparing with other {model} units…"
+        string head = online && !loaded ? $"Comparing with other {name} units…"
             : online && stats == null ? "Couldn't reach our server to compare — your own runs below" : report.Headline;
         var top = Ui.HStack(8, Ui.VStack(2, Ui.Text("PC HEALTH", 9, accent, Forge.W.Bold), Ui.Text(head, 12, Forge.Ink0, Forge.W.Black, wrap: true)).Grow());
         if (report.Percent is { } p)
@@ -385,6 +426,12 @@ public sealed class HealthCard : ContentControl
             var mark = Ui.Text(f.Severity == 2 ? "▲" : f.Severity == 1 ? "•" : "·", 9, f.Severity == 2 ? Ramp.At(0.85) : f.Severity == 1 ? Ramp.At(0.5) : Forge.Ink2);
             col.Children.Add(Ui.HStack(4, mark, Ui.Text(f.Text, 9, f.Severity > 0 ? Forge.Ink0 : Forge.Ink1, wrap: true).Grow()));
         }
+        bool slower = report.Verdict is PcHealth.Verdict.Slower or PcHealth.Verdict.MuchSlower;
+        MedianLine = report.Percent is { } of ? new Median(of, name, report.Runs) : null;
+        // the speed check's note ("your last benchmark was x% below the median …") follows this run once its model has been looked up
+        if (loaded) SpeedCheckStore.LastHealth = slower && report.Percent is { } below ? new HealthNote(100 - below, name) : null;
+        if (slower && onFindSpeed != null)
+            col.Children.Add(Ui.Button("FIND MY LOST SPEED", onFindSpeed, accent.WithAlpha(0.12), accent, 10, Forge.W.Black, 8, 9, stroke: accent.WithAlpha(0.5)));
         var b = Ui.Box(col, Forge.Surface, 14, 0, accent.WithAlpha(0.45));
         b.Padding = new Thickness(14, 12, 14, 12);
         Content = b;

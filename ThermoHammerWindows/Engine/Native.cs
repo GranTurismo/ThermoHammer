@@ -39,12 +39,23 @@ internal static partial class BenchCore
     [LibraryImport(Dll)] public static unsafe partial void bc_qr_corners(IntPtr qr, int index, float* corners);
     [LibraryImport(Dll)] public static unsafe partial int bc_qr_scan(IntPtr qr, int index, float* found);
     [LibraryImport(Dll)] public static partial void bc_qr_destroy(IntPtr qr);
+    /// <summary>A QR code of [text] (UTF-8, NUL-terminated) for the screen: side × side modules, 1 dark, no quiet zone, ECC M; returns the side (0 on failure).</summary>
+    [LibraryImport(Dll)] public static partial int bc_qr_encode(byte[] text, [Out] byte[] modules, int capacity);
 
     public static string KernelName(int id) => Marshal.PtrToStringUTF8(bc_kernel_name(id)) ?? "?";
     public static string KernelError(IntPtr kernel) => Marshal.PtrToStringUTF8(bc_kernel_error(kernel)) ?? "";
     public static string CryptoPath => Marshal.PtrToStringUTF8(bc_crypto_path()) ?? "?";
     public static string MemError => Marshal.PtrToStringUTF8(bc_mem_error()) ?? "";
     public static string QrText(IntPtr qr, int index) => Marshal.PtrToStringUTF8(bc_qr_text(qr, index)) ?? "";
+
+    /// <summary>[text] as a QR code: (side, modules row by row, 1 = dark), or null when it can't be encoded.</summary>
+    public static (int side, byte[] modules)? QrEncode(string text)
+    {
+        const int capacity = 177 * 177;
+        var modules = new byte[capacity];
+        int side = bc_qr_encode([.. System.Text.Encoding.UTF8.GetBytes(text), 0], modules, capacity);
+        return side > 0 && side * side <= capacity ? (side, modules) : null;
+    }
 }
 
 /// <summary>The Win32 calls the engine reads the machine with.</summary>

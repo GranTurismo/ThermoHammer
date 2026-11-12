@@ -35,7 +35,7 @@ public sealed class BenchmarkStage : Grid
     private readonly TextBlock section = Ui.Text("", 9, BenchColor.Cpu, Forge.W.Bold);
     private readonly TextBlock title = Ui.Text("", 14, Forge.Ink0, Forge.W.Black);
     private readonly TextBlock detail = Ui.Text("", 10, Forge.Ink1);
-    private readonly TextBlock rate = Ui.Text("", 30, Forge.Ink0, Forge.W.Black);
+    private readonly TickerText rate = new(30, Forge.Ink0, Forge.W.Black);
     private readonly TextBlock unit = Ui.Text("", 10, Forge.Ink2, Forge.W.Bold);
     private readonly ContentControl center = new();
     private readonly TextBlock background = Ui.Text("KEEP THERMOHAMMER IN FRONT — A COVERED WINDOW RUNS SLOWER, SO THIS RUN IS NOW UNVERIFIED",
@@ -82,7 +82,7 @@ public sealed class BenchmarkStage : Grid
         center.Margin = new Thickness(28, 12, 28, 12);
         SetRow(center, 1);
         Children.Add(center);
-        var bottom = Ui.VStack(10, background, Ui.HStack(14, bar.Grow(), new HoldToAbort(engine.Stop).Align(HorizontalAlignment.Right, VerticalAlignment.Bottom)))
+        var bottom = Ui.VStack(10, background, Ui.HStack(14, bar.Grow(), new HoldToAbortButton(engine.Stop).Align(HorizontalAlignment.Right, VerticalAlignment.Bottom)))
             .Pad(28, 0, 28, 18);
         SetRow(bottom, 2);
         Children.Add(bottom);
@@ -111,7 +111,7 @@ public sealed class BenchmarkStage : Grid
         }
         else if (engine.GpuTest is { } gt)
         {
-            title.Text = $"GPU TEST {gt.Number()}/{GpuTests.All.Length} · {gt.Title()}";
+            title.Text = $"GPU TEST {gt.Number()}/{GpuTests.All.Length} · {gt.Title()}" + (gt.RayTracing() ? " · DIRECTX RAY TRACING" : "");
             detail.Text = engine.GpuDetail;
         }
         else if (engine.UxTest is { } ut)
@@ -126,21 +126,26 @@ public sealed class BenchmarkStage : Grid
         }
         else if (engine.LlmAccel is { } la)
         {
-            title.Text = $"LLM TEST {(int)la + 1}/{LlmAccels.All.Length} · {la.Label()}";
+            title.Text = $"LLM TEST {(int)la + 1}/{LlmAccels.All.Length} · {la.Label()} · LLAMA 3.2 3B";
             detail.Text = engine.LlmDetail;
         }
         else
         {
-            title.Text = "GETTING READY";
+            // cooling and waiting for a quiet PC, or (Running) the next section building its scene
+            title.Text = engine.Current == BenchmarkEngine.Phase.Running ? "NEXT TEST" : "GETTING READY";
             detail.Text = "";
         }
-        (double v, string u)? live = engine.CpuTest != null && engine.CpuProgress is { Rate: >= 0 } cp ? (cp.Rate, "OPS/S")
-            : engine.MemTest != null && engine.MemProgress is { Rate: >= 0 } mp ? (mp.Rate, mp.Unit)
-            : engine.GpuTest != null && engine.GpuFps >= 0 ? (engine.GpuFps, "FPS")
-            : engine.UxTest != null && engine.UxValue >= 0 ? (engine.UxValue, engine.UxUnit)
-            : engine.AiTest != null && engine.AiRate >= 0 ? (engine.AiRate, "INF/S")
-            : engine.LlmAccel != null && engine.LlmRate >= 0 ? (engine.LlmRate, "TOK/S") : null;
-        rate.Text = live is { } l ? (l.v < 100 ? l.v.F(1) : l.v.N0()) : "";
+        // the live number glides to each new value (Android's TickerText); a test that has no rate yet reads 0, as there. Rates under 100 keep a
+        // decimal (ops/s, MB/s, inferences, tokens, the gallery's and the editor's MP/s, the QR scans); frames and the rest are whole numbers
+        static string Fine(double v) => v < 100 ? v.F(1) : v.N0();
+        static string Whole(double v) => v.N0();
+        (double v, string u, Func<double, string> f)? live = engine.CpuTest != null ? (Math.Max(0, engine.CpuProgress?.Rate ?? 0), "OPS/S", Fine)
+            : engine.MemTest != null ? (Math.Max(0, engine.MemProgress?.Rate ?? 0), engine.MemProgress?.Unit ?? "", Fine)
+            : engine.GpuTest != null ? (Math.Max(0, engine.GpuFps), "FPS", Whole)
+            : engine.UxTest is { } ux ? (Math.Max(0, engine.UxValue), engine.UxUnit, ux == UxTest.Qr ? v => v.F(1) : ux is UxTest.Gallery or UxTest.Photo ? Fine : Whole)
+            : engine.AiTest != null ? (Math.Max(0, engine.AiRate), "INF/S", Fine)
+            : engine.LlmAccel != null ? (Math.Max(0, engine.LlmRate), "TOK/S", Fine) : null;
+        if (live is { } l) rate.Show(l.v, l.u, l.f); else rate.Clear();
         unit.Text = live?.u ?? "";
         background.Visibility = engine.InBackground ? Visibility.Visible : Visibility.Collapsed;
 
@@ -212,11 +217,15 @@ public sealed class BenchmarkStage : Grid
         _ => Ui.Text(t.Title(), 11, Forge.Ink1, align: TextAlignment.Center),
     };
 
-    private FrameworkElement Preparing() => Ui.VStack(14,
-        new Spinner(Forge.PhaseCooldown).Align(HorizontalAlignment.Center),
-        Ui.Text($"❄ GETTING READY · {engine.PreparingElapsed}s", 11, Forge.PhaseCooldown, Forge.W.Bold, align: TextAlignment.Center),
-        Ui.Text(engine.PreparingBusy ? "Waiting for the PC to finish background work" : "Letting the PC cool to a fair start",
-            9, Forge.Ink2, align: TextAlignment.Center));
+    private FrameworkElement Preparing() => engine.Current == BenchmarkEngine.Phase.Running
+        // between two sections (the next one is loading its engine): not the cool-down screen, and its seconds are long past
+        ? Ui.VStack(14, new Spinner(Accent).Align(HorizontalAlignment.Center),
+            Ui.Text("LOADING THE NEXT TEST", 11, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center))
+        : Ui.VStack(14,
+            new Spinner(Forge.PhaseCooldown).Align(HorizontalAlignment.Center),
+            Ui.Text($"❄ GETTING READY · {engine.PreparingElapsed}s", 11, Forge.PhaseCooldown, Forge.W.Bold, align: TextAlignment.Center),
+            Ui.Text(engine.PreparingBusy ? "Waiting for the PC to finish background work" : "Letting the PC cool to a fair start",
+                9, Forge.Ink2, align: TextAlignment.Center));
 }
 
 /// <summary>The test's measurements as chips: done, running, waiting.</summary>
@@ -369,30 +378,32 @@ public sealed class BlockMap : Instrument
     }
 }
 
-/// <summary>Progress across the benchmark's sections, each a segment in its colour.</summary>
+/// <summary>Progress across the benchmark's sections, each a segment in its colour. Only the tests this PC runs have one (no Test 3 without ray tracing).</summary>
 public sealed class BenchProgressBar : FrameworkElement
 {
     private readonly BenchmarkEngine engine;
+    private double held;   // the furthest point reached: between two tests the bar stays there instead of snapping back to 0
     public BenchProgressBar(BenchmarkEngine engine) { this.engine = engine; Height = 46; }
 
-    private static IEnumerable<(int secs, Color color)> Segments =>
+    private IEnumerable<(int secs, Color color)> Segments =>
         CpuTests.All.Select(t => (t.Seconds(), BenchColor.Cpu)).Concat(MemTests.All.Select(t => (t.Seconds(), BenchColor.Mem)))
-            .Concat(GpuTests.All.Select(t => (t.Seconds(), BenchColor.Gpu(t)))).Concat(UxTests.All.Select(t => (t.Seconds(), BenchColor.Ux(t))))
+            .Concat(engine.GpuPlan.Select(t => (t.Seconds(), BenchColor.Gpu(t)))).Concat(UxTests.All.Select(t => (t.Seconds(), BenchColor.Ux(t))))
             .Concat(AiTests.All.Select(t => (t.Seconds(), BenchColor.Ai))).Concat(LlmAccels.All.Select(a => (a.Seconds(), BenchColor.Llm)));
 
     private double Elapsed
     {
         get
         {
+            var plan = engine.GpuPlan;
             int cpuTotal = CpuTests.All.Sum(t => t.Seconds()), memTotal = MemTests.All.Sum(t => t.Seconds());
-            int gpuTotal = GpuTests.All.Sum(t => t.Seconds()), uxTotal = UxTests.All.Sum(t => t.Seconds()), aiTotal = AiTests.All.Sum(t => t.Seconds());
+            int gpuTotal = plan.Sum(t => t.Seconds()), uxTotal = UxTests.All.Sum(t => t.Seconds()), aiTotal = AiTests.All.Sum(t => t.Seconds());
             if (engine.CpuTest is { } c)
                 return CpuTests.All.Where(t => t.Number() < c.Number()).Sum(t => t.Seconds()) + (engine.CpuProgress?.Fraction ?? 0) * c.Seconds();
             if (engine.MemTest is { } m)
                 return cpuTotal + MemTests.All.Where(t => t.Number() < m.Number()).Sum(t => t.Seconds()) + (engine.MemProgress?.Fraction ?? 0) * m.Seconds();
             int before = cpuTotal + memTotal;
             if (engine.GpuTest is { } g)
-                return before + GpuTests.All.Where(t => t.Number() < g.Number()).Sum(t => t.Seconds()) + engine.GpuProgress * g.Seconds();
+                return before + plan.Where(t => t.Number() < g.Number()).Sum(t => t.Seconds()) + engine.GpuProgress * g.Seconds();
             before += gpuTotal;
             if (engine.UxTest is { } u)
                 return before + UxTests.All.Where(t => t.Number() < u.Number()).Sum(t => t.Seconds()) + engine.UxProgress * u.Seconds();
@@ -402,14 +413,15 @@ public sealed class BenchProgressBar : FrameworkElement
             before += aiTotal;
             if (engine.LlmAccel is { } l)
                 return before + LlmAccels.All.Where(x => x < l).Sum(x => x.Seconds()) + engine.LlmProgress * l.Seconds();
-            return 0;
+            return engine.Current == BenchmarkEngine.Phase.Running ? held : 0;   // between tests: where it was
         }
     }
 
     protected override void OnRender(DrawingContext dc)
     {
         var segs = Segments.ToList();
-        double total = segs.Sum(s => s.secs), done = Elapsed, w = ActualWidth;
+        double total = segs.Sum(s => s.secs), done = Math.Min(total, Elapsed), w = ActualWidth;
+        held = Math.Max(held, done);
         string label = engine.CpuTest is { } c ? $"CPU TEST {c.Number()} · {c.Title()}" : engine.MemTest is { } m ? $"MEM TEST {m.Number()} · {m.Title()}"
             : engine.GpuTest is { } g ? $"GPU TEST {g.Number()} · {g.Title()}" : engine.UxTest is { } ux ? $"UX TEST {ux.Number()} · {ux.Title()}"
             : engine.AiTest is { } ai ? $"AI TEST {ai.Number()} · {ai.Title()}" : engine.LlmAccel is { } ll ? $"LLM TEST {(int)ll + 1} · {ll.Label()}" : "PREPARING";
@@ -434,13 +446,70 @@ public sealed class BenchProgressBar : FrameworkElement
 public sealed class Spinner : Instrument
 {
     private readonly Color color;
-    public Spinner(Color c) { color = c; Width = Height = 34; }
+    public Spinner(Color c, double size = 34) { color = c; Width = Height = size; }
     protected override bool Animating => true;
     protected override void OnRender(DrawingContext dc)
     {
         var c = new Point(ActualWidth / 2, ActualHeight / 2);
-        dc.DrawEllipse(null, color.WithAlpha(0.15).Pen(3), c, 14, 14);
-        dc.DrawGeometry(null, color.Pen(3, cap: PenLineCap.Round), Arc(c, 14, Time * 360 % 360, 90));
+        double r = ActualWidth * 14 / 34, line = ActualWidth >= 30 ? 3 : 2;
+        dc.DrawEllipse(null, color.WithAlpha(0.15).Pen(line), c, r, r);
+        dc.DrawGeometry(null, color.Pen(line, cap: PenLineCap.Round), Arc(c, r, Time * 360 % 360, 90));
+    }
+}
+
+/// <summary>A live number that glides to each new value over 0.28 s on the FastOutSlowIn curve (Android's TickerText).</summary>
+public sealed class TickerText : TextBlock
+{
+    private const double Ms = 280;
+    private Func<double, string> format = v => v.N0();
+    private string unit = "";
+    private double from, to, shown;
+    private long startedAt;
+    private bool hooked, has;
+
+    public TickerText(double size, Color color, Forge.W w)
+    {
+        var (family, weight) = Forge.Mono(w);
+        FontFamily = family; FontWeight = weight; FontSize = size; Foreground = color.Brush();
+        Unloaded += (_, _) => Unhook();
+        Loaded += (_, _) => { if (shown != to) Hook(); };
+    }
+
+    /// <summary>Glides to `value`; a new unit (another kind of test) starts from the value itself rather than from the last test's number.</summary>
+    public void Show(double value, string unit, Func<double, string> format)
+    {
+        this.format = format;
+        if (!has || unit != this.unit) { has = true; this.unit = unit; from = to = shown = value; Unhook(); }
+        else if (value != to) { from = shown; to = value; startedAt = Environment.TickCount64; Hook(); }
+        if (!hooked) shown = to;
+        Text = format(shown);
+    }
+
+    public void Clear() { has = false; unit = ""; Unhook(); Text = ""; }
+
+    private void Hook() { if (!hooked) { CompositionTarget.Rendering += Tick; hooked = true; } }
+    private void Unhook() { if (hooked) { CompositionTarget.Rendering -= Tick; hooked = false; } }
+
+    private void Tick(object? sender, EventArgs e)
+    {
+        double f = Math.Clamp((Environment.TickCount64 - startedAt) / Ms, 0, 1);
+        shown = f >= 1 ? to : from + (to - from) * Ease(f);
+        Text = format(shown);
+        if (f >= 1) Unhook();
+    }
+
+    /// <summary>cubic-bezier(0.4, 0, 0.2, 1): the t whose x is `x`, then its y.</summary>
+    private static double Ease(double x)
+    {
+        double t = x;
+        for (int i = 0; i < 8; i++)
+        {
+            double u = 1 - t, bx = 3 * u * u * t * 0.4 + 3 * u * t * t * 0.2 + t * t * t, dx = 1.2 * u * u - 1.2 * u * t + 2.4 * t * t;
+            if (Math.Abs(dx) < 1e-6) break;
+            t = Math.Clamp(t - (bx - x) / dx, 0, 1);
+        }
+        double v = 1 - t;
+        return 3 * v * t * t + t * t * t;
     }
 }
 

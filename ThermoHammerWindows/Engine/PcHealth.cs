@@ -80,9 +80,23 @@ public static class PcHealth
         return r;
     }
 
+    /// <summary>
+    /// The name the leaderboard shows for a PC: maker and model ("Lenovo ThinkPad X1"), or the model alone when it already starts with the
+    /// maker ("PC (Ryzen 7 7800X3D)") — BenchmarkDto.Name's rule. The server answers with the name it stores the model under, so that wins
+    /// over what the PC calls itself (Android's PhoneHealth does the same).
+    /// </summary>
+    public static string Name(string? serverModel, string model, string maker)
+    {
+        return DeviceInfo.DisplayName(maker, string.IsNullOrWhiteSpace(serverModel) ? model : serverModel);
+    }
+
+    /// <summary>This PC as the leaderboard names it, for the result's header and Health card.</summary>
+    public static string Name(ModelStats? stats = null) => Name(stats?.DeviceModel, DeviceInfo.Model, DeviceInfo.Manufacturer);
+
     public static Report Assess(BenchmarkResult result, string model, ModelStats? stats, List<BenchmarkRecord> history,
         BenchmarkRecord? current, string osVersion)
     {
+        string name = Name(stats?.DeviceModel, model, DeviceInfo.Manufacturer);
         var findings = new List<Finding>();
         int total = result.Total;
         var reasons = FlagReasons(result.ValidityFlags);
@@ -98,10 +112,10 @@ public static class PcHealth
             verdict = ratio >= 1.05 ? Verdict.Faster : ratio >= 0.95 ? Verdict.OnPar : ratio >= Short ? Verdict.Slower : Verdict.MuchSlower;
             headline = verdict switch
             {
-                Verdict.Faster => $"Faster than most {model} units",
-                Verdict.OnPar => $"As fast as a {model} should be",
-                Verdict.Slower => $"A little slower than other {model} units",
-                _ => $"Slower than a {model} should be",
+                Verdict.Faster => $"Faster than most {name} units",
+                Verdict.OnPar => $"As fast as a {name} should be",
+                Verdict.Slower => $"A little slower than other {name} units",
+                _ => $"Slower than a {name} should be",
             };
             var medians = stats.Parts ?? [];
             var shortParts = Parts(result).Where(kv => medians.TryGetValue(kv.Key, out var m) && m > 0 && (double)kv.Value / m < Short)
@@ -122,8 +136,8 @@ public static class PcHealth
         }
         else
         {
-            headline = stats == null ? $"Connect to compare with other {model} units"
-                : $"Not enough verified runs of {model} yet ({stats.Runs} of {MinRuns})";
+            headline = stats == null ? $"Connect to compare with other {name} units"
+                : $"Not enough verified runs of {name} yet ({stats.Runs} of {MinRuns})";
         }
         var earlier = history.Where(h => h.Id != current?.Id && h.ValidityFlags == 0 && h.Score > 0 && h.Complete).ToList();
         if (earlier.MaxBy(h => h.Score) is { } best)

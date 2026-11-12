@@ -9,7 +9,7 @@ namespace ThermoHammer.Engine.Ai;
 //
 //   CPU: ONNX Runtime's CPU provider, 4 threads, the INT8 (QDQ) model — int8 kernels, as TFLite's XNNPACK on the phones.
 //   GPU: DirectML on the PC's GPU, the model in float16 with its weights dequantized (the phones' GPU delegates do the same).
-//   NPU: not in this build yet (see NpuProblem).
+//   NPU: the vendor's own provider (QNN, OpenVINO, Vitis AI) that Windows ML downloads on Windows 11 24H2+, int8 like the CPU (see AiNpu).
 //   A run loads/compiles the model (not timed), warms up, then counts inferences for a fixed time. Outputs are turned back
 //   into TFLite's 8-bit tensors afterwards, so the stage decodes every accelerator's result the same way.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,12 +44,17 @@ public sealed partial class AiBench
     }
 
     /// <summary>
-    /// Why the NPU can't run here, or null when it can. DirectML's NPU support is gone from recent ONNX Runtime builds: NPUs
-    /// are reached through their vendors' providers (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI), which this build doesn't carry yet.
+    /// Why the NPU can't run here, or null when it can. DirectML doesn't reach NPUs: they are driven by their vendors' providers
+    /// (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI), which Windows ML fetches on Windows 11 24H2+ (AiNpu). Quick: safe to ask from the
+    /// window; the AI section calls <see cref="PrepareNpu"/> before its NPU rows.
     /// </summary>
-    public static string? NpuProblem => "the NPU runtimes (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI) aren't part of this build";
+    public static string? NpuProblem => AiNpu.Problem;
 
-    public static string NpuRuntime => "";
+    /// <summary>The provider that runs the NPU row, once <see cref="PrepareNpu"/> has found one.</summary>
+    public static string NpuRuntime => AiNpu.Runtime;
+
+    /// <summary>Gets the NPU ready (it may download its provider the first time); returns why it can't run, or null. Blocks.</summary>
+    public static string? PrepareNpu(Action<string> status) => AiNpu.Prepare(status);
 
     /// <summary>A failure as a person should read it: ONNX Runtime's messages start with a build-server path and a source line.</summary>
     public static string Explain(Exception e, AiAccel accel)
@@ -66,7 +71,8 @@ public sealed partial class AiBench
 
     private static InferenceSession Session(AiTest test, AiAccel accel)
     {
-        string path = Path.Combine(Dir, test.Asset() + (accel == AiAccel.Cpu ? ".q.onnx" : ".f16.onnx"));
+        // int8 on the CPU and the NPU, float16 on the GPU (what DirectML takes)
+        string path = Path.Combine(Dir, test.Asset() + (accel == AiAccel.Gpu ? ".f16.onnx" : ".q.onnx"));
         if (!File.Exists(path)) throw new BenchException($"{Path.GetFileName(path)} missing");
         var o = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL, LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR };
         if (accel == AiAccel.Cpu)
@@ -74,6 +80,13 @@ public sealed partial class AiBench
             o.IntraOpNumThreads = CpuThreads;
             o.InterOpNumThreads = 1;
             o.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
+        }
+        else if (accel == AiAccel.Npu)
+        {
+            o.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
+            var npu = AiNpu.Devices;
+            if (npu.Count == 0) throw new BenchException("no NPU device was found");
+            o.AppendExecutionProvider(OrtEnv.Instance(), npu, new Dictionary<string, string>());
         }
         else
         {

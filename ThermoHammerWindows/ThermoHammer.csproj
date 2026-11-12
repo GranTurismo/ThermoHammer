@@ -7,7 +7,8 @@
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- the Windows 10 2004 TFM: Windows ML's APIs (the NPU runtimes) are WinRT; the app itself still runs from Windows 10 2004 -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <StartupObject>ThermoHammer.Program</StartupObject>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -23,16 +24,18 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Product>ThermoHammer</Product>
     <Company>GranTurismo</Company>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <!-- the build number, as on the phones (Android versionCode / iOS build) -->
-    <FileVersion>2.0.0.1</FileVersion>
+    <FileVersion>2.1.0.0</FileVersion>
     <!-- the WPF/WebView2 packages ship every UI language's resources; the app is English -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
+    <!-- Windows ML, self-contained: ONNX Runtime (CPU + DirectML, what the AI test runs on) plus the catalog that fetches the NPU vendors'
+         runtimes (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI) on Windows 11 24H2+. Replaces the Microsoft.ML.OnnxRuntime.DirectML package. -->
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.5.96" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
@@ -43,6 +46,13 @@
     <PackageReference Include="Vortice.Dxc" Version="3.8.3" />
     <PackageReference Include="Microsoft.Direct3D.DXC" Version="1.9.2609.5" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
     <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+  </ItemGroup>
+
+  <!-- the unit tests (Tests\ThermoHammer.Tests.csproj) are a project of their own -->
+  <ItemGroup>
+    <Compile Remove="Tests\**" />
+    <None Remove="Tests\**" />
+    <EmbeddedResource Remove="Tests\**" />
   </ItemGroup>
 
   <!-- the phone apps' fonts and the app icon -->

@@ -178,7 +178,7 @@ public static class ComparisonEngine
         if (a.FinalStability > b.FinalStability) scoreA += 2; else if (b.FinalStability > a.FinalStability) scoreB += 2;
         if (avgA > avgB) scoreA += 2; else if (avgB > avgA) scoreB += 2;
         var winner = scoreA > scoreB ? Winner.A : scoreB > scoreA ? Winner.B : Winner.Equal;
-        string nameA = $"{a.DeviceManufacturer} {a.DeviceModel}", nameB = $"{b.DeviceManufacturer} {b.DeviceModel}";
+        string nameA = a.Name, nameB = b.Name;
         string s = winner switch
         {
             Winner.A => $"{nameA} demonstrated superior thermal stability ({a.FinalStability:0.0}% vs {b.FinalStability:0.0}%). ",

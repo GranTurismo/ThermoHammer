@@ -19,20 +19,30 @@ public sealed class MediaDevice : IDisposable
     public readonly IMFDXGIDeviceManager Manager;
     public readonly string AdapterName;
 
-    public MediaDevice()
+    /// <summary>
+    /// The adapter every GPU-bound test of the benchmark runs on: the hardware one with the most video memory (a laptop's
+    /// discrete GPU over its integrated one) — GpuBench picks by the same rule, and the LLM test steers llama.cpp's Vulkan
+    /// backend to it (LlmGpuChoice). The caller disposes it; null when there is none.
+    /// </summary>
+    public static IDXGIAdapter1? BestAdapter(IDXGIFactory1 factory)
     {
-        if (Interlocked.Exchange(ref started, 1) == 0) MediaFactory.MFStartup().CheckError();
-        using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
         IDXGIAdapter1? best = null;
-        string name = "";
         for (uint i = 0; factory.EnumAdapters1(i, out var a).Success; i++)
         {
             var d = a.Description1;
             if ((d.Flags & AdapterFlags.Software) != 0) { a.Dispose(); continue; }
-            if (best == null || d.DedicatedVideoMemory > best.Description1.DedicatedVideoMemory) { best?.Dispose(); best = a; name = d.Description.Trim(); }
+            if (best == null || d.DedicatedVideoMemory > best.Description1.DedicatedVideoMemory) { best?.Dispose(); best = a; }
             else a.Dispose();
         }
-        AdapterName = name;
+        return best;
+    }
+
+    public MediaDevice()
+    {
+        if (Interlocked.Exchange(ref started, 1) == 0) MediaFactory.MFStartup().CheckError();
+        using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+        var best = BestAdapter(factory);
+        AdapterName = best?.Description1.Description.Trim() ?? "";
         var levels = new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 };
         var flags = DeviceCreationFlags.VideoSupport | DeviceCreationFlags.BgraSupport;
         D3D11.D3D11CreateDevice(best, best == null ? DriverType.Warp : DriverType.Unknown, flags, levels, out Device, out _, out Context).CheckError();

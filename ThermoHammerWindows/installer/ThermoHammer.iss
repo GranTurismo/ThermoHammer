@@ -5,7 +5,7 @@
   #define Arch "x64"
 #endif
 #define AppName "ThermoHammer"
-#define AppVersion "2.0.0"
+#define AppVersion "2.1.0"
 
 [Setup]
 AppId={{6D1F0C57-7A0B-4B54-9F8E-3C2D3A6B7E21}

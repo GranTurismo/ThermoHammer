@@ -17,8 +17,22 @@ public sealed unsafe class QrBench : IDisposable
     /// <summary>`Found`: where the scanner placed the code's corners in the frame (pixels), or null when it missed.</summary>
     public sealed record Progress(string Phase, double Fraction, double Rate, int Frame, (float x, float y)[]? Found);
 
+    /// <summary>
+    /// Why the test can't run on this PC, or null. x64 builds of the QR frame renderer use AVX and FMA3 (Arm fuses multiply-adds,
+    /// so the frames must too, to be the same pixels everywhere): on a CPU without them the DLL would crash, so it asks first.
+    /// </summary>
+    public static string? Problem()
+    {
+        try { return BenchCore.bc_qr_supported() != 0 ? null : "the CPU lacks the AVX and FMA instructions the QR frames are drawn with"; }
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return "the QR scanner (benchcore.dll) isn't part of this build";
+        }
+    }
+
     public QrBench()
     {
+        if (Problem() is { } problem) throw new BenchException(problem);
         qr = BenchCore.bc_qr_create(BenchCore.QrFrames, BenchCore.QrSeed);
         if (qr == IntPtr.Zero) throw new BenchException("couldn't prepare the QR frames");
         Count = BenchCore.bc_qr_count(qr);

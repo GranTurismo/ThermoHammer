@@ -16,9 +16,39 @@ public static class DeviceInfo
     public static string OsLabel(int os, string version) =>
         $"{(os == 2 ? "Android" : os == 3 ? "macOS" : os == 4 ? "Windows" : "iOS")} {version}";
 
+    /// <summary>The most characters of a name the server keeps (BenchmarkRun.MaxText): it trims what it gets and cuts the rest.</summary>
+    public const int MaxText = 64;
+
+    /// <summary>
+    /// Text as the server stores it: trimmed and cut at <see cref="MaxText"/>. What the PC sends is clipped the same way, so
+    /// the name on the board is the name sent — "mine" and the model lookup find it again.
+    /// </summary>
+    public static string Clip(string? text)
+    {
+        string v = text?.Trim() ?? "";
+        return v.Length <= MaxText ? v : v[..MaxText];
+    }
+
+    /// <summary><see cref="Clip"/>, with null for nothing (an optional field the server would store as null).</summary>
+    public static string? ClipOrNull(string? text) => Clip(text) is { Length: > 0 } v ? v : null;
+
+    /// <summary>
+    /// A device's name for people: the maker in front of the model, unless the model already starts with it ("HP ProBook",
+    /// not "HP HP ProBook"; "PC (Ryzen 7 7800X3D)", not "PC PC (…)") — the phones' deviceDisplayName.
+    /// </summary>
+    public static string DisplayName(string? manufacturer, string? model)
+    {
+        model ??= "";
+        return string.IsNullOrWhiteSpace(manufacturer) || model.StartsWith(manufacturer, StringComparison.OrdinalIgnoreCase)
+            ? model : $"{manufacturer} {model}".Trim();
+    }
+
     private static readonly Lazy<(string maker, string model)> identity = new(ReadIdentity);
     public static string Manufacturer => identity.Value.maker;
     public static string Model => identity.Value.model;
+
+    /// <summary>This PC as the boards name it.</summary>
+    public static string FullName => DisplayName(Manufacturer, Model);
 
     public static string CpuName { get; } = ReadCpuName();
     public static string GpuName { get; } = ReadGpuName();
@@ -64,8 +94,8 @@ public static class DeviceInfo
         if (maker == "Lenovo" && model.StartsWith("Lenovo ", StringComparison.Ordinal)) model = model[7..];
         if (IsPlaceholder(model) && !IsPlaceholder(family)) model = family;
         if (IsPlaceholder(maker) || IsPlaceholder(model))
-            return ("PC", $"PC ({ShortCpu(CpuName)})");
-        return (maker, model);
+            return ("PC", Clip($"PC ({ShortCpu(CpuName)})"));
+        return (Clip(maker), Clip(model));
     }
 
     /// <summary>"AMD Ryzen 7 7800X3D 8-Core Processor" → "Ryzen 7 7800X3D"; "Snapdragon(R) X Elite - X1E78100 - Qualcomm(R) Oryon(TM) CPU" → "Snapdragon X Elite X1E78100".</summary>
@@ -89,22 +119,30 @@ public static class DeviceInfo
         (Registry.GetValue(@"HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString", null) as string)?.Trim()
         ?? "Unknown processor";
 
+    /// <summary>The graphics adapter's name; never empty (the server turns a blank one away as "Missing device").</summary>
     private static string ReadGpuName()
     {
         try
         {
+            // the adapter the GPU, media, AI and LLM tests run on (the most video memory), not whichever DXGI lists first
             using var factory = Vortice.DXGI.DXGI.CreateDXGIFactory1<Vortice.DXGI.IDXGIFactory1>();
-            for (uint i = 0; factory.EnumAdapters1(i, out var adapter).Success; i++)
+            using var best = Ux.MediaDevice.BestAdapter(factory);
+            if (best != null && Clip(best.Description1.Description) is { Length: > 0 } name) return name;
+        }
+        catch (Exception) { }
+        // DXGI wouldn't say: the display driver's own name in the registry
+        try
+        {
+            using var classKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}");
+            foreach (string sub in classKey?.GetSubKeyNames() ?? [])
             {
-                using (adapter)
-                {
-                    var d = adapter.Description1;
-                    if ((d.Flags & Vortice.DXGI.AdapterFlags.Software) == 0) return d.Description.Trim();
-                }
+                using var adapter = classKey!.OpenSubKey(sub);
+                if (adapter?.GetValue("DriverDesc") is string desc && Clip(desc) is { Length: > 0 } name
+                    && !name.StartsWith("Microsoft ", StringComparison.OrdinalIgnoreCase)) return name;
             }
         }
         catch (Exception) { }
-        return "";
+        return "Unknown GPU";
     }
 
     private static string CurrentVersion(string name) =>

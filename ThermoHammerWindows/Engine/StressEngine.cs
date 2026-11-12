@@ -80,7 +80,7 @@ public sealed record StampV2(long TNs, long WindowNs, long IpsTotal, long[] IpsP
     public int ElapsedMs => (int)(TNs / 1_000_000);
 }
 
-public sealed record GateResult(string Id, string Title, bool Blocking, bool Passed, string Detail);
+public sealed record GateResult(string Id, string Title, bool Blocking, bool Passed, string Detail, bool Advisory = false);
 
 public sealed record PreflightReport(List<GateResult> Gates, bool CanRun, int ValidityHints);
 
@@ -163,6 +163,8 @@ public sealed class StressEngine
     private double[] workerBaselines;
     private double[] displayBaselines;
     private bool powerEventSeen, thermalEscalatedAtStart;
+    private bool lostFront;                  // the window was not in front at some point while the run was measuring
+    private volatile bool windowActive = true;
 
     private const double CooldownMaxS = 30, CooldownStallS = 45, WarmupS = 12, CalibrationS = 20;
 
@@ -199,6 +201,9 @@ public sealed class StressEngine
         if (t.LowPower) hints |= ValidityFlag.EnvCapped;
         gates.Add(new("clocks", "CLOCK TELEMETRY", false, t.HasClocks,
             t.HasClocks ? $"{t.CpuMhzAverage / 1000:0.00} GHz now · base {t.BaseMhz / 1000:0.00} GHz" : "Windows reports no clocks here"));
+        // a phone aborts a run that leaves the screen; a PC keeps running, so leaving the window flags the run instead
+        gates.Add(new("front", "STAY IN FRONT", false, true,
+            "keep this window in front while it measures — leaving it makes the run unverified", Advisory: true));
         // ambient CPU load (workers not yet started → everything is external)
         var a = Telemetry.SystemTimes();
         Thread.Sleep(800);
@@ -218,6 +223,7 @@ public sealed class StressEngine
         AbortedByUser = false;
         powerEventSeen = false;
         thermalEscalatedAtStart = false;
+        lostFront = false;
         calList = [];
         workerBaselines = Enumerable.Repeat(1.0, CoreCount).ToArray();
         displayBaselines = Enumerable.Repeat(1.0, CoreCount).ToArray();
@@ -243,6 +249,16 @@ public sealed class StressEngine
     {
         AbortedByUser = true;
         keepAlive = false;
+    }
+
+    /// <summary>
+    /// The window was activated or deactivated. Whatever is in front competes for the processor and the GPU, so leaving the
+    /// window while the run measures flags it unverified (the phones abort the run when it leaves the screen; a PC keeps running).
+    /// </summary>
+    public void WindowActive(bool isActive)
+    {
+        windowActive = isActive;
+        if (!isActive && IsRunning && State.Phase == RunPhase.Measured) lostFront = true;
     }
 
     // ── workers ──
@@ -393,6 +409,7 @@ public sealed class StressEngine
                 double baseline = P95(calList);
                 if (measuredStartNs == 0)
                 {
+                    if (!windowActive) lostFront = true;   // already behind another window when measuring starts
                     measuredStartNs = now;
                     stampLastNs = now;
                     stampAccumWork = 0;
@@ -535,7 +552,7 @@ public sealed class StressEngine
 
         int flags = clocks ? 0 : ValidityFlag.FreqMissing;
         // a warm start lowers the confidence, it doesn't flag the run (as on the phones)
-        if ((double)contentionStamps / stamps.Count > 0.10) flags |= ValidityFlag.Interference;
+        if ((double)contentionStamps / stamps.Count > 0.10 || lostFront) flags |= ValidityFlag.Interference;
         if (powerEventSeen) flags |= ValidityFlag.PowerEvent;
         if ((envAcc & EnvFlag.LowPowerMode) != 0) flags |= ValidityFlag.EnvCapped;
         if (elapsed < duration * 0.9) flags |= ValidityFlag.ShortRun;

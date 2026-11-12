@@ -12,91 +12,11 @@ namespace ThermoHammer.Engine;
 // server re-scores every run from these raw results.
 // ─────────────────────────────────────────────────────────────────────────────
 
-public sealed record LlmRecord(double PrefillCpu = 0, double DecodeCpu = 0, double PrefillGpu = 0, double DecodeGpu = 0, string? Gpu = null, double FreeGb = 0);
-
-public sealed record MediaRecord(double Video8kHevc = 0, double Video8kAv1 = 0, double ExportAvc = 0, double ExportHevc = 0, double ExportAv1 = 0,
-    double Export8kHevc = 0, double ExportAvcPsnr = 0, double ExportHevcPsnr = 0, double ExportAv1Psnr = 0, double Export8kHevcPsnr = 0,
-    int ExportHardware = 0);
-
-/// <summary>One finished run as kept on the PC and submitted: raw results only (2 decimals — what is hashed).</summary>
-public sealed record BenchmarkRecord
+/// <summary>The record's part that reads this PC (the rest, with no Windows calls, is in BenchmarkRecord.cs).</summary>
+public sealed partial record BenchmarkRecord
 {
-    public Guid Id = Guid.NewGuid();
-    public DateTime Timestamp = DateTime.Now;
-    public int Version = BenchmarkScore.Version;
-    public int Score;
-    public string GpuName = "";
-    public double Test1Fps, Test1LowFps, Test2Fps, Test2LowFps, Test3Fps, Test3LowFps;
-    public bool RayTracing;
-    public double WebLayout, WebCanvas, WebCss, WebSvg, WebJs;
-    public double QrRate;
-    public double? ReferenceQrRate;
-    public double CpuMath, CpuData, CpuCrypto, CpuMulti;
-    public double ScrollSpeed, ScrollDropped;
-    public double GalleryJpeg, GalleryWebp, GalleryAvif;
-    public double PhotoEdit;
-    public double VideoAvc, VideoHevc, VideoVp9, VideoAv1;
-    public int VideoHardware;
-    public double[] Ai = new double[18];   // AiTest × AiAccel, test-major
-    public string? AiNpuRuntime;
-    public double MemRead, MemWrite, MemCopy, MemLatency;
-    public double StorageSeqRead, StorageSeqWrite, StorageRandomRead, StorageRandomWrite;
-    public bool StorageDirect;
-    public double DbInsert, DbUpdate, DbQuery;
-    public LlmRecord? Llm;
-    public MediaRecord? Media;
-    public string? OsVersion;
-    public int ValidityFlags;
-    public bool Complete;
-    public bool Submitted;
-
-    public static BenchmarkRecord From(BenchmarkResult r)
-    {
-        static double Q(double v) => BenchmarkScore.Round2(v);
-        GpuTestResult? G(GpuTest t) => r.Gpu.FirstOrDefault(x => x.Test == t);
-        var ux = r.Ux;
-        var v = ux?.Video;
-        var e = ux?.Export;
-        var cpu = r.Cpu;
-        var m = r.Mem;
-        var l = r.Llm;
-        return new BenchmarkRecord
-        {
-            Score = r.Total,
-            GpuName = r.GpuName,
-            Test1Fps = Q(G(GpuTest.LakeValley)?.AvgFps ?? 0), Test1LowFps = Q(G(GpuTest.LakeValley)?.LowFps ?? 0),
-            Test2Fps = Q(G(GpuTest.NeonCity)?.AvgFps ?? 0), Test2LowFps = Q(G(GpuTest.NeonCity)?.LowFps ?? 0),
-            Test3Fps = Q(G(GpuTest.NeonCityRT)?.AvgFps ?? 0), Test3LowFps = Q(G(GpuTest.NeonCityRT)?.LowFps ?? 0),
-            RayTracing = G(GpuTest.NeonCityRT)?.Supported ?? false,
-            WebLayout = Q(ux?.Web?.Layout ?? 0), WebCanvas = Q(ux?.Web?.Canvas ?? 0), WebCss = Q(ux?.Web?.Css ?? 0),
-            WebSvg = Q(ux?.Web?.Svg ?? 0), WebJs = Q(ux?.Web?.Js ?? 0),
-            QrRate = Q(ux?.Qr?.Rate ?? 0), ReferenceQrRate = ux?.Qr?.ReferenceRate is { } rr ? Q(rr) : null,
-            ScrollSpeed = Q(ux?.Scroll?.Speed ?? 0), ScrollDropped = Q(ux?.Scroll?.DroppedPct ?? 0),
-            GalleryJpeg = Q(ux?.Gallery?.Jpeg ?? 0), GalleryWebp = Q(ux?.Gallery?.Webp ?? 0), GalleryAvif = Q(ux?.Gallery?.Avif ?? 0),
-            PhotoEdit = Q(ux?.PhotoMps ?? 0),
-            VideoAvc = Q(v?.Fps(VideoClip.Avc4k) ?? 0), VideoHevc = Q(v?.Fps(VideoClip.Hevc4k) ?? 0),
-            VideoVp9 = Q(v?.Fps(VideoClip.Vp94k) ?? 0), VideoAv1 = Q(v?.Fps(VideoClip.Av14k) ?? 0),
-            VideoHardware = v?.HardwareMask ?? 0,
-            Media = ux == null ? null : new MediaRecord(Q(v?.Fps(VideoClip.Hevc8k) ?? 0), Q(v?.Fps(VideoClip.Av18k) ?? 0),
-                Q(e?.Fps(ExportJob.Avc4k) ?? 0), Q(e?.Fps(ExportJob.Hevc4k) ?? 0), Q(e?.Fps(ExportJob.Av14k) ?? 0), Q(e?.Fps(ExportJob.Hevc8k) ?? 0),
-                Q(e?.Psnr(ExportJob.Avc4k) ?? 0), Q(e?.Psnr(ExportJob.Hevc4k) ?? 0), Q(e?.Psnr(ExportJob.Av14k) ?? 0), Q(e?.Psnr(ExportJob.Hevc8k) ?? 0),
-                e?.HardwareMask ?? 0),
-            CpuMath = Q(cpu?.Value(CpuTest.Math) ?? 0), CpuData = Q(cpu?.Value(CpuTest.Data) ?? 0),
-            CpuCrypto = Q(cpu?.Value(CpuTest.Crypto) ?? 0), CpuMulti = Q(cpu?.Value(CpuTest.Multi) ?? 0),
-            Ai = r.Ai is { } a ? AiTests.All.SelectMany(t => AiTests.Accels.Select(x => Q(a.Ips(t, x)))).ToArray() : new double[18],
-            AiNpuRuntime = r.Ai?.NpuRuntime,
-            MemRead = Q(m?.Ram.Read ?? 0), MemWrite = Q(m?.Ram.Write ?? 0), MemCopy = Q(m?.Ram.Copy ?? 0), MemLatency = Q(m?.Ram.LatencyNs ?? 0),
-            StorageSeqRead = Q(m?.Storage.SeqRead ?? 0), StorageSeqWrite = Q(m?.Storage.SeqWrite ?? 0),
-            StorageRandomRead = Q(m?.Storage.RandomRead ?? 0), StorageRandomWrite = Q(m?.Storage.RandomWrite ?? 0),
-            StorageDirect = m?.Storage.Direct ?? false,
-            DbInsert = Q(m?.Db.Insert ?? 0), DbUpdate = Q(m?.Db.Update ?? 0), DbQuery = Q(m?.Db.Query ?? 0),
-            Llm = l == null ? null : new LlmRecord(Q(l.Run(LlmAccel.Cpu)?.Prefill ?? 0), Q(l.Run(LlmAccel.Cpu)?.Decode ?? 0),
-                Q(l.Run(LlmAccel.Gpu)?.Prefill ?? 0), Q(l.Run(LlmAccel.Gpu)?.Decode ?? 0), l.GpuName, Q(l.FreeGb)),
-            OsVersion = DeviceInfo.OsVersion,
-            ValidityFlags = r.ValidityFlags,
-            Complete = r.IsComplete,
-        };
-    }
+    /// <summary>The run as kept on this PC: its Windows version and build, and the model it was made on.</summary>
+    public static BenchmarkRecord From(BenchmarkResult r) => From(r, DeviceInfo.OsVersion, DeviceInfo.OsBuild, DeviceInfo.Model);
 }
 
 /// <summary>The request body of POST /benchmark — the field names the server (and the phone apps) use.</summary>
@@ -173,16 +93,22 @@ public sealed record BenchmarkDto(int Id, string DeviceManufacturer, string Devi
     string OsVersion, int Score, int UxScore, int CpuScore, int AiScore, int MemScore, int LlmScore, int TotalScore, double Test3Fps,
     bool RayTracing, int Runs)
 {
-    public string Name => DeviceModel.StartsWith(DeviceManufacturer, StringComparison.OrdinalIgnoreCase) ? DeviceModel : $"{DeviceManufacturer} {DeviceModel}";
+    /// <summary>The name the boards print: the maker only when the model doesn't already start with it.</summary>
+    public string Name => DeviceInfo.DisplayName(DeviceManufacturer, DeviceModel);
 }
 
 /// <summary>GET /benchmark/{id}: one run's numbers section by section, already written as text by the server — a new measurement needs no app update.</summary>
 public sealed record BenchmarkDetail(int Id, DateTime CreatedAt, int BenchmarkVersion, string DeviceManufacturer, string DeviceModel,
     string? SocModel, string? GpuName, int Os, string OsVersion, string? OsBuild, string? AppVersion, int TotalScore, List<BenchmarkDetail.Section> Sections)
 {
+    /// <summary>The run's date in UTC, "27 Oct 2026": the server's day, not this PC's time zone (Android shows the same date).</summary>
+    public string Date => (CreatedAt.Kind == DateTimeKind.Local ? CreatedAt.ToUniversalTime() : CreatedAt).ToString("d MMM yyyy", CultureInfo.InvariantCulture);
+
     public sealed record Section(string Key, string Title, int Score, List<Group> Groups);
     public sealed record Group(string Title, int? Points, List<Row> Rows);
-    public sealed record Row(string Label, string Value);
+    /// <summary>[Number] is the measurement behind [Value], for comparing two runs (null for text, or a test that didn't run);
+    /// [Better] is "higher" or "lower", null when the number is context rather than performance.</summary>
+    public sealed record Row(string Label, string Value, double? Number = null, string? Better = null);
 }
 
 /// <summary>GET /benchmark/model: one model's verified runs of the current scoring version.</summary>
@@ -195,8 +121,9 @@ public sealed record ModelStats(string DeviceModel, int Runs, ModelStats.Spread?
 
 public static class BenchmarkUpload
 {
+    /// <summary>The full version, as the phones send theirs ("2.0.4").</summary>
     public static string AppVersion =>
-        typeof(BenchmarkUpload).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}" : "?";
+        typeof(BenchmarkUpload).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}" : "?";
 
     public static async Task<BenchmarkSubmitResponse> Submit(BenchmarkRecord r)
     {
@@ -204,12 +131,19 @@ public static class BenchmarkUpload
         var a = r.Ai;
         var l = r.Llm ?? new LlmRecord();
         var m = r.Media ?? new MediaRecord();
+        // The server trims every name and cuts it at 64 characters before it stores it, so it is sent that way: what the
+        // board lists is then what "mine" and the model lookup compare with. A blank GPU name is turned away as "Missing device".
+        string gpu = DeviceInfo.Clip(r.GpuName) is { Length: > 0 } g ? g : DeviceInfo.GpuName;
+        // A 1% low can't be better than the average, but a few long frames among thousands (a PC does thousands of frames a
+        // second) can pull the average below it, and the server turns away a low more than 5% above the average.
+        static double Low(double low, double fps) => Math.Min(low, fps);
         var p = new BenchmarkPayload
         {
-            SessionId = session.Id, BenchmarkVersion = r.Version, DeviceManufacturer = DeviceInfo.Manufacturer, DeviceModel = DeviceInfo.Model,
-            OsVersion = DeviceInfo.OsVersion, OsBuild = DeviceInfo.OsBuild, SocModel = DeviceInfo.ShortCpu(DeviceInfo.CpuName), GpuName = r.GpuName,
-            Test1Fps = r.Test1Fps, Test1LowFps = r.Test1LowFps, Test2Fps = r.Test2Fps, Test2LowFps = r.Test2LowFps,
-            Test3Fps = r.Test3Fps, Test3LowFps = r.Test3LowFps, RayTracing = r.RayTracing,
+            SessionId = session.Id, BenchmarkVersion = r.Version, DeviceManufacturer = DeviceInfo.Clip(DeviceInfo.Manufacturer), DeviceModel = DeviceInfo.Clip(DeviceInfo.Model),
+            OsVersion = DeviceInfo.Clip(DeviceInfo.OsVersion), OsBuild = DeviceInfo.ClipOrNull(DeviceInfo.OsBuild),
+            SocModel = DeviceInfo.ClipOrNull(DeviceInfo.ShortCpu(DeviceInfo.CpuName)), GpuName = gpu,
+            Test1Fps = r.Test1Fps, Test1LowFps = Low(r.Test1LowFps, r.Test1Fps), Test2Fps = r.Test2Fps, Test2LowFps = Low(r.Test2LowFps, r.Test2Fps),
+            Test3Fps = r.RayTracing ? r.Test3Fps : 0, Test3LowFps = r.RayTracing ? Low(r.Test3LowFps, r.Test3Fps) : 0, RayTracing = r.RayTracing,
             WebLayout = r.WebLayout, WebCanvas = r.WebCanvas, WebCss = r.WebCss, WebSvg = r.WebSvg, WebJs = r.WebJs,
             QrRate = r.QrRate, MlkitQrRate = r.ReferenceQrRate,
             CpuMath = r.CpuMath, CpuData = r.CpuData, CpuCrypto = r.CpuCrypto, CpuMulti = r.CpuMulti,
@@ -223,15 +157,15 @@ public static class BenchmarkUpload
             AiClassifyCpu = a[0], AiClassifyGpu = a[1], AiClassifyNpu = a[2], AiDetectCpu = a[3], AiDetectGpu = a[4], AiDetectNpu = a[5],
             AiSegmentCpu = a[6], AiSegmentGpu = a[7], AiSegmentNpu = a[8], AiUpscaleCpu = a[9], AiUpscaleGpu = a[10], AiUpscaleNpu = a[11],
             AiDepthCpu = a[12], AiDepthGpu = a[13], AiDepthNpu = a[14], AiSoundCpu = a[15], AiSoundGpu = a[16], AiSoundNpu = a[17],
-            AiNpuRuntime = r.AiNpuRuntime,
+            AiNpuRuntime = DeviceInfo.ClipOrNull(r.AiNpuRuntime),
             MemRead = r.MemRead, MemWrite = r.MemWrite, MemCopy = r.MemCopy, MemLatency = r.MemLatency,
             StorageSeqRead = r.StorageSeqRead, StorageSeqWrite = r.StorageSeqWrite,
             StorageRandomRead = r.StorageRandomRead, StorageRandomWrite = r.StorageRandomWrite, StorageDirect = r.StorageDirect,
             DbInsert = r.DbInsert, DbUpdate = r.DbUpdate, DbQuery = r.DbQuery,
             LlmPrefillCpu = l.PrefillCpu, LlmDecodeCpu = l.DecodeCpu, LlmPrefillGpu = l.PrefillGpu, LlmDecodeGpu = l.DecodeGpu,
-            LlmGpu = l.Gpu, LlmFreeGb = l.FreeGb,
+            LlmGpu = DeviceInfo.ClipOrNull(l.Gpu), LlmFreeGb = l.FreeGb,
             ValidityFlags = r.ValidityFlags,
-            AppVersion = AppVersion,
+            AppVersion = DeviceInfo.ClipOrNull(AppVersion),
         };
         p.Hash = ThermoHasher.Hmac(session.EncryptionKey, p.Canonical());
         using var resp = await Api.Http.PostAsJsonAsync("benchmark", p, Api.Json);
@@ -252,7 +186,7 @@ public static class BenchmarkUpload
     {
         using var r = await Api.Http.GetAsync($"benchmark/{id}");
         if (r.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-        if (!r.IsSuccessStatusCode) throw new BenchException($"Run details unavailable (HTTP {(int)r.StatusCode})");
+        if (!r.IsSuccessStatusCode) throw new BenchException($"Run unavailable (HTTP {(int)r.StatusCode})");
         return await r.Content.ReadFromJsonAsync<BenchmarkDetail>(Api.Json);
     }
 
@@ -275,9 +209,27 @@ public sealed class BenchmarkHistoryStore
 
     public void Add(BenchmarkRecord r) { Records = Records.Append(r).TakeLast(30).ToList(); AppData.Save(File, Records); }
 
-    public void MarkSubmitted(Guid id)
+    private const string DismissedKey = "benchmarkUpdate.dismissed";
+    private readonly HashSet<string> dismissed = [.. Settings.Strings(DismissedKey)];
+
+    /// <summary>The benchmark's "did the update change my PC?" for this PC now, unless it was dismissed (BenchmarkUpdateImpact).</summary>
+    public BenchmarkUpdateImpact.Insight? UpdateInsight(string model, string? osVersion, string? osBuild) =>
+        BenchmarkUpdateImpact.For(Records, model, osVersion, osBuild) is { } i && !dismissed.Contains(i.DismissKey) ? i : null;
+
+    public void Dismiss(BenchmarkUpdateImpact.Insight i)
     {
-        foreach (var r in Records.Where(r => r.Id == id)) r.Submitted = true;
+        dismissed.Add(i.DismissKey);
+        Settings.Set(DismissedKey, dismissed.TakeLast(50).ToList());
+    }
+
+    /// <summary>The run reached the leaderboard; [serverId] is its id there (its page and certificate), when the server said it.</summary>
+    public void MarkSubmitted(Guid id, int? serverId)
+    {
+        foreach (var r in Records.Where(r => r.Id == id))
+        {
+            r.Submitted = true;
+            if (serverId is > 0) r.ServerId = serverId;
+        }
         AppData.Save(File, Records);
     }
 }
@@ -292,7 +244,7 @@ public static class BenchmarkReport
         static string F(double v, int d = 2) => v.ToString("F" + d, CultureInfo.InvariantCulture);
         static string Pts(int v) => v.ToString("N0", CultureInfo.InvariantCulture);
         Line($"ThermoHammer benchmark report · app {BenchmarkUpload.AppVersion} (Windows {DeviceInfo.Architecture}) · {time}");
-        Line($"{DeviceInfo.Manufacturer} {DeviceInfo.Model} · {DeviceInfo.OsLabel(DeviceInfo.OsPlatform, DeviceInfo.OsVersion)} ({DeviceInfo.OsBuild}) · CPU {DeviceInfo.CpuName} · GPU {(r.GpuName.Length == 0 ? "?" : r.GpuName)} · {F(DeviceInfo.TotalRamGb, 1)} GB RAM");
+        Line($"{DeviceInfo.FullName} · {DeviceInfo.OsLabel(DeviceInfo.OsPlatform, DeviceInfo.OsVersion)} ({DeviceInfo.OsBuild}) · CPU {DeviceInfo.CpuName} · GPU {(r.GpuName.Length == 0 ? "?" : r.GpuName)} · {F(DeviceInfo.TotalRamGb, 1)} GB RAM");
         Line($"TOTAL {Pts(r.Total)} = CPU {Pts(r.CpuScore)} + MEM {Pts(r.MemScore)} + GPU {Pts(r.GpuScore)} + UX {Pts(r.UxScore)} + AI {Pts(r.AiScore)} + LLM {Pts(r.LlmScore)} · validity flags {r.ValidityFlags}");
         Line($"Start · CPU share {Math.Round(r.StartCpuShare * 100)}% · waited {r.QuietWaitSec} s for background work · crypto {BenchCore.CryptoPath}");
         if (r.Cpu is { } cpu)

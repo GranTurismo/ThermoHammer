@@ -75,16 +75,10 @@ public sealed class GpuBench : IDisposable
     private static ID3D11Device CreateDevice(out ID3D11DeviceContext ctx, out string name, out FeatureLevel level)
     {
         using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-        IDXGIAdapter1? best = null;
-        name = "";
-        for (uint i = 0; factory.EnumAdapters1(i, out var a).Success; i++)
-        {
-            var d = a.Description1;
-            if ((d.Flags & AdapterFlags.Software) != 0) { a.Dispose(); continue; }
-            // the adapter with the most video memory (a laptop's discrete GPU over its integrated one)
-            if (best == null || d.DedicatedVideoMemory > best.Description1.DedicatedVideoMemory) { best?.Dispose(); best = a; name = d.Description.Trim(); }
-            else a.Dispose();
-        }
+        // the adapter with the most video memory (a laptop's discrete GPU over its integrated one) — the same pick as the media
+        // tests, DirectML's and the LLM test's, so every section of the benchmark runs on the same GPU
+        var best = Ux.MediaDevice.BestAdapter(factory);
+        name = best?.Description1.Description.Trim() ?? "";
         if (best == null) throw new GpuError("no graphics adapter");
         var levels = new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0, FeatureLevel.Level_10_1 };
         D3D11.D3D11CreateDevice(best, DriverType.Unknown, DeviceCreationFlags.BgraSupport, levels, out var device, out level, out ctx).CheckError();

@@ -5,6 +5,8 @@ namespace ThermoHammer.Engine.Ux;
 /// <summary>The UX tests in order: web browsing, web scrolling, photo gallery, photo editing, video playback, video export, QR scanning.</summary>
 public sealed class UxSection : IBenchmarkSection
 {
+    private const double NoticeS = 3;      // how long "not run" stays up when a test can't run on this PC (the LLM test's number)
+
     public void Run(BenchmarkEngine engine, BenchmarkResult r)
     {
         WebResult? web = null; ScrollResult? scroll = null; GalleryResult? gallery = null;
@@ -47,10 +49,10 @@ public sealed class UxSection : IBenchmarkSection
         // UX 5: each clip's decode rate — 4K60 in four codecs, 8K30 in two
         if (!engine.IsActive) return;
         engine.PublishUx(UxTest.Video, detail: "OPENING DECODERS", unit: "FPS");
-        video = Noted(UxTest.Video, () => new VideoBench().Run(() => engine.IsActive, (f, fps, clip, image, position) =>
+        video = Noted(UxTest.Video, () => new VideoBench().Run(() => engine.IsActive, (f, fps, clip, image, position, skipped) =>
         {
             engine.PublishUx(UxTest.Video, f / VideoClips.All.Length,
-                position == null ? $"{clip.Label()} · NOT SUPPORTED · 0 POINTS" : $"{clip.Label()} · MEDIA FOUNDATION", fps > 0 ? fps : -1, "FPS");
+                position == null ? $"{clip.Label()} · {(skipped == null ? "NOT SUPPORTED" : $"SKIPPED · {skipped.ToUpperInvariant()}")} · 0 POINTS" : $"{clip.Label()} · MEDIA FOUNDATION", fps > 0 ? fps : -1, "FPS");
             engine.PublishVideoFrame(image);
             engine.PublishVideoOsd(position is { } p
                 ? new VideoOsd($"{clip.Codec().Label()} · {clip.Width()}×{clip.Height()} · {clip.Fps()} FPS", clip.Mbps(), p, 3, fps / clip.Fps()) : null);
@@ -83,6 +85,13 @@ public sealed class UxSection : IBenchmarkSection
         engine.PublishUx(UxTest.Qr, detail: "PREPARING FRAMES", unit: "SCANS/S");
         qr = Noted(UxTest.Qr, () =>
         {
+            if (QrBench.Problem() is { } problem)
+            {
+                // the frames can't be drawn on this CPU: say why for a moment, the test scores 0
+                engine.PublishUx(UxTest.Qr, 1, $"NOT RUN · {problem.ToUpperInvariant()} · 0 POINTS", unit: "SCANS/S");
+                Thread.Sleep(TimeSpan.FromSeconds(NoticeS));
+                throw new BenchException($"not run: {problem}");
+            }
             using var bench = new QrBench();
             var previews = Enumerable.Range(0, bench.Count).Select(bench.Preview).ToArray();
             return bench.Run(() => engine.IsActive, p =>
@@ -144,7 +153,7 @@ public static class UxCheck
                 }
                 case "video":
                 {
-                    var res = new VideoBench().Run(() => true, (_, _, _, _, _) => { });
+                    var res = new VideoBench().Run(() => true, (_, _, _, _, _, _) => { });
                     foreach (var c in res.Codecs)
                         log.AppendLine($"{c.Clip.Label()} · {c.Fps:0.0} fps · {(c.Decoder ?? "—")}{(c.Hardware ? " (hardware)" : "")}{(c.Error != null ? " · " + c.Error : "")}");
                     log.AppendLine($"{UxScore.VideoPoints(res)} points");

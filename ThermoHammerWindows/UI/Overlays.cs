@@ -97,9 +97,9 @@ public sealed class PreflightOverlay : Grid, IDisposable
         gates.Children.Clear();
         foreach (var g in r.Gates)
         {
-            var c = g.Passed ? Ramp.At(0.05) : g.Blocking ? Ramp.At(0.85) : Ramp.At(0.5);
-            var text = Ui.VStack(1, Ui.Text(g.Title, 10, g.Passed ? Forge.Ink0 : Ramp.At(0.5), Forge.W.Bold), Ui.Text(g.Detail, 8, Forge.Ink2, wrap: true));
-            var row = Ui.HStack(10, new StatusLed(c), text.Grow(), Ui.Text(g.Passed ? "PASS" : g.Blocking ? "BLOCK" : "WARN", 8, c, Forge.W.Bold));
+            var c = g.Advisory ? Forge.PhasePreFlight : g.Passed ? Ramp.At(0.05) : g.Blocking ? Ramp.At(0.85) : Ramp.At(0.5);
+            var text = Ui.VStack(1, Ui.Text(g.Title, 10, g.Advisory || g.Passed ? Forge.Ink0 : Ramp.At(0.5), Forge.W.Bold), Ui.Text(g.Detail, 8, Forge.Ink2, wrap: true));
+            var row = Ui.HStack(10, new StatusLed(c), text.Grow(), Ui.Text(g.Advisory ? "NOTE" : g.Passed ? "PASS" : g.Blocking ? "BLOCK" : "WARN", 8, c, Forge.W.Bold));
             row.Stretch = false;
             foreach (FrameworkElement e in row.Children) e.VerticalAlignment = VerticalAlignment.Center;
             gates.Children.Add(row);
@@ -144,14 +144,19 @@ public sealed class HoldToAbort : Instrument
     }
 }
 
-/// <summary>Verdict — the scorecard seal after a stress run, and its submission.</summary>
+/// <summary>
+/// Verdict — the scorecard seal after a stress run, and its submission; the run shared as a card, presented full screen or exported
+/// as CSV; and, when it lost speed while it was still cool, the way to FIND MY LOST SPEED.
+/// </summary>
 public sealed class VerdictOverlay : Grid
 {
     private readonly ContentControl status = new();
     private readonly Func<Task> onSubmit;
     private readonly bool canSubmit;
 
-    public VerdictOverlay(Scorecard sc, bool canSubmit, Func<Task> onSubmit, Action onDismiss)
+    /// <summary>[onFindSpeed] non-null: the run slowed down while cool (SpeedMath.SlowedWhileCool) — show the banner that leads to the check.</summary>
+    public VerdictOverlay(Scorecard sc, bool canSubmit, Func<Task> onSubmit, Action onDismiss, Action? onShare = null, Action? onPresent = null,
+        Action? onExport = null, Action? onFindSpeed = null)
     {
         this.onSubmit = onSubmit;
         this.canSubmit = canSubmit;
@@ -176,12 +181,33 @@ public sealed class VerdictOverlay : Grid
             flags.Children.Add(b);
         }
         ShowSubmit();
-        var card = Overlays.Card(Ui.VStack(14, sealView, capacity, Ui.Engraved("DELIVERED CAPACITY", size: 8).Align(HorizontalAlignment.Center),
-            rows, flags, status, Ui.Button("DISMISS", onDismiss, Forge.Interact, Forge.Ink1, 10, radius: 10, padV: 10)), 340);
+        var col = Ui.VStack(14, sealView, capacity, Ui.Engraved("DELIVERED CAPACITY", size: 8).Align(HorizontalAlignment.Center), rows, flags);
+        if (onFindSpeed != null)
+        {
+            var amber = Ramp.At(0.5);
+            var banner = Ui.Box(Ui.VStack(8,
+                Ui.Text("It slowed down while cool — likely a power setting.", 9, Forge.Ink0, Forge.W.Bold, wrap: true),
+                Ui.Button("FIND MY LOST SPEED", onFindSpeed, amber.WithAlpha(0.14), amber, 9, Forge.W.Black, 8, 8, stroke: amber.WithAlpha(0.5))),
+                amber.WithAlpha(0.06), 10, 10, amber.WithAlpha(0.35));
+            col.Children.Add(banner);
+        }
+        var tools = Ui.HStack(8);
+        if (onShare != null) tools.Children.Add(Ui.Button("SHARE", onShare, Forge.Interact, Forge.Ink0, 9, Forge.W.Black, 8, 9).Grow());
+        if (onPresent != null) tools.Children.Add(Ui.Button("PRESENT", onPresent, Forge.Interact, Forge.Ink0, 9, Forge.W.Black, 8, 9).Grow());
+        if (onExport != null) tools.Children.Add(Ui.Button("EXPORT CSV", onExport, Forge.Interact, Forge.Ink0, 9, Forge.W.Black, 8, 9).Grow());
+        if (tools.Children.Count > 0) col.Children.Add(tools);
+        col.Children.Add(status);
+        col.Children.Add(Ui.Button("DISMISS", onDismiss, Forge.Interact, Forge.Ink1, 10, radius: 10, padV: 10));
+        var card = Overlays.Card(col, 340);
         card.HorizontalAlignment = HorizontalAlignment.Center;
         card.VerticalAlignment = VerticalAlignment.Center;
-        Children.Add(card);
+        card.Margin = new Thickness(0, 16, 0, 16);
+        // a laptop's window is short: the card scrolls rather than lose its buttons
+        Children.Add(Ui.Scroll(card).Align(HorizontalAlignment.Stretch, VerticalAlignment.Center));
     }
+
+    /// <summary>Submits the run, as if the button was pressed (the connection overlay's RETRY).</summary>
+    public void Submit() => _ = onSubmit();
 
     private static FrameworkElement Row(string label, string value) =>
         Ui.HStack(0, Ui.Text(label, 8, Forge.Ink2, Forge.W.Bold), Ui.Spacer(), Ui.Text(value, 10, Forge.Ink0, Forge.W.Bold));
@@ -232,16 +258,35 @@ public sealed class AbortOverlay : Grid
     }
 }
 
+/// <summary>A verified run ended offline: ask for a connection before it can be submitted (the phones' connection overlay).</summary>
 public sealed class ConnectionOverlay : Grid
 {
     public ConnectionOverlay(Action onRetry, Action onDismiss)
     {
         Background = Color.FromArgb(184, 0, 0, 0).Brush();
         var card = Overlays.Card(Ui.VStack(12,
-            Ui.Engraved("OFFLINE", Ramp.At(0.5), 11).Align(HorizontalAlignment.Center),
-            Ui.Text("result saved locally — submit from the leaderboard when online", 9, Forge.Ink1, wrap: true, align: TextAlignment.Center),
+            Ui.Engraved("NO INTERNET CONNECTION", Ramp.At(0.5), 11).Align(HorizontalAlignment.Center),
+            Ui.Text("Turn on Wi-Fi or connect a network cable to submit this result. Until then it's saved on this PC — submit it from the leaderboard when you're online.",
+                8, Forge.Ink1, wrap: true, align: TextAlignment.Center),
             Ui.HStack(10, Ui.Button("LATER", onDismiss, Forge.Interact, Forge.Ink1, 10, radius: 10, padV: 10).Grow(),
-                Ui.Button("RETRY", onRetry, Forge.PhaseMeasured, Forge.Bg, 10, Forge.W.Black, 10, 10).Grow())), 320);
+                Ui.Button("RETRY", onRetry, Forge.PhaseMeasured, Forge.Bg, 10, Forge.W.Black, 10, 10).Grow())), 300);
+        card.HorizontalAlignment = HorizontalAlignment.Center;
+        card.VerticalAlignment = VerticalAlignment.Center;
+        Children.Add(card);
+    }
+}
+
+/// <summary>Closing the window while a run is going: the run can't be resumed, so ask first (the phones block Back during a run).</summary>
+public sealed class QuitOverlay : Grid
+{
+    public QuitOverlay(Action onKeepRunning, Action onQuit)
+    {
+        Background = Color.FromArgb(184, 0, 0, 0).Brush();
+        var card = Overlays.Card(Ui.VStack(12,
+            Ui.Engraved("RUN IN PROGRESS", Ramp.At(0.5), 11).Align(HorizontalAlignment.Center),
+            Ui.Text("Closing ThermoHammer now ends the run and its results are lost.", 9, Forge.Ink1, wrap: true, align: TextAlignment.Center),
+            Ui.HStack(10, Ui.Button("QUIT", onQuit, Forge.Interact, Forge.Ink1, 10, radius: 10, padV: 10).Grow(),
+                Ui.Button("KEEP RUNNING", onKeepRunning, Forge.PhaseMeasured, Forge.Bg, 10, Forge.W.Black, 10, 10).Grow())), 300);
         card.HorizontalAlignment = HorizontalAlignment.Center;
         card.VerticalAlignment = VerticalAlignment.Center;
         Children.Add(card);

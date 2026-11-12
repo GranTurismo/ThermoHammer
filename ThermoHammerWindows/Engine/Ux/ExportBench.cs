@@ -18,7 +18,9 @@ namespace ThermoHammer.Engine.Ux;
 // encoder by encoder. The source clip loops through Media Foundation's decoder; every frame gets the edit on the GPU (grade,
 // vignette, a dip to black where the clip loops, an opaque lower third with a timecode that changes every frame) and goes
 // to Media Foundation's encoder — hardware where the PC has one — not real time, so it runs as fast as the encoder takes
-// frames — and the encoder writes a real MP4 (temporary, deleted after). A job is a fixed timeline (ExportJob.Frames: 8 s
+// frames — and the encoder writes a real MP4 (temporary, deleted after). The source clip comes off a hardware decoder's
+// surfaces where the PC has one, otherwise a software decoder's frames are uploaded to a texture (Android takes any decoder
+// too). A software AV1 encoder is skipped — "no hardware AV1 encoder" — as on Android: it does a frame every few seconds. A job is a fixed timeline (ExportJob.Frames: 8 s
 // of 4K60, 4 s of 8K30) exported start to finish, so the stage's progress bar is the export's own; the rate is the frames
 // after the first `WarmupFrames` over the time until the file is finished. One that can't finish within `CapS` is
 // measured on what it did.
@@ -68,13 +70,19 @@ public sealed class ExportBench
                 var done = results.ToList();
                 if (crashed.Contains(job))
                 {
-                    results.Add(new ExportJobResult(job, 0, 0, null, false, "crashed the app here last time"));
+                    results.Add(new ExportJobResult(job, 0, 0, null, false, CrashGuard.Reason));
                     onProgress(job, i, new Progress(1, 0, 0, 0, "", null, null, results[^1].Error), results);
                     Thread.Sleep(1000);
                     continue;
                 }
-                Settings.Set(RunningKey, new[] { $"{Build}:{job}" });
-                try { results.Add(Export(media, art, job, isActive, p => onProgress(job, i, p, done))); }
+                Guard.Begin(job.ToString());
+                try
+                {
+                    var result = Export(media, art, job, isActive, p => onProgress(job, i, p, done));
+                    Guard.Finished(job.ToString());     // it exported here: earlier unfinished runs of this job were chance
+                    results.Add(result);
+                    if (result.Error != null) Thread.Sleep(1000);   // skipped (no hardware AV1 encoder): the stage says why for a moment
+                }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
                     string why = Explain(job, e);
@@ -82,28 +90,21 @@ public sealed class ExportBench
                     onProgress(job, i, new Progress(1, 0, 0, 0, "", null, null, why), results);
                     Thread.Sleep(1000);   // the stage says why for a moment
                 }
-                finally { Settings.Set(RunningKey, null); }
+                finally { Guard.End(); }
             }
         }
         finally { media?.Dispose(); }
         return new ExportResult(results);
     }
 
-    private const string RunningKey = "benchmark.exportRunning", CrashedKey = "benchmark.exportCrashed";
-    private static string Build => System.Diagnostics.FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "?";
+    // markers "build:job" (CrashGuard); a job is skipped after two runs that never finished, as on iOS
+    private static readonly CrashGuard Guard = new("export");
 
+    /// <summary>Jobs whose export never finished twice in this build (an encoder's crash can't be caught); a marker left by the last launch counts as one.</summary>
     private static HashSet<ExportJob> Crashed()
     {
-        var crashed = Settings.Strings(CrashedKey);
-        var running = Settings.Strings(RunningKey);
-        if (running.Count > 0)
-        {
-            foreach (var r in running) if (!crashed.Contains(r)) crashed.Add(r);
-            Settings.Set(CrashedKey, crashed);
-            Settings.Set(RunningKey, null);
-        }
-        return crashed.Select(s => s.Split(':')).Where(p => p.Length == 2 && p[0] == Build)
-            .Select(p => ExportJobs.All.Cast<ExportJob?>().FirstOrDefault(j => j.ToString() == p[1])).OfType<ExportJob>().ToHashSet();
+        var names = Guard.Skipped(1);
+        return ExportJobs.All.Where(j => names.Contains(j.ToString())).ToHashSet();
     }
 
     private static string Explain(ExportJob job, Exception e)
@@ -126,10 +127,22 @@ public sealed class ExportBench
         T Own<T>(T d) where T : IDisposable { owned.Add(d); return d; }
         string file = Path.Combine(Path.GetTempPath(), $"thermohammer_export_{job}.mp4");
         try { File.Delete(file); } catch (IOException) { }
+        Writer? writerToClose = null;      // closed before the textures it may still hold are released
         try
         {
-            var source = Own(new Source(media, job.Source()));
+            // the encoder first: a software AV1 one isn't worth setting anything else up for
+            var writer = writerToClose = new Writer(media, file, job, w, h);
+            string encoder = writer.EncoderName;
+            bool hardware = writer.Hardware;
+            if (!hardware && job.Codec() == VideoCodec.Av1)
+            {
+                // a software AV1 encoder does a frame every few seconds at 4K — not an export anyone waits for
+                const string why = "no hardware AV1 encoder";
+                onProgress(new Progress(1, 0, 0, 0, "", null, null, why));
+                return new ExportJobResult(job, 0, 0, encoder, false, why);
+            }
             var proc = Own(new VideoProc(media, w, h));
+            var source = Own(new Source(media, job.Source(), proc));
             // frames: decoded → BGRA → edited → NV12 (a ring: the encoder may still hold the last ones)
             var bgra = Own(dev.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)w, (uint)h, 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource)));
             var edited = Own(dev.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)w, (uint)h, 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource)));
@@ -153,11 +166,6 @@ public sealed class ExportBench
             var linear = Own(dev.CreateSamplerState(new SamplerDescription(Filter.MinMagMipLinear, TextureAddressMode.Clamp, TextureAddressMode.Clamp,
                 TextureAddressMode.Clamp, 0, 1, ComparisonFunction.Never, new Color4(0, 0, 0, 0), 0, float.MaxValue)));
             var cb = Own(dev.CreateBuffer(new BufferDescription((uint)((Marshal.SizeOf<EditParams>() + 15) & ~15), BindFlags.ConstantBuffer, ResourceUsage.Default)));
-
-            // the encoder
-            var writer = Own(new Writer(media, file, job, w, h));
-            string encoder = writer.EncoderName;
-            bool hardware = writer.Hardware;
 
             var refs = new Dictionary<int, byte[]>();
             long start = Clock.Ns(), measuredFrom = 0, lastPreview = 0, lastReport = 0;
@@ -228,6 +236,7 @@ public sealed class ExportBench
         }
         finally
         {
+            try { writerToClose?.Dispose(); } catch (Exception) { }
             foreach (var o in Enumerable.Reverse(owned)) { try { o.Dispose(); } catch (Exception) { } }
             try { File.Delete(file); } catch (IOException) { }
         }
@@ -363,41 +372,67 @@ public sealed class ExportBench
         }
     }
 
-    /// <summary>A decoded frame: its decoder surface (a texture and the slice in it), kept alive while the sample is.</summary>
-    private sealed class Decoded(IMFSample sample, IMFMediaBuffer buffer, IMFDXGIBuffer dxgi, ID3D11Texture2D texture, uint index) : IDisposable
+    /// <summary>A decoded frame: a texture and the slice in it, with whatever must stay alive while the frame is used (a decoder's surface and its sample).</summary>
+    private sealed class Decoded(ID3D11Texture2D texture, uint index, params IDisposable?[] owned) : IDisposable
     {
         public readonly ID3D11Texture2D Texture = texture;
         public readonly uint Index = index;
-        public void Dispose() { Texture.Dispose(); dxgi.Dispose(); buffer.Dispose(); sample.Dispose(); }
+        public void Dispose() { foreach (var o in owned) o?.Dispose(); }
     }
 
-    /// <summary>The source clip decoded by Media Foundation into decoder surfaces, looping.</summary>
+    /// <summary>
+    /// The source clip decoded by Media Foundation, looping. A hardware decoder hands over its surfaces (a texture and the
+    /// slice in it); a software one — a PC without a hardware decoder for the clip — hands over memory, which is uploaded to a
+    /// texture of ours: Android takes any MediaCodec decoder the same way.
+    /// </summary>
     private sealed class Source : IDisposable
     {
+        private readonly MediaDevice media;
+        private readonly VideoProc proc;
+        private readonly VideoClip clip;
         private readonly IMFSourceReader reader;
         private readonly IMFAttributes attrs;
+        private SoftwareFrames? software;
         public readonly int Frames;      // per pass of the clip
 
-        public Source(MediaDevice media, VideoClip clip)
+        public Source(MediaDevice media, VideoClip clip, VideoProc proc)
         {
+            this.media = media; this.clip = clip; this.proc = proc;
             string path = Path.Combine(AppContext.BaseDirectory, "assets", "media", clip.Asset());
             if (!File.Exists(path)) throw new BenchException($"{clip.Asset()} missing");
             attrs = media.ReaderAttributes();
-            reader = MediaFactory.MFCreateSourceReaderFromURL(path, attrs);
-            reader.SetStreamSelection(SourceReaderIndex.AllStreams, false);
-            reader.SetStreamSelection(SourceReaderIndex.FirstVideoStream, true);
-            using var type = MediaFactory.MFCreateMediaType();
-            type.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
-            type.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.FromFourCC(new FourCC(clip.Codec() is VideoCodec.Hevc or VideoCodec.Av1 ? "P010" : "NV12")));
-            reader.SetCurrentMediaType(SourceReaderIndex.FirstVideoStream, type);
+            try
+            {
+                reader = MediaFactory.MFCreateSourceReaderFromURL(path, attrs);
+                reader.SetStreamSelection(SourceReaderIndex.AllStreams, false);
+                reader.SetStreamSelection(SourceReaderIndex.FirstVideoStream, true);
+                using var type = MediaFactory.MFCreateMediaType();
+                type.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
+                type.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.FromFourCC(new FourCC(clip.Codec() is VideoCodec.Hevc or VideoCodec.Av1 ? "P010" : "NV12")));
+                reader.SetCurrentMediaType(SourceReaderIndex.FirstVideoStream, type);
+            }
+            catch (Exception e) when (e is not BenchException) { attrs.Dispose(); throw DecodeFailure(e); }
             Frames = clip.Fps() * 3;       // the clips are three seconds
+        }
+
+        /// <summary>A decoder-side failure as such: ExportBench.Explain reads every other Media Foundation error as the encoder's.</summary>
+        private BenchException DecodeFailure(Exception e)
+        {
+            uint hr = (uint)e.HResult;
+            // MF_E_TOPO_CODEC_NOT_FOUND, MF_E_INVALIDMEDIATYPE, MF_E_UNSUPPORTED_BYTESTREAM_TYPE, MF_E_CANNOT_PARSE_BYTESTREAM
+            if (hr is 0xC00D5212 or 0xC00D36B4 or 0xC00D36C4 or 0xC00D36E5 or 0xC00D5211)
+                return new BenchException($"no {clip.Codec().Label()} decoder for the {clip.Width()}×{clip.Height()} source clip — {clip.Codec().Hint()}");
+            return new BenchException($"can't decode the {clip.Label()} source clip: {e.Message}");
         }
 
         public Decoded Next()
         {
             for (int tries = 0; tries < 400; tries++)
             {
-                var sample = reader.ReadSample(SourceReaderIndex.FirstVideoStream, SourceReaderControlFlag.None, out _, out var flags, out _);
+                IMFSample? sample;
+                SourceReaderFlag flags;
+                try { sample = reader.ReadSample(SourceReaderIndex.FirstVideoStream, SourceReaderControlFlag.None, out _, out flags, out _); }
+                catch (Exception e) when (e is not BenchException) { throw DecodeFailure(e); }
                 if ((flags & SourceReaderFlag.Error) != 0) throw new BenchException("can't decode the source clip");
                 if ((flags & SourceReaderFlag.EndOfStream) != 0) { sample?.Dispose(); reader.SetCurrentPosition(0); continue; }
                 if (sample == null) continue;
@@ -405,16 +440,92 @@ public sealed class ExportBench
                 var dxgi = buffer.QueryInterfaceOrNull<IMFDXGIBuffer>();
                 if (dxgi == null)
                 {
-                    buffer.Dispose(); sample.Dispose();
-                    throw new BenchException("the decoder doesn't deliver GPU frames (no hardware decoder for the source clip)");
+                    // a software decoder: the frame is in memory
+                    buffer.Dispose();
+                    try { return (software ??= new SoftwareFrames(media, proc, reader, clip)).Upload(sample); }
+                    finally { sample.Dispose(); }
                 }
                 var tex = new ID3D11Texture2D(dxgi.GetResource(typeof(ID3D11Texture2D).GUID));
-                return new Decoded(sample, buffer, dxgi, tex, dxgi.SubresourceIndex);
+                return new Decoded(tex, dxgi.SubresourceIndex, tex, dxgi, buffer, sample);
             }
             throw new BenchException("the source clip has no frames");
         }
 
-        public void Dispose() { reader.Dispose(); attrs.Dispose(); }
+        public void Dispose() { software?.Dispose(); reader.Dispose(); attrs.Dispose(); }
+    }
+
+    /// <summary>
+    /// Frames a software decoder left in memory (NV12 or P010, planes one after the other), made into a texture the video
+    /// processor can take: written into a staging texture, copied to a default one — the layout Direct3D defines for planar
+    /// formats. One texture for every frame: the processor has read it before the next frame is written (one immediate context).
+    /// </summary>
+    private sealed unsafe class SoftwareFrames : IDisposable
+    {
+        private readonly MediaDevice media;
+        private readonly ID3D11Texture2D staging, texture;
+        private readonly int width, height, bytes, defaultPitch;
+
+        public SoftwareFrames(MediaDevice media, VideoProc proc, IMFSourceReader reader, VideoClip clip)
+        {
+            this.media = media;
+            width = clip.Width(); height = clip.Height();
+            bool p010 = clip.Codec() is VideoCodec.Hevc or VideoCodec.Av1;
+            bytes = p010 ? 2 : 1;
+            var format = p010 ? Format.P010 : Format.NV12;
+            if (!proc.TakesInput(format)) throw new BenchException($"this PC's video processor can't take {format} frames, so the software-decoded source clip can't be edited");
+            defaultPitch = width * bytes;
+            try   // the decoder's own row pitch, when it says (a buffer without a 2-D interface has no other way to tell)
+            {
+                using var type = reader.GetCurrentMediaType(SourceReaderIndex.FirstVideoStream);
+                int stride = (int)type.GetUInt32(MediaTypeAttributeKeys.DefaultStride);
+                if (stride > 0) defaultPitch = stride;
+            }
+            catch (Exception) { }
+            var dev = media.Device;
+            try
+            {
+                staging = dev.CreateTexture2D(new Texture2DDescription(format, (uint)width, (uint)height, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Write));
+                texture = dev.CreateTexture2D(new Texture2DDescription(format, (uint)width, (uint)height, 1, 1, BindFlags.ShaderResource, ResourceUsage.Default));
+            }
+            catch (Exception e) when (e is not BenchException)
+            {
+                staging?.Dispose();
+                throw new BenchException($"this PC's graphics driver can't hold {format} frames for the software-decoded source clip ({e.Message})");
+            }
+        }
+
+        public Decoded Upload(IMFSample sample)
+        {
+            using var buffer = sample.ConvertToContiguousBuffer();
+            using var b2d = buffer.QueryInterfaceOrNull<IMF2DBuffer>();
+            IntPtr scan0; int pitch;
+            if (b2d != null) b2d.Lock2D(out scan0, out pitch);
+            else { buffer.Lock(out scan0, out _, out _); pitch = defaultPitch; }
+            try
+            {
+                if (pitch <= 0) throw new BenchException("a bottom-up software frame");
+                int rowBytes = width * bytes;
+                // the chroma plane starts after the luma plane's rows, which the decoder may have padded
+                int lumaRows = height;
+                int total = buffer.CurrentLength;
+                if (total > 0) { int rows = total / pitch * 2 / 3; if (rows > height && rows <= height + 256) lumaRows = rows; }
+                var ctx = media.Context;
+                var map = ctx.Map(staging, 0, MapMode.Write);
+                try
+                {
+                    byte* src = (byte*)scan0, dst = (byte*)map.DataPointer;
+                    int dstPitch = (int)map.RowPitch;
+                    for (int r = 0; r < height; r++) Buffer.MemoryCopy(src + (long)r * pitch, dst + (long)r * dstPitch, rowBytes, rowBytes);
+                    for (int r = 0; r < height / 2; r++) Buffer.MemoryCopy(src + (long)(lumaRows + r) * pitch, dst + (long)(height + r) * dstPitch, rowBytes, rowBytes);
+                }
+                finally { ctx.Unmap(staging, 0); }
+                ctx.CopyResource(texture, staging);
+            }
+            finally { if (b2d != null) b2d.Unlock2D(); else buffer.Unlock(); }
+            return new Decoded(texture, 0);
+        }
+
+        public void Dispose() { texture.Dispose(); staging.Dispose(); }
     }
 
     /// <summary>The D3D11 video processor: YUV decoder surfaces → BGRA, and the edited BGRA → NV12 for the encoder (BT.709).</summary>
@@ -441,6 +552,9 @@ public sealed class ExportBench
             vp = vdev.CreateVideoProcessor(en, 0);
             vctx.VideoProcessorSetStreamFrameFormat(vp, 0, VideoFrameFormat.Progressive);
         }
+
+        /// <summary>Whether the processor takes `format` as input (software-decoded frames are uploaded as NV12 or P010).</summary>
+        public bool TakesInput(Format format) => en.CheckVideoProcessorFormat(format, out var support).Success && (support & VideoProcessorFormatSupport.Input) != 0;
 
         public void Convert(ID3D11Texture2D src, uint srcIndex, ID3D11Texture2D dst, bool toRgb)
         {
@@ -522,7 +636,9 @@ public sealed class ExportBench
                     ex.GetTransformForStream(stream, 0, out _, out var transform);
                     using (transform)
                     {
+                        // a hardware encoder carries the URL of its device (some also their vendor's id); a software one has neither
                         try { Hardware = !string.IsNullOrEmpty(transform.Attributes.GetAllocatedString(TransformAttributeKeys.MftEnumHardwareUrlAttribute)); } catch (Exception) { }
+                        if (!Hardware) try { Hardware = !string.IsNullOrEmpty(transform.Attributes.GetAllocatedString(TransformAttributeKeys.MftEnumHardwareVendorIdAttribute)); } catch (Exception) { }
                         try { EncoderName = transform.Attributes.GetAllocatedString(TransformAttributeKeys.MftFriendlyNameAttribute) ?? EncoderName; } catch (Exception) { }
                     }
                 }

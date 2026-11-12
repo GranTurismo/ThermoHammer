@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ThermoHammer.Engine;
 
@@ -77,6 +78,9 @@ public sealed record PendingTestResult
     public string? SocModel { get; init; }
     public string? ClusterTopology { get; init; }
     public string? OsBuild { get; init; }
+
+    /// <summary>The name the boards print: the maker only when the model doesn't already start with it.</summary>
+    [JsonIgnore] public string Name => DeviceInfo.DisplayName(DeviceManufacturer, DeviceModel);
 }
 
 public sealed class PendingResultStore
@@ -91,9 +95,15 @@ public sealed class PendingResultStore
     private void Persist() { AppData.Save(File, Results); Changed?.Invoke(); }
 }
 
-/// <summary>One finished, scored run, kept on the PC (summary only) — for "did the Windows update change my PC?".</summary>
+/// <summary>
+/// One finished, scored run, kept on the PC (summary only) — for "did the Windows update change my PC?". [ServerId] is the run's id
+/// on the board once submitted (its page SITE/stress/{id}/); [Curve] its throughput as % of the baseline, at most 120 evenly spaced
+/// points over [CurveSeconds] (StressCurve), so the run can be shared, presented and exported without its stamps. All three are
+/// null in runs saved before 2.1.
+/// </summary>
 public sealed record RunRecord(Guid Id, double Timestamp, string DeviceModel, string OsVersion, string? OsBuild, int DurationType,
-    int ThreadingType, double Capacity, int? OnsetSec, int ValidityFlags, int Confidence)
+    int ThreadingType, double Capacity, int? OnsetSec, int ValidityFlags, int Confidence, int? ServerId = null, List<double>? Curve = null,
+    double? CurveSeconds = null)
 {
     public string OsKey => UpdateImpact.OsKey(OsVersion, OsBuild);
 }
@@ -178,6 +188,14 @@ public sealed class RunHistoryStore
     private HashSet<string> dismissed = [.. Settings.Strings(DismissedKey)];
 
     public void Add(RunRecord r) { Records = UpdateImpact.AppendCapped(Records, r); AppData.Save(File, Records); }
+
+    /// <summary>The run (by its local id, the pending result's) reached the board as [serverId].</summary>
+    public void SetServerId(Guid id, int serverId)
+    {
+        if (!Records.Any(r => r.Id == id)) return;
+        Records = Records.Select(r => r.Id == id ? r with { ServerId = serverId } : r).ToList();
+        AppData.Save(File, Records);
+    }
 
     public UpdateImpact.Insight? Insight(string model, string osVersion, string? osBuild) =>
         UpdateImpact.For(Records, model, osVersion, osBuild) is { } i && !dismissed.Contains(i.DismissKey) ? i : null;

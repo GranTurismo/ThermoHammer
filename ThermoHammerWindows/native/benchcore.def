@@ -24,3 +24,4 @@ EXPORTS
     bc_qr_corners
     bc_qr_scan
     bc_qr_destroy
+    bc_qr_encode

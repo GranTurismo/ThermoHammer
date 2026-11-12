@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.NetworkInformation;
@@ -38,9 +39,15 @@ public sealed record HammerPayload
 
 public sealed record SessionResponse(int Id, string EncryptionKey);
 
-/// <summary>One stress run on the board (GET /leaderboard).</summary>
+/// <summary>One stress run on the board (GET /leaderboard). The server added [CreatedAt] (UTC), [OsBuild], [StressMode] (0 CPU, 1 GPU,
+/// 2 both; null = CPU) and [SocModel] for run pages and share links (2.1); older servers leave them out.</summary>
 public sealed record HammerDto(int Id, int Type, string DeviceManufacturer, string DeviceModel, int Os, string OsVersion,
-    double StabilityPercentage, int? TestThreadingType);
+    double StabilityPercentage, int? TestThreadingType, DateTime? CreatedAt = null, string? OsBuild = null, int? StressMode = null,
+    string? SocModel = null)
+{
+    /// <summary>The name the board prints: the maker only when the model doesn't already start with it.</summary>
+    public string Name => DeviceInfo.DisplayName(DeviceManufacturer, DeviceModel);
+}
 
 public static class ThermoHasher
 {
@@ -96,11 +103,19 @@ public static class Api
         return (await r.Content.ReadFromJsonAsync<SessionResponse>(Json))!;
     }
 
-    public static async Task SubmitScore(HammerPayload payload)
+    /// <summary>Posts the run; the answer is the new run's id on the board (the X-Run-Id header), or null from a server that doesn't send it.</summary>
+    public static async Task<int?> SubmitScore(HammerPayload payload)
     {
         using var r = await Http.PostAsJsonAsync("hammer", payload, Json);
         if (!r.IsSuccessStatusCode) throw new BenchException("Server rejected score submission");
+        return RunId(r);
     }
+
+    /// <summary>The X-Run-Id response header as a run id (header names are matched without regard to case).</summary>
+    public static int? RunId(HttpResponseMessage r) =>
+        r.Headers.TryGetValues("X-Run-Id", out var values)
+        && int.TryParse(values.FirstOrDefault()?.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int id)
+        && id > 0 ? id : null;
 
     public static async Task<List<HammerDto>> FetchLeaderboard()
     {
@@ -121,15 +136,15 @@ public static class Api
         double delivered, int flags) =>
         FormattableString.Invariant($"v2|{type}|{threading}|{manufacturer}|{model}|{osVersion}|{baseline}|{delivered:F4}|{flags}");
 
-    /// <summary>Submits a finished (or pending) stress run.</summary>
-    public static async Task SubmitStress(PendingTestResult p)
+    /// <summary>Submits a finished (or pending) stress run; the answer is its id on the board when the server says it (its page SITE/stress/{id}/).</summary>
+    public static async Task<int?> SubmitStress(PendingTestResult p)
     {
         var session = await CreateSession();
         string hash = ThermoHasher.ComputeHash(session.EncryptionKey, p.Stamps);
         string meta = MetaCanonical(p.TestDurationType, p.TestThreadingType ?? 1, p.DeviceManufacturer, p.DeviceModel, p.OsVersion,
             p.BaselineScore ?? 0, p.DeliveredCapacity ?? 0, p.ValidityFlags ?? 0);
         bool v2 = p.BaselineScore != null;
-        await SubmitScore(new HammerPayload
+        return await SubmitScore(new HammerPayload
         {
             Stamps = p.Stamps,
             Type = p.TestDurationType,
@@ -154,21 +169,55 @@ public static class Api
     }
 }
 
-/// <summary>Online or not, and whether the connection is a cellular one (a PC with a SIM).</summary>
+/// <summary>
+/// Online or not, and whether the connection is a cellular one (a PC with a SIM). "Online" means a real adapter (Wi-Fi,
+/// Ethernet, mobile broadband) is up and has a gateway: Windows' own "a network is available" is also true when only a
+/// virtual adapter (Hyper-V's vEthernet, WSL, VMware, VirtualBox, a VPN's TAP) is up. Adapters are told apart by what they
+/// are (up, a gateway, not loopback or a tunnel), never by their names: a wrong guess about a name would keep a working
+/// connection from being used, and the host-only adapters of virtual machines have no gateway anyway.
+/// </summary>
 public sealed class NetworkMonitor
 {
     public static readonly NetworkMonitor Shared = new();
-    public bool IsConnected { get; private set; }
+    private volatile bool connected, mobile;
+    private readonly System.Threading.Timer settle;
+
+    public bool IsConnected => connected;
+
+    /// <summary>Raised on the UI thread when the PC goes online or offline (or moves to or from mobile data).</summary>
     public event Action? Changed;
 
     private NetworkMonitor()
     {
-        IsConnected = NetworkInterface.GetIsNetworkAvailable();
-        NetworkChange.NetworkAvailabilityChanged += (_, e) =>
-        {
-            IsConnected = e.IsAvailable;
-            System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke());
-        };
+        connected = Probe();
+        mobile = OnMobileData();
+        settle = new System.Threading.Timer(_ => Reevaluate(), null, Timeout.Infinite, Timeout.Infinite);
+        // an adapter coming up announces itself many times (address, gateway, DNS…): look once, when it goes quiet
+        NetworkChange.NetworkAvailabilityChanged += (_, _) => Settle();
+        NetworkChange.NetworkAddressChanged += (_, _) => Settle();
+    }
+
+    private void Settle() => settle.Change(600, Timeout.Infinite);
+
+    private void Reevaluate()
+    {
+        bool online = Probe(), onMobile = OnMobileData();
+        if (online == connected && onMobile == mobile) return;
+        connected = online;
+        mobile = onMobile;
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => Changed?.Invoke());
+    }
+
+    /// <summary>The adapters traffic can really leave through: up, with a gateway, and neither loopback nor a tunnel.</summary>
+    private static List<NetworkInterface> ActiveAdapters() => NetworkInterface.GetAllNetworkInterfaces().Where(n =>
+        n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback
+        && n.NetworkInterfaceType != NetworkInterfaceType.Tunnel
+        && n.GetIPProperties().GatewayAddresses.Any(g => !IPAddress.Any.Equals(g.Address) && !IPAddress.IPv6Any.Equals(g.Address))).ToList();
+
+    private static bool Probe()
+    {
+        try { return ActiveAdapters().Count > 0; }
+        catch (Exception) { return true; }   // can't tell: let the request itself fail
     }
 
     /// <summary>The traffic goes over a mobile-broadband adapter: only that one is up (Wi-Fi and Ethernet are down).</summary>
@@ -176,10 +225,7 @@ public sealed class NetworkMonitor
     {
         try
         {
-            var up = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback
-                            && n.NetworkInterfaceType != NetworkInterfaceType.Tunnel && n.GetIPProperties().GatewayAddresses.Count > 0)
-                .ToList();
+            var up = ActiveAdapters();
             return up.Count > 0 && up.All(n => n.NetworkInterfaceType is NetworkInterfaceType.Wwanpp or NetworkInterfaceType.Wwanpp2);
         }
         catch (Exception) { return false; }

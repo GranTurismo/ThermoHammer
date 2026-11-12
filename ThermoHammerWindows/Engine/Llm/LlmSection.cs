@@ -21,26 +21,19 @@ public sealed unsafe class LlmSection : IBenchmarkSection
     public const double PrefillS = 3, DecodeS = 4;
     public const int Reply = 32, WarmupTokens = 4;
     public const double NeedFree = 2_600_000_000;      // the model, its context and its buffers
-    public const ulong NeedRam = 5_500_000_000;
+    public const ulong NeedRam = 5_000_000_000;        // the phones' number: a "6 GB" machine reports about 5.5 GB (a PC with 6 GB, about 5.9)
     public const double NoticeS = 3;                   // how long "not run" stays up when the test can't run
+    public const double SkipNoticeS = 2;               // how long "crashed the app twice" stays up, per accelerator
     public const string Model = "LLAMA 3.2 3B · Q4_0";
-    private const string RunningKey = "benchmark.llmRunning", CrashedKey = "benchmark.llmCrashed";
 
-    private static string Build => System.Diagnostics.FileVersionInfo.GetVersionInfo(Environment.ProcessPath ?? "").FileVersion ?? "?";
+    // markers "build:accel" (CrashGuard); an accelerator is skipped after two runs that never finished, as on iOS
+    private static readonly CrashGuard Guard = new("llm");
 
-    /// <summary>Accelerators whose run never finished in this build (llama.cpp's crashes can't be caught): a marker was left behind.</summary>
+    /// <summary>Accelerators whose run never finished twice in this build (llama.cpp's crashes can't be caught); a marker left by the last launch counts as one.</summary>
     private static HashSet<LlmAccel> CrashedAccels()
     {
-        var crashed = Settings.Strings(CrashedKey);
-        foreach (var running in Settings.Strings(RunningKey))
-            if (!crashed.Contains(running)) crashed.Add(running);
-        if (Settings.Strings(RunningKey).Count > 0)
-        {
-            Settings.Set(CrashedKey, crashed);
-            Settings.Set(RunningKey, null);
-        }
-        return crashed.Select(s => s.Split(':')).Where(p => p.Length == 2 && p[0] == Build)
-            .Select(p => LlmAccels.All.Cast<LlmAccel?>().FirstOrDefault(a => a.ToString() == p[1])).OfType<LlmAccel>().ToHashSet();
+        var names = Guard.Skipped(1);
+        return LlmAccels.All.Where(a => names.Contains(a.ToString())).ToHashSet();
     }
 
     private static double FreeBytes => Win32.Memory().AvailPhys;
@@ -52,7 +45,7 @@ public sealed unsafe class LlmSection : IBenchmarkSection
     {
         var m = Win32.Memory();
         if (Environment.GetEnvironmentVariable("THERMOHAMMER_LLM_FORCE") == "1") return null;   // checks under Wine, which can't report the CPU's features
-        if (m.TotalPhys < NeedRam) return $"needs a PC with 6 GB of RAM (this one has {m.TotalPhys / 1e9:0.0} GB)";
+        if (m.TotalPhys < NeedRam) return $"needs a PC with 6 GB of RAM (this one has {m.TotalPhys / 1e9:0.0} GB)";    // the phones' wording and number (5.0 GB)
         if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == Architecture.X64 && !IsProcessorFeaturePresent(40))   // AVX2
             return "the CPU lacks the AVX2 instructions the model's kernels use";
         if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == Architecture.Arm64 && !IsProcessorFeaturePresent(43))  // dot product
@@ -94,14 +87,24 @@ public sealed unsafe class LlmSection : IBenchmarkSection
         foreach (var accel in LlmAccels.All)
         {
             if (!engine.IsActive) return;
-            string? skip = crashed.Contains(accel) ? "crashed the app here last time"
+            string? skip = crashed.Contains(accel) ? CrashGuard.Reason
                 : accel == LlmAccel.Gpu && gpuName.Length == 0 ? "llama.cpp found no Vulkan GPU it can run on" : null;
-            if (skip != null) { runs.Add(new LlmRun(accel, 0, 0, Error: skip)); continue; }
-            Settings.Set(RunningKey, new[] { $"{Build}:{accel}" });
+            if (skip != null)
+            {
+                runs.Add(new LlmRun(accel, 0, 0, Error: skip));
+                if (crashed.Contains(accel))     // say why for a moment, so the zero isn't a mystery
+                {
+                    engine.PublishLlm(accel, LlmPhase.Build, 0, -1, $"{(accel == LlmAccel.Gpu ? "GPU" : "CPU")} · SKIPPED · {skip.ToUpperInvariant()} · 0 POINTS");
+                    Thread.Sleep(TimeSpan.FromSeconds(SkipNoticeS));
+                }
+                continue;
+            }
+            Guard.Begin(accel.ToString());
             LlmRun? run;
             try { run = Measure(accel, threads, () => engine.IsActive, (phase, progress, rate, detail, reply, prompts) => engine.PublishLlm(accel, phase, progress, rate, detail, reply, prompts), gpuApi); }
-            finally { Settings.Set(RunningKey, null); }
+            finally { Guard.End(); }
             if (run == null) return;     // stopped
+            Guard.Finished(accel.ToString());     // it came back: earlier unfinished runs on this accelerator were chance
             if (run.Threads > 0) threads = run.Threads;
             runs.Add(run);
         }
@@ -240,7 +243,7 @@ public static class LlmCheck
         {
             var accel = which == "gpu" ? LlmAccel.Gpu : LlmAccel.Cpu;
             double free = Win32.Memory().AvailPhys;
-            log.AppendLine($"free {free / 1e9:0.0} GB · problem: {LlmSection.Problem(free) ?? "none"} · gpu {LlmNative.GpuName} ({LlmNative.GpuApi}) · largest {LlmNative.bc_llm_largest_model(free)}B");
+            log.AppendLine($"free {free / 1e9:0.0} GB · problem: {LlmSection.Problem(free) ?? "none"} · gpu {LlmNative.GpuName} ({LlmNative.GpuApi}) · {LlmGpuChoice.Decision} · largest {LlmNative.bc_llm_largest_model(free)}B");
             var run = LlmSection.Measure(accel, 4, () => true, (phase, progress, rate, detail, reply, prompts) =>
             {
                 if (Environment.GetEnvironmentVariable("THERMOHAMMER_SHADER_DEBUG") == "1") Console.Error.WriteLine($"{phase} {progress:0.00} {rate:0.0} {detail}");
