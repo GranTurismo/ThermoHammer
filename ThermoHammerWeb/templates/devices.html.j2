@@ -1,0 +1,34 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap page-head">
+  <h1>Every tested device</h1>
+  <p class="lede">{{ site.stats.devices }} phones, tablets and PCs have at least one verified run. Open one for its scores, its throttling curve and its comparisons.</p>
+</section>
+<section class="wrap page-body" data-board="devices">
+  <div class="filters">
+    <label class="search">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="search" placeholder="Search a device" aria-label="Search devices" data-search autocomplete="off">
+    </label>
+  </div>
+  <div class="devgroups">
+    {% for brand, devices in groups %}
+    <section data-group>
+      <h2>{{ brand }} <small>{{ devices | length }}</small></h2>
+      <div class="devgrid">
+        {% for d in devices %}
+        <a class="devcard" href="{{ url('/devices/' ~ d.slug ~ '/') }}" data-row data-name="{{ (d.title ~ ' ' ~ d.name ~ ' ' ~ d.manufacturer ~ ' ' ~ d.chip) | lower }}"{% if not d.has_bench %} style="--c:{{ d.headline.color }}"{% endif %}>
+          <b>{{ d.title }}</b>
+          <small>{{ d.platform }}{% if d.soc_name %} · {{ d.soc_name }}{% endif %}{% if d.has_bench and d.has_stress %} · benchmark + stress{% elif d.has_bench %} · benchmark{% else %} · stress test{% endif %}</small>
+          {% if d.has_bench %}<i>{{ d.total | num }}<small>points</small></i>{% else %}<i>{{ d.headline.stability | pct }}<small>held</small></i>{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  <p class="empty" data-empty hidden>No device matches that.</p>
+</section>
+{{ m.cta_band('Not on the list?', 'One clean run from the app adds your device, with its own page.') }}
+{% endblock %}

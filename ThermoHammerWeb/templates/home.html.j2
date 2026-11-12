@@ -1,0 +1,262 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block body_class %}home{% endblock %}
+{% block main %}
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="pulse"></span>Phone benchmark · thermal throttling test</p>
+      <h1>Every phone is fast <span class="heat">for a minute.</span></h1>
+      <p class="lede">ThermoHammer scores the whole device across six sections, then keeps the load on until it throttles. You see exactly when that happens, and how much speed is left.</p>
+      {{ m.store_buttons() }}
+      <p class="fine hero-fine">Free · no account · no ads · <a href="{{ url('/leaderboard/') }}">see the leaderboard</a></p>
+    </div>
+    {% if hero %}
+    <figure class="panel brackets hero-panel" data-hero>
+      <div class="panel-head">
+        <span class="panel-title">Throughput ribbon</span>
+        <span class="panel-note">real runs from the leaderboard</span>
+      </div>
+      {% for r in hero %}
+      <div class="hero-run{% if loop.first %} is-on{% endif %}" data-hero-run="{{ loop.index0 }}">
+        <div class="hero-device">
+          <a href="{{ url('/devices/' ~ r.device.slug ~ '/') }}">{{ r.device.title }}</a>
+          <span>{{ r.device.platform }} {{ r.os_version }}</span>
+        </div>
+        {{ m.run_readout(r) }}
+        {{ charts.ribbon(r, 'h' ~ loop.index0, 760, 300, true, r.device.title ~ ': throughput over a ' ~ r.minutes ~ '-minute stress test, holding ' ~ (r.stability | pct)) | safe }}
+      </div>
+      {% endfor %}
+      <div class="hero-tabs" role="group" aria-label="Choose a run">
+        {% for r in hero %}
+        <button type="button" data-hero-tab="{{ loop.index0 }}"{% if loop.first %} aria-pressed="true"{% else %} aria-pressed="false"{% endif %} style="--c:{{ r.color }}">
+          <span>{{ ['Steadiest', 'Typical', 'Biggest drop'][loop.index0] if hero | length == 3 else 'Run ' ~ loop.index }}</span>
+          <b>{{ r.device.title }}</b>
+          <i>{{ r.stability | pct }}</i>
+        </button>
+        {% endfor %}
+      </div>
+      <figcaption>Speed over a five-minute, every-core stress test, as a share of full speed. The colour follows the loss: teal while a device holds, ember as it lets go.</figcaption>
+    </figure>
+    {% endif %}
+  </div>
+  <div class="wrap">
+    <dl class="statline">
+      <div><dt>Devices tested</dt><dd>{{ site.stats.devices }}</dd></div>
+      <div><dt>Verified runs</dt><dd>{{ site.stats.runs }}</dd></div>
+      <div><dt>Tests in one benchmark</dt><dd>{{ TEST_COUNT }}</dd></div>
+      <div><dt>Head-to-head pages</dt><dd>{{ site.stats.pairs }}</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="sec" id="benchmark">
+  <div class="wrap">
+    <header class="sec-head">
+      <p class="kicker"><span>01</span>The benchmark</p>
+      <h2>Six sections. One score you can read.</h2>
+      <p class="sec-lede">Every test is scored against the same reference: a Snapdragon 8 Elite phone, as it ships, is 6,000 points per section. Twice the points means about twice the measured speed. Add the six up and you have the total.</p>
+    </header>
+    <div class="cards6">
+      {% for key, short, label, field, color in SECTIONS %}
+      {% set cat = CATALOG[key] %}
+      {% set lead = site.section_leaders | selectattr('key', 'equalto', key) | first %}
+      <article class="sec-card" style="--c:{{ color }}">
+        <header><span class="tag">{{ short }}</span><h3>{{ label }}</h3></header>
+        <p>{{ cat.blurb }}</p>
+        <ul>
+          {% for tag, name, what in cat.tests %}<li><b>{{ tag }}</b>{{ name }}</li>{% endfor %}
+        </ul>
+        {% if lead %}
+        <footer>Best on the board <a href="{{ url('/devices/' ~ lead.device.slug ~ '/') }}"><b>{{ lead.points | num }}</b> {{ lead.device.title }}</a></footer>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    <p class="more"><a class="link" href="{{ url('/how-it-works/') }}">What every test does, and how it is scored</a></p>
+  </div>
+</section>
+
+<section class="sec sec-heat" id="stress">
+  <div class="wrap split">
+    <div>
+      <p class="kicker"><span>02</span>The stress test</p>
+      <h2>Then it keeps hammering.</h2>
+      <p>Most benchmarks stop before the heat arrives. Pick 5, 15 or 30 minutes, and ThermoHammer cools the device down, measures what it can do at full speed, then holds full load and records the throughput the whole way.</p>
+      <p>You get one number, <b>stability</b>: the share of its full speed the device actually delivered. And you get the curve behind it, with the moment each thermal warning appeared.</p>
+      <ul class="ticks">
+        <li>CPU, GPU or both together on Android; every core or a single thread</li>
+        <li>Thermal X-Ray: a live map of what the device reports, from CPU clocks to battery</li>
+        <li>Throughput measured in GIPS, billions of instructions per second</li>
+      </ul>
+      <p class="more"><a class="link" href="{{ url('/leaderboard/throttling/') }}">See which devices hold their speed</a></p>
+    </div>
+    {% if steady and fader and steady is not sameas fader %}
+    <figure class="panel brackets">
+      <div class="panel-head"><span class="panel-title">Same test, two phones</span><span class="panel-note">5 min · every core</span></div>
+      <div class="duo-legend">
+        <a href="{{ url('/devices/' ~ steady.device.slug ~ '/') }}" style="--c:{{ A_COLOR }}"><i></i>{{ steady.device.title }} <b>{{ steady.stability | pct }}</b></a>
+        <a href="{{ url('/devices/' ~ fader.device.slug ~ '/') }}" style="--c:{{ B_COLOR }}"><i></i>{{ fader.device.title }} <b>{{ fader.stability | pct }}</b></a>
+      </div>
+      {{ charts.duo(steady, fader, steady.device.title, fader.device.title, 760, 300) | safe }}
+      <figcaption>Both start at full speed. Five minutes later one has barely moved and the other has lost {{ '%.0f' | format(100 - fader.stability) }}% of its speed. A burst benchmark scores them on the first few seconds.</figcaption>
+    </figure>
+    {% endif %}
+  </div>
+</section>
+
+<section class="sec" id="trust">
+  <div class="wrap">
+    <header class="sec-head">
+      <p class="kicker"><span>03</span>Why the numbers hold up</p>
+      <h2>Scored where nobody can tune for it.</h2>
+    </header>
+    <div class="trio">
+      <article>
+        <h3>Signed, then scored on the server</h3>
+        <p>The app sends its raw measurements with a signature. Points are calculated on our server, so a modified app can't hand itself a better score.</p>
+      </article>
+      <article>
+        <h3>Only clean runs count</h3>
+        <p>Started cool, unplugged, no power saving, nothing else busy. A run that misses any of those stays on your device and off the board.</p>
+      </article>
+      <article>
+        <h3>One row per device</h3>
+        <p>The board shows each model's best verified run and how many runs stand behind it. Open any row for every number of every test.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="board">
+  <div class="wrap">
+    <header class="sec-head sec-head-row">
+      <div>
+        <p class="kicker"><span>04</span>Live leaderboard</p>
+        <h2>Where devices stand today.</h2>
+      </div>
+      <p class="sec-lede">Phones and PCs on one scale. Data last changed <time datetime="{{ changed.isoformat() }}" data-ago>{{ changed | day }}</time>.</p>
+    </header>
+    <div class="boards">
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Benchmark · total score</span><a class="panel-link" href="{{ url('/leaderboard/') }}">Full board</a></div>
+        <ol class="mini">
+          {% for d in site.board[:5] %}
+          <li>
+            <span class="lb-rank">#{{ d.rank }}</span>
+            <a href="{{ url('/devices/' ~ d.slug ~ '/') }}">{{ d.title }}<small>{{ d.platform }}{% if d.os_id != 4 and d.soc_name %} · {{ d.soc_name }}{% elif d.gpu %} · {{ d.gpu }}{% endif %}</small></a>
+            {{ m.composition(d) }}
+            <b>{{ d.total | num }}</b>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="panel">
+        {{ charts.spark_defs() | safe }}
+        <div class="panel-head"><span class="panel-title">Stress test · speed held</span><a class="panel-link" href="{{ url('/leaderboard/throttling/') }}">Full board</a></div>
+        <ol class="mini mini-stress">
+          {% for d in site.stress_board[:5] %}
+          <li>
+            <span class="lb-rank">#{{ loop.index }}</span>
+            <a href="{{ url('/devices/' ~ d.slug ~ '/') }}">{{ d.title }}<small>{{ d.platform }} · {{ d.headline.label }}</small></a>
+            {{ charts.sparkline(d.headline) | safe }}
+            <b style="color:{{ d.headline.color }}">{{ d.headline.stability | pct }}</b>
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if featured %}
+<section class="sec" id="compare">
+  <div class="wrap split split-rev">
+    <figure class="panel brackets vs-teaser">
+      <div class="panel-head"><span class="panel-title">Head to head</span><span class="panel-note">best verified runs</span></div>
+      <div class="vs-names">
+        <span style="--c:{{ A_COLOR }}"><b>{{ featured.a.title }}</b><i>{{ featured.a.total | num }}</i></span>
+        <span style="--c:{{ B_COLOR }}"><b>{{ featured.b.title }}</b><i>{{ featured.b.total | num }}</i></span>
+      </div>
+      <div class="splitbar" style="--p:{{ '%.2f' | format(featured.total_share_a * 100) }}%"></div>
+      <div class="vs-radar">{{ charts.radar_duo(featured.sections, featured.a.title, featured.b.title, 380) | safe }}</div>
+      <figcaption><b>{{ featured.headline }}.</b> {{ featured.sections_line }}.</figcaption>
+    </figure>
+    <div>
+      <p class="kicker"><span>05</span>Compare</p>
+      <h2>Settle it with numbers.</h2>
+      <p>Put any two devices side by side: total, six sections, every single test, and how each one holds up under load. Every comparison has its own link, made to be sent.</p>
+      <p class="more">
+        <a class="btn btn-ghost" href="{{ url(featured.path) }}">Open this comparison</a>
+        <a class="btn btn-ghost" href="{{ url('/compare/') }}">Compare any two</a>
+      </p>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if note %}
+<section class="sec" id="notes">
+  <div class="wrap">
+    <a class="note-teaser panel" href="{{ url(note.path) }}">
+      <p class="kicker"><span>Lab note</span>From the leaderboard</p>
+      <h2>One setting doubled this phone's CPU score.</h2>
+      <div class="note-figs">
+        <div><small>Balanced mode</small><b>{{ note.balanced.scores.cpu | num }}</b></div>
+        <span aria-hidden="true">→</span>
+        <div><small>Performance mode</small><b class="hot">{{ note.performance.scores.cpu | num }}</b></div>
+      </div>
+      <p>Same {{ note.device.title }}, same app, {{ '%.0f' | format(note.gap_min) }} minutes apart. What a power mode does to a benchmark, and what we did about it.</p>
+      <span class="link">Read the note</span>
+    </a>
+  </div>
+</section>
+{% endif %}
+
+<section class="sec" id="apps">
+  <div class="wrap">
+    <header class="sec-head">
+      <p class="kicker"><span>06</span>The apps</p>
+      <h2>An instrument, not a brochure.</h2>
+      <p class="sec-lede">The same tests and the same scoring on Android and iPhone, with Windows PCs on the same board.</p>
+    </header>
+    <div class="shots">
+      <figure class="phone">
+        <img src="{{ asset('img/screens/android-benchmark-540.webp') }}" srcset="{{ asset('img/screens/android-benchmark-540.webp') }} 540w, {{ asset('img/screens/android-benchmark-1080.webp') }} 1080w" sizes="(max-width: 700px) 60vw, 260px" width="540" height="864" loading="lazy" alt="The ThermoHammer Android app ready to start a benchmark, listing the CPU tests">
+        <figcaption>Benchmark · Android</figcaption>
+      </figure>
+      <figure class="phone">
+        <img src="{{ asset('img/screens/android-stress-540.webp') }}" srcset="{{ asset('img/screens/android-stress-540.webp') }} 540w, {{ asset('img/screens/android-stress-1080.webp') }} 1080w" sizes="(max-width: 700px) 60vw, 260px" width="540" height="864" loading="lazy" alt="The stress test setup in the Android app: duration, CPU or GPU load, and threading">
+        <figcaption>Stress test setup · Android</figcaption>
+      </figure>
+      <figure class="phone">
+        <img src="{{ asset('img/screens/android-leaderboard-540.webp') }}" srcset="{{ asset('img/screens/android-leaderboard-540.webp') }} 540w, {{ asset('img/screens/android-leaderboard-1080.webp') }} 1080w" sizes="(max-width: 700px) 60vw, 260px" width="540" height="864" loading="lazy" alt="The stress test leaderboard inside the Android app">
+        <figcaption>Leaderboard · Android</figcaption>
+      </figure>
+      <figure class="desktop">
+        <img src="{{ asset('img/screens/windows-leaderboard-760.webp') }}" srcset="{{ asset('img/screens/windows-leaderboard-760.webp') }} 760w, {{ asset('img/screens/windows-leaderboard-1506.webp') }} 1506w" sizes="(max-width: 900px) 92vw, 560px" width="760" height="410" loading="lazy" alt="The benchmark leaderboard in the ThermoHammer Windows app">
+        <figcaption>Leaderboard · Windows, on its way to the Microsoft Store</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="faq">
+  <div class="wrap narrow">
+    <header class="sec-head">
+      <p class="kicker"><span>07</span>Questions</p>
+      <h2>Asked often.</h2>
+    </header>
+    <div class="faq">
+      {% for q, a in faq %}
+      <details{% if loop.first %} open{% endif %}>
+        <summary>{{ q }}</summary>
+        <p>{{ a }}</p>
+      </details>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{{ m.cta_band('Find out what yours does after the first minute.', 'Free on Google Play and the App Store. Run it, submit a clean run, and your device joins the board.') }}
+{% endblock %}

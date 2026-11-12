@@ -1,0 +1,35 @@
+# Serves the generated site inside the `thweb` container. TLS and the public host name belong to the outer proxy.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+
+	# everything under /assets/ has a content hash in its name, so it never changes
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@og path /og/*
+	header @og Cache-Control "public, max-age=604800"
+	@pages not path /assets/* /og/*
+	header @pages Cache-Control "public, max-age=300, stale-while-revalidate=86400"
+
+	handle_errors {
+		@missing expression {err.status_code} == 404
+		rewrite @missing /404.html
+		file_server
+	}
+
+	file_server
+}

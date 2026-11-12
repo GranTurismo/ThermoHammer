@@ -1,0 +1,60 @@
+# ThermoHammer website: `thweb-gen` rebuilds the pages whenever the leaderboard changes, `thweb` serves them.
+# Lives in ~/docker/thweb on the server; the public reverse proxy (the `caddy` container) forwards the site's host here.
+services:
+  thweb-gen:
+    build: .
+    image: thweb-gen:local
+    container_name: thweb-gen
+    restart: unless-stopped
+    environment:
+      TH_SITE_ORIGIN: "https://thermohammer.gtgroup.dev"
+      THAPI_URL: "http://thapi:5000"
+      TH_OUT: /out
+      TH_CACHE: /cache
+    volumes:
+      - ./app:/app:ro
+      - ./public:/out
+      - ./cache:/cache
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    networks:
+      - caddynet
+
+  thweb:
+    image: caddy:2-alpine
+    container_name: thweb
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public:/srv:ro
+    read_only: true
+    tmpfs:
+      - /config
+      - /data
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE      # the caddy binary carries this as a file capability and won't start without it
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    expose:
+      - 8080
+    networks:
+      - caddynet
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/robots.txt"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  caddynet:
+    external: true

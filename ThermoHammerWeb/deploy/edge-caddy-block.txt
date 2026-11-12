@@ -1,0 +1,8 @@
+# Add this block to ~/docker/caddy/Caddyfile on the server once thermohammer.gtgroup.dev points at it
+# (an A record to 51.77.65.222), then:  sudo docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+# Edit the Caddyfile in place (don't replace the file): it is bind-mounted into the container by inode.
+
+thermohammer.gtgroup.dev {
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy thweb:8080
+}

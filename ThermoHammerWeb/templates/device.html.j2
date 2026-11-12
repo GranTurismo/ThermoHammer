@@ -1,0 +1,180 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+{% set r = d.headline %}
+<section class="wrap dev-head">
+  <div>
+    {{ m.platform_chip(d) }}
+    <h1>{{ d.title }}</h1>
+    {% if d.alias %}<p class="dev-aka">On the leaderboard as “{{ d.name }}”</p>{% endif %}
+    <p class="dev-meta">
+      {% if d.chip and d.os_id != 4 %}<span><b>Chip</b>{{ d.chip }}</span>{% elif d.soc %}<span><b>CPU</b>{{ d.soc }}</span>{% endif %}
+      {% if d.gpu %}<span><b>GPU</b>{{ d.gpu }}</span>{% endif %}
+      <span><b>OS</b>{{ d.os_text }}</span>
+    </p>
+  </div>
+  {% if d.has_bench %}
+  <div class="dev-total">
+    <small>Total score</small>
+    <b>{{ d.total | num }}</b>
+    <i>#{{ d.rank }} of {{ site.board | length }} on the board{% if d.platform_rank and (site.board | selectattr('os_id', 'equalto', d.os_id) | list | length) > 1 %} · #{{ d.platform_rank }} on {{ d.platform }}{% endif %}</i>
+  </div>
+  {% else %}
+  <div class="dev-total" style="--c:{{ r.color }}">
+    <small>Speed held under load</small>
+    <b>{{ r.stability | pct }}</b>
+    <i>{% if d.stress_rank %}#{{ d.stress_rank }} of {{ site.stress_board | selectattr('stress_rank') | list | length }} · {% endif %}{{ r.label }}</i>
+  </div>
+  {% endif %}
+</section>
+
+<section class="wrap page-body">
+  {% if d.has_bench %}
+  {% set top = [d.strongest.points, REFERENCE] | max %}
+  <div class="grid2">
+    <figure class="panel brackets">
+      <div class="panel-head"><span class="panel-title">Six sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
+      {{ charts.radar(d.best.scores, 380, d.title ~ ': section scores against the 6,000-point reference') | safe }}
+    </figure>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Against the reference</span><span class="panel-note">best verified run</span></div>
+      <ul class="bars">
+        {% for s in d.section_list %}
+        <li style="--c:{{ s.color }};--w:{{ '%.2f' | format(s.points / top * 100) }}%;--ref:{{ '%.2f' | format(REFERENCE / top * 100) }}%">
+          <b>{{ s.short }}</b>
+          <span class="track"><i></i><u></u></span>
+          <span>{{ s.points | num }}</span>
+          <em>{{ s.ratio | times }}</em>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="keyline"><span><i></i>6,000 points: a Snapdragon 8 Elite phone, as it ships</span></p>
+      <p class="fine" style="margin-top:14px">Strongest: <b>{{ d.strongest.label }}</b> at {{ d.strongest.ratio | times }} the reference.{% if d.weakest and d.weakest.key != d.strongest.key %} Weakest: <b>{{ d.weakest.label }}</b> at {{ d.weakest.ratio | times }}.{% endif %}</p>
+    </div>
+  </div>
+
+  <dl class="facts" style="margin-top:16px">
+    <div><dt>Verified runs</dt><dd>{{ d.run_count }}</dd></div>
+    {% if d.stats and d.stats.total and d.run_count > 1 %}
+    <div><dt>Median of its runs</dt><dd>{{ d.stats.total.median | num }}</dd></div>
+    <div><dt>Best over median</dt><dd>+{{ percent_text((d.total / d.stats.total.median - 1) * 100) }}</dd></div>
+    {% endif %}
+    <div><dt>Against the reference</dt><dd>{{ (d.total / REFERENCE_TOTAL) | times }} <small>of 36,000</small></dd></div>
+    {% if d.best.created %}<div><dt>Best run</dt><dd>{{ d.best.created | day }}</dd></div>{% endif %}
+    {% if d.best.app_version %}<div><dt>App version</dt><dd>{{ d.best.app_version }}</dd></div>{% endif %}
+  </dl>
+
+  <div class="block">
+    <h2>Every test of the best run</h2>
+    <p class="sec-lede">The raw measurements behind the score, as the server recorded them.</p>
+    <div class="tests">
+      {% for s in d.best.sections %}
+      <details style="--c:{{ section_meta[s.key].color if s.key in section_meta else '#9FB4BC' }}"{% if loop.index <= 2 %} open{% endif %}>
+        <summary><span>{{ section_meta[s.key].label if s.key in section_meta else s.title }}</span><b>{{ s.score | num }}</b></summary>
+        {% for g in s.groups %}
+        <div class="tgroup">
+          <h3><span>{{ g.title }}</span>{% if g.points is not none %}<i>{{ g.points | num }}</i>{% endif %}</h3>
+          <dl>{% for row in g.rows %}<dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>{% endfor %}</dl>
+        </div>
+        {% endfor %}
+      </details>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if d.bench_runs | length > 1 %}
+  <div class="block">
+    <h2>All verified runs</h2>
+    <p class="sec-lede">The board keeps the best one. The others show how much this device moves from run to run.</p>
+    <div class="panel scroll-x">
+      <table class="runs">
+        <thead><tr><th>Run</th><th>Date</th><th>App</th><th>OS</th>{% for key, short, label, field, color in SECTIONS %}<th class="r" style="color:{{ color }}">{{ short }}</th>{% endfor %}<th class="r">Total</th></tr></thead>
+        <tbody>
+          {% for run in d.bench_runs %}
+          <tr>
+            <td>#{{ run.id }}{% if run.id == d.best.id %} <span class="chip">best</span>{% endif %}</td>
+            <td>{{ run.created | day }}</td>
+            <td>{{ run.app_version }}</td>
+            <td>{{ run.os_version }}</td>
+            {% for key, short, label, field, color in SECTIONS %}<td class="r">{{ run.scores.get(key, 0) | num }}</td>{% endfor %}
+            <td class="r"><b>{{ run.total | num }}</b></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% if d.has_stress %}
+  <div class="block" id="stress">
+    <h2>Under sustained load</h2>
+    <p class="sec-lede">{{ d.title }} holds <b style="color:{{ r.color }}">{{ r.stability | pct }}</b> of its {{ 'baseline' if r.basis == 'baseline' else 'peak' }} speed through a {{ r.minutes }}-minute stress test on {{ 'every core' if r.multi else 'one thread' }}.{% if d.stress_rank %} That is #{{ d.stress_rank }} of {{ site.stress_board | selectattr('stress_rank') | list | length }} devices on the same test.{% endif %}</p>
+    {% if r.has_curve %}
+    <figure class="panel brackets" data-draw>
+      <div class="panel-head"><span class="panel-title">Throughput ribbon</span><span class="panel-note">run #{{ r.id }} · {{ d.platform }} {{ r.os_version }}</span></div>
+      {{ m.run_readout(r) }}
+      {{ charts.ribbon(r, 'd' ~ uid, 1100, 340, true, d.title ~ ': throughput over a ' ~ r.minutes ~ '-minute stress test') | safe }}
+      <figcaption>Speed as a share of {{ 'the cold baseline measured before the load' if r.basis == 'baseline' else "the run's fastest sample" }}.{% if r.thermal_at %} Dashed lines mark the second the device first reported each thermal state.{% endif %}</figcaption>
+    </figure>
+    <dl class="facts" style="margin-top:16px">
+      <div><dt>Fastest sample</dt><dd>{{ r.peak_gips | gips }} <small>GIPS</small></dd></div>
+      <div><dt>Second-half average</dt><dd>{{ r.sustained_gips | gips }} <small>GIPS</small></dd></div>
+      <div><dt>Lowest 5-second average</dt><dd>{{ r.low_pct | pct(0) }}</dd></div>
+      <div><dt>First under 90%</dt><dd>{% if r.dip_s is not none %}{{ r.dip_s | clock }} <small>into the run</small>{% else %}never{% endif %}</dd></div>
+      <div><dt>Hottest state reported</dt><dd>{{ THERMAL_NAMES[r.thermal_max] }}</dd></div>
+      <div><dt>Samples</dt><dd>{{ r.samples | num }}</dd></div>
+    </dl>
+    {% endif %}
+    {% if d.stress_runs | length > 1 %}
+    {{ charts.spark_defs() | safe }}
+    <div class="panel scroll-x" style="margin-top:16px">
+      <div class="panel-head"><span class="panel-title">All {{ d.stress_runs | length }} stress runs</span><span class="panel-note">best first</span></div>
+      <table class="runs">
+        <thead><tr><th>Run</th><th>Test</th><th>OS</th><th>Curve</th><th class="r">Peak GIPS</th><th class="r">Second half</th><th class="r">Stability</th></tr></thead>
+        <tbody>
+          {% for run in d.stress_runs %}
+          <tr>
+            <td>#{{ run.id }}</td>
+            <td>{{ run.label }}</td>
+            <td>{{ run.os_version }}</td>
+            <td>{{ charts.sparkline(run) | safe }}</td>
+            <td class="r">{{ run.peak_gips | gips }}</td>
+            <td class="r">{{ run.sustained_gips | gips }}</td>
+            <td class="r"><b style="color:{{ run.color }}">{{ run.stability | pct }}</b></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% elif d.has_bench %}
+  <div class="block callout">
+    <b>No stress run yet.</b> Nobody has submitted a sustained-load run for this device, so we don't know how well it holds its speed.
+  </div>
+  {% endif %}
+
+  {% if neighbours %}
+  <div class="block">
+    <h2>Compare it</h2>
+    <p class="sec-lede">The closest devices on the board, head to head.</p>
+    <div class="pairs">
+      {% for p in neighbours %}{{ m.pair_card(p) }}{% endfor %}
+    </div>
+    <p class="more"><a class="link" href="{{ url('/compare/') }}">Compare with any device</a></p>
+  </div>
+  {% endif %}
+
+  <div class="block">
+    <p class="share-label">Share this result</p>
+    {% if d.has_bench %}
+    {{ m.share(d.title ~ ' scores ' ~ (d.total | num) ~ ' on ThermoHammer', d.title ~ ' scores ' ~ (d.total | num) ~ ' on the ThermoHammer benchmark.') }}
+    {% else %}
+    {{ m.share(d.title ~ ' holds ' ~ (r.stability | pct) ~ ' of its speed under load', d.title ~ ' holds ' ~ (r.stability | pct) ~ ' of its speed in the ThermoHammer stress test.') }}
+    {% endif %}
+  </div>
+</section>
+{{ m.cta_band('Have a ' ~ d.title ~ '?', 'Run it yourself and see how your unit compares with this one. Clean runs join the board.') }}
+{% endblock %}

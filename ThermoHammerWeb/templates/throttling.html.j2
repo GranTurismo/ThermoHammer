@@ -1,0 +1,60 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap page-head">
+  <div class="tabs" role="navigation" aria-label="Leaderboards">
+    <a href="{{ url('/leaderboard/') }}">Benchmark</a>
+    <a href="{{ url('/leaderboard/throttling/') }}" aria-current="page">Stress test</a>
+  </div>
+  <h1>Which devices hold their speed</h1>
+  <p class="lede">Every row is a real stress run with its real curve: full load for 5, 15 or 30 minutes. Stability is the share of full speed the device delivered. Higher is steadier.</p>
+</section>
+
+<section class="wrap page-body" data-board="stress">
+  {{ charts.spark_defs() | safe }}
+  <div class="filters">
+    <label class="search">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="search" placeholder="Search a device or brand" aria-label="Search the leaderboard" data-search autocomplete="off">
+    </label>
+    <div class="fgroup" data-filter="platform">
+      <span>Platform</span>
+      <button class="fbtn" type="button" data-value="" aria-pressed="true">All</button>
+      {% for key, label in [('android', 'Android'), ('ios', 'iOS'), ('windows', 'Windows'), ('macos', 'macOS')] %}
+      {% if site.stress_runs | selectattr('device.platform_key', 'equalto', key) | list %}
+      <button class="fbtn" type="button" data-value="{{ key }}" aria-pressed="false">{{ label }}</button>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div class="filters">
+    <div class="fgroup" data-filter="minutes" data-default="5">
+      <span>Test length</span>
+      <button class="fbtn" type="button" data-value="" aria-pressed="true">Any</button>
+      {% for mins in [5, 15, 30] %}
+      {% if site.stress_runs | selectattr('minutes', 'equalto', mins) | list %}
+      <button class="fbtn" type="button" data-value="{{ mins }}" aria-pressed="false">{{ mins }} min</button>
+      {% endif %}
+      {% endfor %}
+    </div>
+    <div class="fgroup" data-filter="threads" data-default="multi">
+      <span>Load</span>
+      <button class="fbtn" type="button" data-value="" aria-pressed="true">Any</button>
+      <button class="fbtn" type="button" data-value="multi" aria-pressed="false">Every core</button>
+      <button class="fbtn" type="button" data-value="single" aria-pressed="false">1 thread</button>
+    </div>
+    <div class="fgroup">
+      <button class="fbtn" type="button" data-best aria-pressed="false">Best run per device</button>
+    </div>
+  </div>
+
+  <ol class="lb" data-rows>
+    {% for r in site.stress_runs %}
+    {{ m.stress_row(r, loop.index) }}
+    {% endfor %}
+  </ol>
+  <p class="empty" data-empty hidden>No run matches those filters.</p>
+  <p class="lb-note"><span data-count>{{ site.stress_runs | length }}</span> runs shown. Peak is the fastest sample of a run and "held" is the average of its second half, both in GIPS (billions of instructions per second). Newer app versions measure stability against a cold baseline taken before the load; older runs measure the second half against the run's own peak. <a class="link" href="{{ url('/how-it-works/') }}#stress">How the stress test works</a></p>
+</section>
+{{ m.cta_band('See your own curve.', 'Five minutes is enough to know whether your phone holds its speed or lets go.') }}
+{% endblock %}

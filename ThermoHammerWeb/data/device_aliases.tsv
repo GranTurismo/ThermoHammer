@@ -1,0 +1,10 @@
+# Friendlier names for devices the leaderboard stores under a code. Tab-separated: stored name, name to show.
+# The stored name stays visible on the page; this only adds a readable title.
+iPad (iPad8,6)	iPad Pro 12.9-inch (3rd generation)
+iPad (iPad11,1)	iPad mini (5th generation)
+iPad (iPad12,1)	iPad (9th generation)
+iPad (iPad14,1)	iPad mini (6th generation)
+iPad (iPad14,3)	iPad Pro 11-inch (4th generation)
+iPad (iPad15,7)	iPad (A16)
+iPhone (iPhone17,5)	iPhone 16e
+Vivo X300 Pro 卫星通信版	Vivo X300 Pro (Satellite Edition)

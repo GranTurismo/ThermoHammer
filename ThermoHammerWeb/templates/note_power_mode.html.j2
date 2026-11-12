@@ -1,0 +1,80 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% set og_type = 'article' %}
+{% block main %}
+{% set bal = note.balanced %}
+{% set perf = note.performance %}
+{% set dev = note.device %}
+<article>
+<section class="wrap page-head narrow">
+  <p class="kicker"><span>Lab note</span>From the leaderboard</p>
+  <h1>One setting doubled this phone's CPU score</h1>
+  <p class="lede">Same {{ dev.title }}, same app, {{ '%.0f' | format(note.gap_min) }} minutes apart. The only thing that changed was a switch in the phone's settings.</p>
+  <p class="byline">ThermoHammer · <time datetime="{{ published.strftime('%Y-%m-%d') }}">{{ published | day }}</time></p>
+</section>
+
+<section class="wrap page-body narrow">
+  <div class="prose">
+    {% if note.rival and note.first %}
+    <p>The {{ dev.title }} runs a {{ dev.soc_name or dev.soc }}. On our own leaderboard it was losing the CPU section to a {{ note.rival.title }}{% if note.rival.soc_name %} and its {{ note.rival.soc_name }}{% endif %}: {{ note.first.scores.cpu | num }} points against {{ note.rival.best.scores.cpu | num }}. That is the wrong way round, and when a benchmark says something that surprising, the first suspect is the benchmark.</p>
+
+    <h2>Not the build, not the heat</h2>
+    <p>That first run had come from a test build of the app, so we ran it again with the released version. Same phone, same answer: {{ bal.scores.cpu | num }} for the CPU, within 1% of the first run. Heat wasn't it either, because a benchmark run only counts if the phone starts cool.</p>
+    {% endif %}
+
+    {% if note.trace %}
+    <p>The stress test had the clue. This is one of the same phone's sustained-load runs:</p>
+    <figure class="panel brackets" data-draw>
+      <div class="panel-head"><span class="panel-title">Throughput ribbon</span><span class="panel-note">{{ dev.title }} · stress run #{{ note.trace.id }} · {{ note.trace.label }}</span></div>
+      {{ charts.ribbon(note.trace, 'note', 900, 300, true, dev.title ~ ': throughput over a stress test') | safe }}
+      <figcaption>The run opens at {{ '%.0f' | format(note.trace_early) }}% of its peak and within seconds settles near {{ '%.0f' | format(note.trace_after) }}%, with short bursts back up.{% if note.trace.thermal_at.get(1) and note.trace.thermal_at.get(1) > 30 %} The phone's thermal state reads nominal until {{ note.trace.thermal_at.get(1) | clock }}.{% elif not note.trace.thermal_at %} The phone's thermal state reads nominal throughout.{% endif %} Over the whole run it holds {{ note.trace.stability | pct }}.</figcaption>
+    </figure>
+    <p>A drop that arrives in seconds, long before anything has had time to heat up, is not a phone protecting itself from heat. It looks like a policy: a decision about how much speed an app gets.</p>
+    {% endif %}
+
+    <h2>The switch</h2>
+    <p>HONOR ships this phone with its Power Mode set to Balanced. We changed it to Performance and ran the benchmark again, {{ '%.0f' | format(note.gap_min) }} minutes after the last run. Same phone, same app version ({{ perf.app_version }}), nothing else touched.</p>
+  </div>
+
+  <div class="bigfig">
+    <div><small>CPU · Balanced</small><b>{{ bal.scores.cpu | num }}</b><span>run #{{ bal.id }}, {{ bal.created | day }}</span></div>
+    <div><small>CPU · Performance</small><b class="hot">{{ perf.scores.cpu | num }}</b><span>run #{{ perf.id }}, {{ '%.0f' | format(note.gap_min) }} minutes later</span></div>
+    <div><small>Difference</small><b>{{ note.cpu_ratio | times }}</b><span>the same chip, the same tests</span></div>
+  </div>
+
+  <div class="panel scroll-x">
+    <table class="cmp">
+      <thead><tr><th>Section</th><th>Balanced</th><th>Performance</th><th>Change</th></tr></thead>
+      <tbody>
+        {% for row in note.rows %}
+        <tr style="--c:{{ row.color }}"><td>{{ row.label }}</td><td>{{ row.a | num }}</td><td>{{ row.b | num }}</td><td class="{{ 'up' if row.ratio >= 1.1 else 'flat' }}">{{ row.ratio | times }}</td></tr>
+        {% endfor %}
+        <tr style="--c:var(--ink0)"><td>Total</td><td>{{ bal.total | num }}</td><td>{{ perf.total | num }}</td><td class="up">{{ note.total_ratio | times }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="prose">
+    <p>The CPU section went up {{ note.cpu_ratio | times }}. Memory rose with it, almost all of it in the database test, which is bound by the processor{% if note.db_before and note.db_after %}: updates went from {{ note.db_before }} to {{ note.db_after }}{% endif %}. Everyday UX and AI gained too. The GPU and the LLM, which lean on the graphics chip here, moved by single digits.</p>
+
+    <h2>What it means</h2>
+    <p>The benchmark was right both times. In Balanced mode this phone hands apps about half of what its processor can do, and that is the phone most owners have, because it is how it ships.</p>
+    <p>So we changed nothing. 6,000 points per section is still a Snapdragon 8 Elite phone as it ships, in its default mode. The leaderboard keeps each device's best verified run, which is why the {{ dev.title }} now stands at {{ dev.total | num }}{% if dev.rank %}, #{{ dev.rank }} on the board{% endif %}: that is the Performance run.</p>
+    <p>If your phone has a performance mode, your score depends on it. Run the benchmark once in each mode and compare the two runs in the app: the gap is what the default costs you. And when two phones on a leaderboard look the wrong way round, find out which mode each was in before deciding which chip is faster.</p>
+
+    <h2>Check it yourself</h2>
+    <ul>
+      <li><a href="{{ url('/devices/' ~ dev.slug ~ '/') }}">{{ dev.title }}</a>: every verified run, including #{{ bal.id }} and #{{ perf.id }}</li>
+      {% if note.rival and site.pair(dev, note.rival) %}<li><a href="{{ url(site.pair(dev, note.rival).path) }}">{{ dev.title }} against {{ note.rival.title }}</a>, as the board stands today</li>{% endif %}
+      <li><a href="{{ url('/how-it-works/') }}">How runs are verified and scored</a></li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <p class="share-label">Share this note</p>
+    {{ m.share("One setting doubled this phone's CPU score", 'Same phone, same app, ' ~ ('%.0f' | format(note.gap_min)) ~ ' minutes apart: CPU score ' ~ (bal.scores.cpu | num) ~ ' in Balanced mode, ' ~ (perf.scores.cpu | num) ~ ' in Performance.') }}
+  </div>
+</section>
+</article>
+{{ m.cta_band('What does your default mode cost you?', 'Run the benchmark in each power mode and compare the two runs side by side.') }}
+{% endblock %}

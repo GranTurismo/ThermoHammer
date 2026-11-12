@@ -1,0 +1,23 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap page-head narrow">
+  <h1>Lab notes</h1>
+  <p class="lede">Things the leaderboard taught us. Short write-ups, each with the runs to check it against.</p>
+</section>
+<section class="wrap page-body narrow">
+  <div class="note-list">
+    {% for n in notes %}
+    <a class="panel note-item" href="{{ url(n.path) }}">
+      <p class="fine"><time datetime="{{ n.date.strftime('%Y-%m-%d') }}">{{ n.date | day }}</time></p>
+      <h2>{{ n.title }}</h2>
+      <p>{{ n.description }}</p>
+      <span class="link">Read the note</span>
+    </a>
+    {% else %}
+    <p class="empty">Nothing written up yet.</p>
+    {% endfor %}
+  </div>
+</section>
+{{ m.cta_band('Find something odd on your own device?', 'Run the benchmark and the stress test, then compare your runs in the app.') }}
+{% endblock %}

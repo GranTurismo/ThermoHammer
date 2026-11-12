@@ -1,0 +1,137 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% macro side(dev, cls, color) %}
+<div class="vs-card {{ cls }}" style="--c:{{ color }}">
+  <small>{{ dev.platform }}</small>
+  <h2><a href="{{ url('/devices/' ~ dev.slug ~ '/') }}">{{ dev.title }}</a></h2>
+  <p>{% if dev.os_id != 4 and dev.chip %}{{ dev.chip }}{% elif dev.soc %}{{ dev.soc }}{% endif %}{% if dev.gpu %} · {{ dev.gpu }}{% endif %}</p>
+  {% if p.has_bench %}
+  <b class="big">{{ dev.total | num }}</b><small>total score</small>
+  {% else %}
+  <b class="big" style="color:{{ dev.headline.color }}">{{ dev.headline.stability | pct }}</b><small>speed held · {{ dev.headline.label }}</small>
+  {% endif %}
+</div>
+{% endmacro %}
+{% block main %}
+<section class="wrap page-head" style="padding-bottom:0">
+  <h1>{{ a.title }} <span style="color:var(--ink2)">vs</span> {{ b.title }}</h1>
+</section>
+<section class="wrap vs-head">
+  {{ side(a, '', A_COLOR) }}
+  <div class="vs-mid">VS</div>
+  {{ side(b, 'r', B_COLOR) }}
+</section>
+
+<section class="wrap page-body">
+  <div class="panel brackets verdict">
+    <h2 style="font-size:clamp(1.4rem,3.2vw,2.3rem);margin-bottom:8px">{{ p.headline }}</h2>
+    {% if p.has_bench %}
+    <p>{{ p.sections_line }}</p>
+    <span class="splitbar" style="--p:{{ '%.2f' | format(p.total_share_a * 100) }}%" role="img" aria-label="{{ a.title }} {{ a.total | num }} points, {{ b.title }} {{ b.total | num }} points"></span>
+    {% else %}
+    <p>{{ a.headline.stability | pct }} against {{ b.headline.stability | pct }} of full speed{% if not p.same_test %} · different test settings, see below{% endif %}</p>
+    {% endif %}
+  </div>
+
+  {% if p.has_bench %}
+  <div class="grid2" style="align-items:start">
+    <figure class="panel">
+      <div class="panel-head"><span class="panel-title">Section by section</span><span class="panel-note">each axis scaled to the better device</span></div>
+      <div class="duo-legend">
+        <span style="--c:{{ A_COLOR }}"><i></i>{{ a.title }}</span>
+        <span style="--c:{{ B_COLOR }}"><i></i>{{ b.title }}</span>
+      </div>
+      {{ charts.radar_duo(p.sections, a.title, b.title, 400) | safe }}
+    </figure>
+    <div>
+      <div class="mirror">
+        {% for s in p.sections %}
+        {% set w = s.duel.winner %}
+        <details>
+          <summary class="mrow" style="--c:{{ s.color }}">
+            <span class="mside a{% if w == 'a' %} win{% endif %}"><span>{{ s.a | num }}{% if w == 'a' and s.duel.badge %}<em>{{ s.duel.badge }}</em>{% endif %}</span><span class="mbar"><i style="--w:{{ '%.1f' | format(s.share_a * 100) }}%"></i></span></span>
+            <span class="mid">{{ section_meta[s.key].label if s.key in section_meta else s.title }}<small>{% if w == 'even' %}even{% elif w == 'a' %}{{ a.title }} leads{% elif w == 'b' %}{{ b.title }} leads{% endif %}</small></span>
+            <span class="mside b{% if w == 'b' %} win{% endif %}"><span class="mbar"><i style="--w:{{ '%.1f' | format(s.share_b * 100) }}%"></i></span><span>{{ s.b | num }}{% if w == 'b' and s.duel.badge %}<em>{{ s.duel.badge }}</em>{% endif %}</span></span>
+          </summary>
+          <div class="mgroups">
+            {% for g in s.groups %}
+            <h3><span{% if g.duel.winner == 'a' %} class="win"{% endif %}>{% if g.a is not none %}{{ g.a | num }}{% endif %}</span><span>{{ g.title }}</span><span{% if g.duel.winner == 'b' %} class="win"{% endif %}>{% if g.b is not none %}{{ g.b | num }}{% endif %}</span></h3>
+            <table>
+              {% for row in g.rows %}
+              <tr><td{% if row.duel.winner == 'a' %} class="win"{% endif %}>{{ row.a or '–' }}</td><td>{{ row.label }}</td><td{% if row.duel.winner == 'b' %} class="win"{% endif %}>{{ row.b or '–' }}</td></tr>
+              {% endfor %}
+            </table>
+            {% endfor %}
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+      <p class="fine" style="margin-top:12px">Open a section for every test. Scores within 1% count as even.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if p.has_stress %}
+  <div class="block">
+    <h2>Under sustained load</h2>
+    <p class="sec-lede">
+      {% if p.stress.winner == 'even' %}Both hold their speed about equally: {{ a.headline.stability | pct }} and {{ b.headline.stability | pct }}.
+      {% else %}{% set w = a if p.stress.winner == 'a' else b %}{% set l = b if p.stress.winner == 'a' else a %}
+      {{ w.title }} keeps <b>{{ w.headline.stability | pct }}</b> of its speed, {{ l.title }} <b>{{ l.headline.stability | pct }}</b>.{% endif %}
+      {% if not p.same_test %} The runs used different settings ({{ a.headline.label }} against {{ b.headline.label }}), so read the gap with care.{% endif %}
+    </p>
+    {% if a.headline.has_curve and b.headline.has_curve %}
+    <figure class="panel brackets">
+      <div class="panel-head"><span class="panel-title">Throughput ribbon</span><span class="panel-note">share of full speed over time</span></div>
+      <div class="duo-legend">
+        <a href="{{ url('/devices/' ~ a.slug ~ '/') }}#stress" style="--c:{{ A_COLOR }}"><i></i>{{ a.title }} <b>{{ a.headline.stability | pct }}</b></a>
+        <a href="{{ url('/devices/' ~ b.slug ~ '/') }}#stress" style="--c:{{ B_COLOR }}"><i></i>{{ b.title }} <b>{{ b.headline.stability | pct }}</b></a>
+      </div>
+      {{ charts.duo(a.headline, b.headline, a.title, b.title, 1100, 340) | safe }}
+    </figure>
+    {% endif %}
+    <table class="spec" style="margin-top:16px">
+      <thead><tr><th scope="col" class="ca">{{ a.title }}</th><th><span class="sr">Measure</span></th><th scope="col" class="cb">{{ b.title }}</th></tr></thead>
+      <tr><td>{{ a.headline.label }}</td><th scope="row">Test</th><td>{{ b.headline.label }}</td></tr>
+      <tr><td>{{ a.headline.peak_gips | gips }} GIPS</td><th scope="row">Fastest sample</th><td>{{ b.headline.peak_gips | gips }} GIPS</td></tr>
+      <tr><td>{{ a.headline.sustained_gips | gips }} GIPS</td><th scope="row">Second-half average</th><td>{{ b.headline.sustained_gips | gips }} GIPS</td></tr>
+      <tr><td>{{ a.headline.low_pct | pct(0) }}</td><th scope="row">Lowest 5-second average</th><td>{{ b.headline.low_pct | pct(0) }}</td></tr>
+      <tr><td>{{ THERMAL_NAMES[a.headline.thermal_max] }}</td><th scope="row">Hottest state reported</th><td>{{ THERMAL_NAMES[b.headline.thermal_max] }}</td></tr>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="block">
+    <h2>The devices</h2>
+    <table class="spec">
+      <thead><tr><th scope="col" class="ca">{{ a.title }}</th><th><span class="sr">Measure</span></th><th scope="col" class="cb">{{ b.title }}</th></tr></thead>
+      <tr><td>{{ a.platform }}</td><th scope="row">Platform</th><td>{{ b.platform }}</td></tr>
+      <tr><td>{{ a.chip or a.soc or '–' }}</td><th scope="row">Chip</th><td>{{ b.chip or b.soc or '–' }}</td></tr>
+      <tr><td>{{ a.gpu or '–' }}</td><th scope="row">GPU</th><td>{{ b.gpu or '–' }}</td></tr>
+      <tr><td>{{ a.os_text }}</td><th scope="row">OS</th><td>{{ b.os_text }}</td></tr>
+      {% if p.has_bench %}
+      <tr><td>{{ a.run_count }}</td><th scope="row">Verified benchmark runs</th><td>{{ b.run_count }}</td></tr>
+      <tr><td>{{ a.best.created | day }}</td><th scope="row">Best run</th><td>{{ b.best.created | day }}</td></tr>
+      {% endif %}
+    </table>
+    <p class="more">
+      <a class="btn btn-ghost" href="{{ url('/devices/' ~ a.slug ~ '/') }}">{{ a.title }}</a>
+      <a class="btn btn-ghost" href="{{ url('/devices/' ~ b.slug ~ '/') }}">{{ b.title }}</a>
+    </p>
+  </div>
+
+  <div class="block">
+    <p class="share-label">Send this comparison</p>
+    {{ m.share(a.title ~ ' vs ' ~ b.title, p.headline ~ '.') }}
+  </div>
+
+  {% if others %}
+  <div class="block">
+    <h2>More matchups</h2>
+    <div class="pairs">{% for q in others %}{{ m.pair_card(q) }}{% endfor %}</div>
+    <p class="more"><a class="link" href="{{ url('/compare/') }}">Compare any two devices</a></p>
+  </div>
+  {% endif %}
+</section>
+{{ m.cta_band('Where does yours land?', 'Run the benchmark on your own device and compare it with either of these in the app.') }}
+{% endblock %}

@@ -1,0 +1,99 @@
+{# Pieces several pages share. #}
+
+{% macro store_buttons(compact=false) %}
+<div class="stores{% if compact %} stores-compact{% endif %}">
+  <a class="store" href="{{ cfg.play_url }}" rel="noopener" data-store="play">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 3.5v17l14-8.5z" fill="currentColor"/></svg>
+    <span><small>Get it on</small>Google Play</span>
+  </a>
+  <a class="store" href="{{ cfg.appstore_url }}" rel="noopener" data-store="appstore">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4.5 19.5h15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span><small>Download on the</small>App Store</span>
+  </a>
+  {% if not compact %}<span class="store-note"><b>Windows:</b> on its way to the Microsoft Store</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro platform_chip(d) %}<span class="chip chip-{{ d.platform_key }}">{{ d.platform }}</span>{% endmacro %}
+
+{# The six sections as one bar: each segment is that section's share of the total. #}
+{% macro composition(d) %}
+<div class="comp" role="img" aria-label="Share of the total: {% for s in d.section_list %}{{ s.short }} {{ '%.0f' | format(s.share * 100) }}%{% if not loop.last %}, {% endif %}{% endfor %}">
+  {% for s in d.section_list %}<span style="--w:{{ '%.2f' | format(s.share * 100) }}%;--c:{{ s.color }}" title="{{ s.label }}: {{ s.points | num }}"></span>{% endfor %}
+</div>
+{% endmacro %}
+
+{% macro section_scores(d) %}
+<ul class="secs">
+  {% for s in d.section_list %}<li style="--c:{{ s.color }}"><b>{{ s.short }}</b><span>{{ s.points | num }}</span></li>{% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro bench_row(d) %}
+<li class="lb-row" data-row data-platform="{{ d.platform_key }}" data-name="{{ (d.title ~ ' ' ~ d.name ~ ' ' ~ d.chip ~ ' ' ~ d.gpu) | lower }}" data-total="{{ d.total }}"{% for s in d.section_list %} data-{{ s.key }}="{{ s.points }}"{% endfor %}>
+  <span class="lb-rank" data-rank>#{{ d.rank }}</span>
+  <div class="lb-main">
+    <a class="lb-name" href="{{ url('/devices/' ~ d.slug ~ '/') }}">{{ d.title }}</a>
+    <p class="lb-sub">{{ platform_chip(d) }} {% if d.os_id != 4 and d.chip %}{{ d.chip }} · {% endif %}{{ d.gpu }} · {{ d.os_text }}{% if d.run_count > 1 %} · best of {{ d.run_count }} runs{% endif %}</p>
+    {{ section_scores(d) }}
+    {{ composition(d) }}
+  </div>
+  <div class="lb-score"><b data-score>{{ d.total | num }}</b><small data-score-label>total</small></div>
+</li>
+{% endmacro %}
+
+{% macro stress_row(r, rank=none) %}
+{% set d = r.device %}
+<li class="st-row" data-row data-platform="{{ d.platform_key }}" data-minutes="{{ r.minutes }}" data-threads="{{ 'multi' if r.multi else 'single' }}" data-device="{{ d.slug }}" data-stability="{{ '%.3f' | format(r.stability) }}" data-name="{{ (d.title ~ ' ' ~ d.name ~ ' ' ~ d.manufacturer) | lower }}">
+  <span class="lb-rank" data-rank>{% if rank %}#{{ rank }}{% endif %}</span>
+  <div class="st-main">
+    <a class="lb-name" href="{{ url('/devices/' ~ d.slug ~ '/') }}">{{ d.title }}</a>
+    <p class="lb-sub">{{ platform_chip(d) }} {{ d.platform }} {{ r.os_version }} · {{ r.label }}</p>
+  </div>
+  <div class="st-curve">{{ charts.sparkline(r) | safe }}</div>
+  <div class="st-nums"><span>{{ r.peak_gips | gips }} <small>peak</small></span><span>{{ r.sustained_gips | gips }} <small>held · GIPS</small></span></div>
+  <div class="lb-score" style="--c:{{ r.color }}"><b>{{ r.stability | pct }}</b><small>stability</small></div>
+</li>
+{% endmacro %}
+
+{% macro pair_card(p) %}
+<a class="pair" href="{{ url(p.path) }}">
+  <span class="pair-side pair-a"><b>{{ p.a.title }}</b><i>{% if p.has_bench %}{{ p.a.total | num }}{% else %}{{ p.a.headline.stability | pct }}{% endif %}</i></span>
+  <span class="pair-vs">vs</span>
+  <span class="pair-side pair-b"><b>{{ p.b.title }}</b><i>{% if p.has_bench %}{{ p.b.total | num }}{% else %}{{ p.b.headline.stability | pct }}{% endif %}</i></span>
+  {% if p.has_bench %}<span class="splitbar" style="--p:{{ '%.2f' | format(p.total_share_a * 100) }}%"></span>{% endif %}
+  <span class="pair-line">{{ p.headline }}</span>
+</a>
+{% endmacro %}
+
+{% macro share(title, text) %}
+<div class="share" data-share data-title="{{ title }}" data-text="{{ text }}">
+  <button class="btn btn-ghost btn-sm" type="button" data-share-native hidden>Share</button>
+  <button class="btn btn-ghost btn-sm" type="button" data-copy>Copy link</button>
+  <a class="btn btn-ghost btn-sm" data-intent="x" rel="noopener nofollow" target="_blank" href="https://twitter.com/intent/tweet?text={{ text | urlencode }}&amp;url={{ canonical | urlencode }}">Post on X</a>
+  <a class="btn btn-ghost btn-sm" data-intent="reddit" rel="noopener nofollow" target="_blank" href="https://www.reddit.com/submit?url={{ canonical | urlencode }}&amp;title={{ title | urlencode }}">Reddit</a>
+  <a class="btn btn-ghost btn-sm" data-intent="whatsapp" rel="noopener nofollow" target="_blank" href="https://wa.me/?text={{ (text ~ ' ' ~ canonical) | urlencode }}">WhatsApp</a>
+  <a class="btn btn-ghost btn-sm" data-intent="telegram" rel="noopener nofollow" target="_blank" href="https://t.me/share/url?url={{ canonical | urlencode }}&amp;text={{ text | urlencode }}">Telegram</a>
+</div>
+{% endmacro %}
+
+{% macro run_readout(r) %}
+<dl class="readout">
+  <div><dt>Held</dt><dd style="color:{{ r.color }}">{{ r.stability | pct }} <small>of full speed</small></dd></div>
+  <div><dt>Peak</dt><dd>{{ r.peak_gips | gips }} <small>GIPS</small></dd></div>
+  <div><dt>Second half</dt><dd>{{ r.sustained_gips | gips }} <small>GIPS</small></dd></div>
+  <div><dt>Test</dt><dd>{{ r.minutes }} min <small>{{ 'every core' if r.multi else '1 thread' }}</small></dd></div>
+</dl>
+{% endmacro %}
+
+{% macro cta_band(heading, body) %}
+<section class="band" id="get">
+  <div class="wrap band-in">
+    <div>
+      <h2>{{ heading }}</h2>
+      <p>{{ body }}</p>
+    </div>
+    {{ store_buttons() }}
+  </div>
+</section>
+{% endmacro %}

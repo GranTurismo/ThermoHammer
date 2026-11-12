@@ -1,0 +1,98 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap page-head">
+  <h1>How ThermoHammer tests and scores a device</h1>
+  <p class="lede">Two instruments in one app: a benchmark that scores the whole device, and a stress test that shows what happens when the heat arrives. This page says what each one measures and how the numbers are made.</p>
+</section>
+
+<section class="wrap page-body">
+  <div class="prose">
+    <h2 id="benchmark" style="margin-top:0">The benchmark: six sections</h2>
+    <p>One run works through {{ TEST_COUNT }} tests in six sections. The same tests run on Android, iPhone and Windows, built from the same code wherever the platform allows it, so a score means the same thing on each.</p>
+  </div>
+  <div class="catalog">
+    {% for key, short, label, field, color in SECTIONS %}
+    {% set cat = CATALOG[key] %}
+    {% set lead = site.section_leaders | selectattr('key', 'equalto', key) | first %}
+    <article class="cat" style="--c:{{ color }}" id="{{ key }}">
+      <header>
+        <span class="tag">{{ short }}</span>
+        <h3>{{ label }}</h3>
+        {% if lead %}<small>Best on the board: {{ lead.points | num }} · <a href="{{ url('/devices/' ~ lead.device.slug ~ '/') }}">{{ lead.device.title }}</a></small>{% endif %}
+      </header>
+      <p>{{ cat.blurb }}</p>
+      <table>
+        {% for tag, name, what in cat.tests %}
+        <tr><td>{{ tag }}</td><td>{{ name }}</td><td>{{ what }}</td></tr>
+        {% endfor %}
+      </table>
+      {% if cat.note %}<p class="cat-note">{{ cat.note }}</p>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+
+  <div class="prose">
+    <h2 id="scoring">How points are made</h2>
+    <p>Every test produces a plain rate: operations, frames, megapixels or tokens per second. Points are that rate measured against one reference device:</p>
+    <div class="bigfig">
+      <div><small>The reference</small><b>6,000</b><span>points per section: a Snapdragon 8 Elite phone, as it ships, in its default power mode</span></div>
+      <div><small>Its total</small><b>36,000</b><span>six sections added up</span></div>
+      {% if site.board %}<div><small>Top of the board today</small><b class="hot">{{ site.board[0].total | num }}</b><span>{{ site.board[0].title }}, {{ (site.board[0].total / REFERENCE_TOTAL) | times }} the reference</span></div>{% endif %}
+    </div>
+    <ul>
+      <li>Points scale with speed. A test that runs twice as fast as on the reference is worth 12,000.</li>
+      <li>A section's score combines the points of its tests, and the total is the six sections added up.</li>
+      <li>A test a device can't run, such as ray tracing or an NPU it doesn't have, scores 0, and its section is lower for it.</li>
+      <li>The reference never moves between runs, so a score from last month and one from today are on the same scale.</li>
+    </ul>
+
+    <h2 id="verified">What makes a run count</h2>
+    <p>Some phone makers have been caught boosting known benchmarks, and any app can be modified. So the app doesn't decide the score, and not every run reaches the board.</p>
+    <ul>
+      <li><b>Clean conditions.</b> The device started cool, was unplugged, wasn't in a power-saving mode and had nothing else keeping it busy. A run that misses one of these is saved on the device but not listed.</li>
+      <li><b>Signed measurements.</b> The app sends its raw measurements with a signature tied to that one run.</li>
+      <li><b>Scored on the server.</b> Points are calculated on our side from the raw numbers, and results no device could produce are turned away.</li>
+      <li><b>One row per device.</b> The board shows each model's best verified run, with the number of runs behind it. A device's page lists all of them.</li>
+    </ul>
+
+    <h2 id="stress">The stress test</h2>
+    <p>A burst benchmark is over before a phone gets warm. The stress test holds full load for 5, 15 or 30 minutes, on every core or on one thread, and on Android on the CPU, the GPU or both. It goes through six phases:</p>
+  </div>
+  <ol class="phases">
+    {% for name, what in PHASES %}<li><b>{{ name }}</b><span>{{ what }}</span></li>{% endfor %}
+  </ol>
+  <div class="prose">
+    <p>During the measured phase the app records the processor's throughput in GIPS (billions of instructions per second) at least once a second, along with the thermal state the device reports.</p>
+    <h3>Stability</h3>
+    <p>The headline number is <b>stability</b>: how much of its full speed the device delivered across the run.</p>
+    <ul>
+      <li>Current app versions report <b>delivered capacity</b>: the work done over the whole run, as a share of what the cold baseline from the calibration phase would have done in the same time. A device that drops to 70% for half the run delivers 85%.</li>
+      <li>Runs from older app versions carry no baseline. For those, stability is the average of the second half of the run against the run's fastest sample.</li>
+    </ul>
+    <p>Each curve on this site is drawn against the same yardstick as its stability number, so the two always agree.</p>
+    <h3>What this site reads off a curve</h3>
+    <ul>
+      <li><b>Fastest sample</b> and <b>second-half average</b>, in GIPS.</li>
+      <li><b>Lowest 5-second average</b>: the deepest sustained dip, ignoring single slow samples.</li>
+      <li><b>First under 90%</b>: the first moment a 5-second average falls below 90% of full speed.</li>
+      <li><b>Thermal states</b> (nominal, fair, serious, critical) as the device itself reported them.</li>
+    </ul>
+    {% if site.stress_board %}
+    {% set best = site.stress_board[0] %}
+    <figure class="panel brackets" data-draw>
+      <div class="panel-head"><span class="panel-title">A run that holds</span><span class="panel-note"><a href="{{ url('/devices/' ~ best.slug ~ '/') }}">{{ best.title }}</a> · {{ best.headline.label }}</span></div>
+      {{ charts.ribbon(best.headline, 'how', 900, 300, true, best.title ~ ': throughput over a stress test') | safe }}
+      <figcaption>{{ best.title }} delivers {{ best.headline.stability | pct }} of its full speed over five minutes: the steadiest standard run on the board.</figcaption>
+    </figure>
+    {% endif %}
+
+    <h2 id="compare">Comparing two devices</h2>
+    <p>A comparison matches two runs section by section and test by test. The better result is marked with its lead in percent; results within 1% of each other count as even, and a test that only one device could run goes to that device without a percentage. The <a href="{{ url('/compare/') }}">comparison pages</a> follow the same rules as the comparison inside the apps.</p>
+
+    <h2 id="data">The data</h2>
+    <p>Everything on this site comes from verified runs submitted from the apps. The boards are also available as <a href="{{ url('/data/leaderboard.json') }}">a JSON file</a>, free to chart or quote with a link back.</p>
+  </div>
+</section>
+{{ m.cta_band('Run it on your own device.', 'The benchmark and the stress test are both free, on Google Play and the App Store.') }}
+{% endblock %}

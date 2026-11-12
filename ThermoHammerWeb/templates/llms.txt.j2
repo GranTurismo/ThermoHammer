@@ -1,0 +1,37 @@
+# ThermoHammer
+
+> ThermoHammer is a free benchmark and thermal stress test for Android, iPhone and Windows. It scores a whole device in six sections (CPU, memory, GPU, everyday UX, AI, on-device LLM) against a fixed reference, and runs a sustained-load stress test that shows when a device throttles and how much of its speed it keeps. This site publishes the public leaderboard: verified runs only, scored on the server.
+
+Scale: 6,000 points per section is a Snapdragon 8 Elite phone as it ships; the total is the six sections added up (36,000 for the reference). Stability is the share of full speed a device delivers over a 5, 15 or 30 minute full-load run.
+
+Data as of {{ changed.strftime('%Y-%m-%d') }}: {{ site.stats.devices }} devices, {{ site.stats.bench_runs }} verified benchmark runs, {{ site.stats.stress_runs }} verified stress runs.
+
+## Pages
+
+- [Benchmark leaderboard]({{ abs_url('/leaderboard/') }}): devices ranked by total score, best verified run per device
+- [Throttling leaderboard]({{ abs_url('/leaderboard/throttling/') }}): stress runs ranked by stability, each with its curve
+- [All devices]({{ abs_url('/devices/') }}): one page per device with every test result
+- [Compare]({{ abs_url('/compare/') }}): any two devices head to head
+- [How it works]({{ abs_url('/how-it-works/') }}): what each test measures, how points are calculated, what a verified run is
+- [Lab notes]({{ abs_url('/notes/') }}): findings from the leaderboard
+
+## Data
+
+- [Leaderboard as JSON]({{ abs_url('/data/leaderboard.json') }})
+
+## Benchmark board
+
+{% for d in site.board %}
+- #{{ d.rank }} {{ d.title }} ({{ d.platform }}{% if d.chip and d.os_id != 4 %}, {{ d.chip }}{% endif %}): {{ d.total | num }} points. {% for s in d.section_list %}{{ s.short }} {{ s.points | num }}{% if not loop.last %}, {% endif %}{% endfor %}. {{ abs_url('/devices/' ~ d.slug ~ '/') }}
+{% endfor %}
+
+## Steadiest devices (5-minute, every-core stress test)
+
+{% for d in site.stress_board[:15] if d.stress_rank %}
+- #{{ d.stress_rank }} {{ d.title }} ({{ d.platform }}): holds {{ d.headline.stability | pct }}. {{ abs_url('/devices/' ~ d.slug ~ '/') }}
+{% endfor %}
+
+## Get the app
+
+- Google Play: {{ cfg.play_url }}
+- App Store: {{ cfg.appstore_url }}

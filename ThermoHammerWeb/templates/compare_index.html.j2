@@ -1,0 +1,45 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap page-head">
+  <h1>Compare two devices</h1>
+  <p class="lede">Total score, six sections, every test, and both throttling curves on one chart. Each comparison has its own link.</p>
+</section>
+<section class="wrap page-body">
+  <form class="panel brackets picker" data-picker data-base="{{ url('/compare/') }}">
+    <label>Device A
+      <select name="a" data-pick="a" aria-label="First device">
+        <option value="">Choose a device</option>
+        {% for d in site.devices %}<option value="{{ d.slug }}">{{ d.title }}{% if d.has_bench %} · {{ d.total | num }}{% else %} · {{ d.headline.stability | pct }} held{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <span class="vs">VS</span>
+    <label>Device B
+      <select name="b" data-pick="b" aria-label="Second device">
+        <option value="">Choose a device</option>
+        {% for d in site.devices %}<option value="{{ d.slug }}">{{ d.title }}{% if d.has_bench %} · {{ d.total | num }}{% else %} · {{ d.headline.stability | pct }} held{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">Compare</button>
+    <p class="picker-msg" data-picker-msg role="status"></p>
+    <script type="application/json" data-picker-data>{{ picker_json }}</script>
+  </form>
+
+  {% if bench_pairs %}
+  <div class="block">
+    <h2>Benchmark matchups</h2>
+    <p class="sec-lede">Devices with a full benchmark run, closest totals first.</p>
+    <div class="pairs">{% for p in bench_pairs %}{{ m.pair_card(p) }}{% endfor %}</div>
+  </div>
+  {% endif %}
+  {% if stress_pairs %}
+  <div class="block">
+    <h2>Who holds their speed</h2>
+    <p class="sec-lede">The same five-minute stress test, with the widest gaps first.</p>
+    <div class="pairs">{% for p in stress_pairs %}{{ m.pair_card(p) }}{% endfor %}</div>
+  </div>
+  {% endif %}
+  <p class="lb-note">A device with only a benchmark run can be compared with other benchmarked devices, and a device with only stress runs with other stress-tested ones. <a class="link" href="{{ url('/devices/') }}">All {{ site.stats.devices }} devices</a></p>
+</section>
+{{ m.cta_band('Add yours to the list.', 'Any device with a clean run can be compared with every other.') }}
+{% endblock %}

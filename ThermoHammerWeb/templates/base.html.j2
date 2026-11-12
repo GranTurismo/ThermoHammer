@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }}</title>
+<meta name="description" content="{{ page_description }}">
+<link rel="canonical" href="{{ canonical }}">
+<meta name="robots" content="{{ robots }}">
+<meta name="theme-color" content="#06090B">
+<meta name="color-scheme" content="dark">
+<meta name="apple-itunes-app" content="app-id={{ cfg.appstore_id }}">
+<link rel="icon" href="{{ url('/favicon.ico') }}" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ asset('img/favicon-32.png') }}">
+<link rel="apple-touch-icon" href="{{ asset('img/apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url('/site.webmanifest') }}">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="{{ asset('fonts/space-grotesk-700.woff2') }}">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="{{ asset('fonts/jetbrains-mono-500.woff2') }}">
+<link rel="stylesheet" href="{{ asset('css/site.css') }}">
+<meta property="og:site_name" content="ThermoHammer">
+<meta property="og:type" content="{{ og_type | default('website') }}">
+<meta property="og:title" content="{{ page_title }}">
+<meta property="og:description" content="{{ page_description }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:image" content="{{ og_image }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{ og_alt }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ page_title }}">
+<meta name="twitter:description" content="{{ page_description }}">
+<meta name="twitter:image" content="{{ og_image }}">
+{% for block in jsonld_blocks %}
+{{ block }}
+{% endfor %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="{{ url('/') }}" aria-label="ThermoHammer home">
+      <img src="{{ asset('img/mark-64.webp') }}" srcset="{{ asset('img/mark-128.webp') }} 2x" width="32" height="32" alt="">
+      <span>THERMOHAMMER</span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="{{ url('/leaderboard/') }}"{% if path.startswith('/leaderboard/') and 'throttling' not in path %} aria-current="page"{% endif %}>Leaderboard</a>
+      <a href="{{ url('/leaderboard/throttling/') }}"{% if 'throttling' in path %} aria-current="page"{% endif %}>Throttling</a>
+      <a href="{{ url('/compare/') }}"{% if path.startswith('/compare/') %} aria-current="page"{% endif %}>Compare</a>
+      <a href="{{ url('/devices/') }}"{% if path.startswith('/devices/') %} aria-current="page"{% endif %}>Devices</a>
+      <a href="{{ url('/how-it-works/') }}"{% if path.startswith('/how-it-works/') %} aria-current="page"{% endif %}>How it works</a>
+      <a href="{{ url('/notes/') }}"{% if path.startswith('/notes/') %} aria-current="page"{% endif %}>Lab notes</a>
+    </nav>
+    <a class="btn btn-primary btn-sm top-cta" href="#get">Get the app</a>
+  </div>
+</header>
+<main id="main">
+{% if crumbs %}
+<nav class="crumbs wrap" aria-label="Breadcrumb">
+  <a href="{{ url('/') }}">ThermoHammer</a>{% for name, p in crumbs %}<span aria-hidden="true">/</span>{% if loop.last %}<span aria-current="page">{{ name }}</span>{% else %}<a href="{{ url(p) }}">{{ name }}</a>{% endif %}{% endfor %}
+
+</nav>
+{% endif %}
+{% block main %}{% endblock %}
+</main>
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <a class="brand" href="{{ url('/') }}"><img src="{{ asset('img/mark-64.webp') }}" width="28" height="28" alt="" loading="lazy"><span>THERMOHAMMER</span></a>
+      <p>The benchmark that keeps going after the first minute.</p>
+      <p class="fine">Scores and curves on this site are verified runs submitted from the apps and scored on the server. Data last changed <time datetime="{{ changed.isoformat() }}" data-ago>{{ changed | day }}</time>.</p>
+    </div>
+    <nav aria-label="Site">
+      <h2>Explore</h2>
+      <a href="{{ url('/leaderboard/') }}">Benchmark leaderboard</a>
+      <a href="{{ url('/leaderboard/throttling/') }}">Throttling leaderboard</a>
+      <a href="{{ url('/compare/') }}">Compare devices</a>
+      <a href="{{ url('/devices/') }}">All devices</a>
+      <a href="{{ url('/how-it-works/') }}">How it works</a>
+      <a href="{{ url('/notes/') }}">Lab notes</a>
+    </nav>
+    <nav aria-label="Get the app">
+      <h2>Get the app</h2>
+      <a href="{{ cfg.play_url }}" rel="noopener">Google Play</a>
+      <a href="{{ cfg.appstore_url }}" rel="noopener">App Store</a>
+      <span class="soon">Windows · coming to the Microsoft Store</span>
+    </nav>
+    <nav aria-label="Help">
+      <h2>Help</h2>
+      <a href="{{ cfg.support_url }}" rel="noopener">Support</a>
+      <a href="{{ cfg.privacy_url }}" rel="noopener">Privacy policy</a>
+      <a href="mailto:{{ cfg.support_email }}">Contact</a>
+      <a href="{{ url('/data/leaderboard.json') }}">Leaderboard data (JSON)</a>
+    </nav>
+  </div>
+  <div class="wrap foot-base">
+    <span>© {{ year }} {{ cfg.publisher }}</span>
+    <span>Android, Google Play, iPhone, App Store, Windows and Microsoft Store are trademarks of their owners.</span>
+  </div>
+</footer>
+<script src="{{ asset('js/site.js') }}" defer></script>
+</body>
+</html>

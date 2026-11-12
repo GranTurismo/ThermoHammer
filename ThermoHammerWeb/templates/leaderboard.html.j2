@@ -1,0 +1,67 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap page-head">
+  <div class="tabs" role="navigation" aria-label="Leaderboards">
+    <a href="{{ url('/leaderboard/') }}" aria-current="page">Benchmark</a>
+    <a href="{{ url('/leaderboard/throttling/') }}">Stress test</a>
+  </div>
+  <h1>Benchmark leaderboard</h1>
+  <p class="lede">All six sections, one total, and each device's best verified run. Phones and PCs sit on the same scale: 6,000 points per section is a Snapdragon 8 Elite phone as it ships.</p>
+</section>
+
+<section class="wrap page-body" data-board="bench">
+  <div class="filters">
+    <label class="search">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="search" placeholder="Search a device, chip or GPU" aria-label="Search the leaderboard" data-search autocomplete="off">
+    </label>
+    <div class="fgroup" data-filter="platform">
+      <span>Platform</span>
+      <button class="fbtn" type="button" data-value="" aria-pressed="true">All</button>
+      {% for key, label in [('android', 'Android'), ('ios', 'iOS'), ('windows', 'Windows'), ('macos', 'macOS')] %}
+      {% if site.board | selectattr('platform_key', 'equalto', key) | list %}
+      <button class="fbtn" type="button" data-value="{{ key }}" aria-pressed="false">{{ label }}</button>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div class="sortbar fgroup" data-sort>
+    <span>Rank by</span>
+    <button class="fbtn" type="button" data-value="total" data-label="total" aria-pressed="true">Total</button>
+    {% for key, short, label, field, color in SECTIONS %}
+    <button class="fbtn" type="button" data-value="{{ key }}" data-label="{{ label }}" aria-pressed="false">{{ short }}</button>
+    {% endfor %}
+  </div>
+
+  <ol class="lb" data-rows>
+    {% for d in site.board %}
+    {{ m.bench_row(d) }}
+    {% endfor %}
+  </ol>
+  <p class="empty" data-empty hidden>No device matches that. Try a shorter search.</p>
+
+  <p class="lb-note">The coloured bar is the make-up of each total: {% for key, short, label, field, color in SECTIONS %}<span style="color:{{ color }}">{{ short }}</span>{% if not loop.last %} · {% endif %}{% endfor %}. Only verified runs are listed (started cool, unplugged, no power saving, nothing else busy), and points are calculated on the server. <a class="link" href="{{ url('/how-it-works/') }}">How scoring works</a></p>
+
+  {% if site.section_leaders %}
+  <div class="block">
+    <h2>Who leads each section</h2>
+    <p class="sec-lede">The total hides specialists. These are the best verified scores per section.</p>
+    <dl class="facts">
+      {% for l in site.section_leaders %}
+      <div>
+        <dt style="color:{{ l.color }}">{{ l.label }}</dt>
+        <dd>{{ l.points | num }} <small>{{ (l.points / REFERENCE) | times }} reference</small></dd>
+        <a href="{{ url('/devices/' ~ l.device.slug ~ '/') }}">{{ l.device.title }}</a>
+      </div>
+      {% endfor %}
+    </dl>
+  </div>
+  {% endif %}
+
+  <div class="block callout">
+    <b>{{ site.board | length }} devices so far.</b> The benchmark board is new, and every clean run adds a row. If your phone isn't here, it only takes one run to put it on the map.
+  </div>
+</section>
+{{ m.cta_band('Put your device on the board.', 'Run the benchmark, submit a clean run, and it appears here with every number.') }}
+{% endblock %}

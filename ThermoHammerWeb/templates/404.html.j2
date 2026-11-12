@@ -1,0 +1,17 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap e404">
+  <div>
+    <b>404</b>
+    <h1>This page throttled to zero.</h1>
+    <p>It isn't here. The leaderboard is.</p>
+    <p class="more" style="justify-content:center">
+      <a class="btn btn-primary" href="{{ url('/leaderboard/') }}">Leaderboard</a>
+      <a class="btn btn-ghost" href="{{ url('/devices/') }}">All devices</a>
+      <a class="btn btn-ghost" href="{{ url('/') }}">Home</a>
+    </p>
+  </div>
+</section>
+{{ m.cta_band('While you are here.', 'ThermoHammer is free on Google Play and the App Store.') }}
+{% endblock %}
