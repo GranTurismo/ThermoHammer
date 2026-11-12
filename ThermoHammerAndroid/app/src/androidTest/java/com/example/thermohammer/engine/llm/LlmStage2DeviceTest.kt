@@ -62,6 +62,26 @@ class LlmStage2DeviceTest {
         assertEquals("i8mm", run.kernels)
     }
 
+    /** The few-millisecond self-test in the real libraries: the same answer from both CPU kernel builds, in a blink. `-e forceI8mm true` as above. */
+    @Test
+    fun theKernelSelfTestAnswersTheSameInBothBuildsAndTakesMilliseconds() {
+        assumeTrue(LlmNative.loaded && LlmNative.cpuSupported())
+        val hw = LlmNative.hwcaps()
+        val forced = InstrumentationRegistry.getArguments().getString("forceI8mm") == "true"
+        assumeTrue("this CPU doesn't report i8mm", forced || CpuFeatures.supportsI8mm(hw[0], hw[1]))
+        assertTrue("libbenchllm_i8mm.so must load: ${LlmNativeI8mm.loadError}", LlmNativeI8mm.loaded)
+        LlmNative.gpuName()                                  // the backends start before the timing, as in the app
+        val result = LlmProbe.checkKernels(DotprodLib, I8mmLib, 4, { true })
+        val checks = result.checks
+        status("chosen" to result.chosen, "why" to (result.why ?: ""), "report" to LlmProbe.lines(result).joinToString("\n"),
+            "ms" to checks.joinToString { "%s %.1f".format(it.variant, it.ms) })
+        assertEquals(listOf("dotprod", "i8mm"), checks.map { it.variant })
+        assertTrue(checks.toString(), checks.all { it.error == null })
+        assertTrue("both builds answer alike: $checks", checks[1].promptAgreement!! >= LlmProbe.SELFTEST_MIN_AGREEMENT && checks[1].nextAgreement!! >= LlmProbe.SELFTEST_MIN_AGREEMENT)
+        assertEquals("i8mm", result.chosen)
+        assertTrue("a few milliseconds, not a timing race: ${result.seconds} s", result.seconds < 1.0)
+    }
+
     @Test
     fun theBackendsDeviceLinesAreCapturedAndTheBuildsShaderFamiliesNamed() {
         assumeTrue(LlmNative.loaded)

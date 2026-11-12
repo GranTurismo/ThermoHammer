@@ -125,6 +125,19 @@ double bc_llm_agreement(const bc_llm* llm);
  */
 int bc_llm_last_sample(const bc_llm* llm, float* out, int cap);
 
+/** Logits bc_llm_kernel_selftest returns: a tiny model's answer to a prompt, then to one more token (1024 each). */
+enum { BC_LLM_SELFTEST_LOGITS = 2048 };
+
+/**
+ * A few milliseconds' check of this library's CPU kernels, with no 3B model: a tiny seeded Llama-shaped model (2 layers,
+ * 512 wide, every matrix Q4_0 and repacked as the real model's are) reads a 24-token prompt (the matrix-matrix kernels)
+ * and one more token (the matrix-vector ones). Copies the BC_LLM_SELFTEST_LOGITS logits to `out` (`cap` floats) and
+ * returns how many; 0 on failure, with the reason in `err`. Two builds of the kernels answer the same way (their
+ * logits correlate), and a build whose instructions are wrong doesn't: the Android app runs this in both libraries
+ * before the CPU test and uses the i8mm build only if the answers agree.
+ */
+int bc_llm_kernel_selftest(int threads, float* out, int cap, char* err, int err_size);
+
 /**
  * Records the logits sample a CPU run of this seed gave for a prompt of `tokens`, as if this library had run it: the
  * Android app runs its CPU test in one of two libraries and the GPU, in the other, has to agree with it.

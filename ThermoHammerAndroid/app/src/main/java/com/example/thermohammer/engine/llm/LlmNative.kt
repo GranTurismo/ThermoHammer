@@ -56,6 +56,8 @@ internal object LlmNative {
     /** The logits sample of the last [prefill]: what the two CPU libraries' answers are compared by (LlmProbe). */
     @JvmStatic external fun lastSample(handle: Long): FloatArray
     @JvmStatic external fun destroy(handle: Long)
+    /** The few-millisecond kernel self-test (a tiny seeded model: a prompt, then one token): its [LlmProbe.SELFTEST_LOGITS] logits, or null with the reason in error[0]. */
+    @JvmStatic external fun kernelSelftest(threads: Int, error: Array<String?>): FloatArray?
     /** The largest common 4-bit model (billions of parameters) that fits in [bytes]; 0 if none. */
     @JvmStatic external fun largestModel(bytes: Double): Int
 

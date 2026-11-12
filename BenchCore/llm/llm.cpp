@@ -46,6 +46,12 @@ namespace {
 // Llama 3.2 3B
 constexpr uint32_t VOCAB = 128256, EMBD = 3072, LAYERS = 28, HEADS = 24, KV_HEADS = 8, HEAD_DIM = 128, FF = 8192;
 constexpr float ROPE_BASE = 500000.0f;
+
+/** A Llama-shaped model's dimensions: the test's own is Llama 3.2 3B's, the kernel self-test's is a tiny one. */
+struct Shape { uint32_t vocab, embd, layers, heads, kv_heads, head_dim, ff; };
+constexpr Shape FULL{VOCAB, EMBD, LAYERS, HEADS, KV_HEADS, HEAD_DIM, FF};
+/** Small enough to build and run in a few milliseconds, and every matrix still a repackable Q4_0 one (rows a multiple of 4, columns of 32). */
+constexpr Shape TINY{1024, 512, 2, 8, 2, 64, 1536};
 constexpr double PI = 3.14159265358979323846;
 constexpr int Q4_0_BLOCK = 18;          // bytes per 32 weights: an fp16 scale and 16 bytes of nibbles
 constexpr int TOP_K = 40;
@@ -185,10 +191,10 @@ void random_q4_0(uint8_t* dst, size_t blocks, uint64_t seed) {
 }
 
 /** Llama 3's long-context RoPE factors (factor 32, low/high frequency factors 1 and 4, 8192 original context). */
-void rope_factors(float* dst, size_t n) {
+void rope_factors(float* dst, size_t n, uint32_t head_dim) {
     const double factor = 32, low = 1, high = 4, old_ctx = 8192;
     for (size_t i = 0; i < n; i++) {
-        const double freq = 1.0 / std::pow(double(ROPE_BASE), double(2 * i) / HEAD_DIM);
+        const double freq = 1.0 / std::pow(double(ROPE_BASE), double(2 * i) / head_dim);
         const double wavelen = 2 * PI / freq;
         double f;
         if (wavelen < old_ctx / high) f = 1;
@@ -205,6 +211,7 @@ struct Fill {
     uint64_t seed;
     std::vector<uint8_t> staging;
     std::string error;
+    uint32_t head_dim = HEAD_DIM;
 };
 
 /** llama.cpp asks for each tensor's data once it is allocated (on the CPU, repacked, or on the GPU). */
@@ -215,7 +222,7 @@ void fill_tensor(ggml_tensor* t, void* user) {
     uint8_t* data = fill->staging.data();
     if (t->type == GGML_TYPE_F32) {
         auto* f = reinterpret_cast<float*>(data);
-        if (std::strcmp(t->name, "rope_freqs.weight") == 0) rope_factors(f, n / 4);
+        if (std::strcmp(t->name, "rope_freqs.weight") == 0) rope_factors(f, n / 4, fill->head_dim);
         else std::fill(f, f + n / 4, 1.0f);                    // RMSNorm gains
     } else if (t->type == GGML_TYPE_Q4_0) {
         random_q4_0(data, n / Q4_0_BLOCK, fill->seed ^ name_hash(t->name));
@@ -235,18 +242,18 @@ void add_tensor(gguf_context* g, const std::string& name, ggml_type type) {
 }
 
 /** The model's metadata, as a GGUF of Llama 3.2 3B would carry it — minus the tokenizer (the test feeds token ids). */
-gguf_context* metadata() {
+gguf_context* metadata(const Shape& m = FULL) {
     gguf_context* g = gguf_init_empty();
     gguf_set_val_str(g, "general.architecture", "llama");
     gguf_set_val_str(g, "general.name", "Llama 3.2 3B shape, seeded weights");
-    gguf_set_val_u32(g, "llama.vocab_size", VOCAB);
+    gguf_set_val_u32(g, "llama.vocab_size", m.vocab);
     gguf_set_val_u32(g, "llama.context_length", 131072);
-    gguf_set_val_u32(g, "llama.embedding_length", EMBD);
-    gguf_set_val_u32(g, "llama.block_count", LAYERS);
-    gguf_set_val_u32(g, "llama.feed_forward_length", FF);
-    gguf_set_val_u32(g, "llama.attention.head_count", HEADS);
-    gguf_set_val_u32(g, "llama.attention.head_count_kv", KV_HEADS);
-    gguf_set_val_u32(g, "llama.rope.dimension_count", HEAD_DIM);
+    gguf_set_val_u32(g, "llama.embedding_length", m.embd);
+    gguf_set_val_u32(g, "llama.block_count", m.layers);
+    gguf_set_val_u32(g, "llama.feed_forward_length", m.ff);
+    gguf_set_val_u32(g, "llama.attention.head_count", m.heads);
+    gguf_set_val_u32(g, "llama.attention.head_count_kv", m.kv_heads);
+    gguf_set_val_u32(g, "llama.rope.dimension_count", m.head_dim);
     gguf_set_val_f32(g, "llama.rope.freq_base", ROPE_BASE);
     gguf_set_val_f32(g, "llama.attention.layer_norm_rms_epsilon", 1e-5f);
     gguf_set_val_str(g, "tokenizer.ggml.model", "no_vocab");
@@ -254,7 +261,7 @@ gguf_context* metadata() {
     add_tensor(g, "token_embd.weight", GGML_TYPE_Q4_0);
     add_tensor(g, "output_norm.weight", GGML_TYPE_F32);
     add_tensor(g, "rope_freqs.weight", GGML_TYPE_F32);
-    for (uint32_t i = 0; i < LAYERS; i++) {
+    for (uint32_t i = 0; i < m.layers; i++) {
         const std::string b = "blk." + std::to_string(i) + ".";
         add_tensor(g, b + "attn_norm.weight", GGML_TYPE_F32);
         add_tensor(g, b + "ffn_norm.weight", GGML_TYPE_F32);
@@ -781,6 +788,59 @@ double bc_llm_agreement(const bc_llm* llm) { return llm->agreement; }
 int bc_llm_last_sample(const bc_llm* llm, float* out, int cap) {
     const int n = int(llm->last_sample.size());
     if (out && cap > 0) std::memcpy(out, llm->last_sample.data(), sizeof(float) * size_t(std::min(n, cap)));
+    return n;
+}
+
+int bc_llm_kernel_selftest(int threads, float* out, int cap, char* err, int err_size) {
+    init_once();
+    constexpr int PROMPT = 24;
+    const int need = 2 * int(TINY.vocab);
+    if (!out || cap < need) { put(err, err_size, "the self-test's output buffer is too small"); return 0; }
+    llama_model_params mp = llama_model_default_params();
+    ggml_backend_dev_t devices[1] = {nullptr};                   // CPU only: no device, nothing offloaded
+    mp.devices = devices;
+    mp.n_gpu_layers = 0;
+    mp.split_mode = LLAMA_SPLIT_MODE_NONE;
+    mp.load_mode = LLAMA_LOAD_MODE_NONE;
+    gguf_context* meta = metadata(TINY);
+    Fill fill{BC_LLM_SEED, {}, {}, TINY.head_dim};
+    llama_model* model = llama_model_init_from_user(meta, fill_tensor, &fill, mp);
+    gguf_free(meta);
+    int n = 0;
+    if (!model || !fill.error.empty()) {
+        put(err, err_size, fill.error.empty() ? "llama.cpp could not build the self-test model" : fill.error);
+        if (model) llama_model_free(model);
+        return 0;
+    }
+    llama_context_params cp = llama_context_default_params();
+    cp.n_ctx = 64;
+    cp.n_batch = cp.n_ubatch = 32;
+    cp.n_seq_max = 1;
+    cp.n_threads = cp.n_threads_batch = std::max(1, threads);
+    cp.no_perf = true;
+    llama_context* ctx = llama_init_from_model(model, cp);
+    if (!ctx) put(err, err_size, "llama.cpp could not create the self-test context");
+    else {
+        // a prompt (the matrix-matrix kernels), then one more token (the matrix-vector ones): the logits of both
+        std::vector<llama_token> prompt(PROMPT);
+        uint64_t rng = mix(BC_LLM_SEED);
+        for (auto& t : prompt) t = llama_token((rng = mix(rng)) % TINY.vocab);
+        bool ok = llama_decode(ctx, llama_batch_get_one(prompt.data(), PROMPT)) == 0;
+        const float* logits = ok ? llama_get_logits_ith(ctx, -1) : nullptr;
+        if (logits) {
+            std::memcpy(out, logits, sizeof(float) * TINY.vocab);
+            llama_token next = prompt[0];
+            ok = llama_decode(ctx, llama_batch_get_one(&next, 1)) == 0;
+            logits = ok ? llama_get_logits_ith(ctx, -1) : nullptr;
+            if (logits) std::memcpy(out + TINY.vocab, logits, sizeof(float) * TINY.vocab);
+        }
+        bool finite = logits != nullptr;
+        for (int i = 0; finite && i < need; i++) finite = std::isfinite(out[i]);
+        if (!finite) put(err, err_size, "the self-test model's output was missing or not a number");
+        else n = need;
+        llama_free(ctx);
+    }
+    llama_model_free(model);
     return n;
 }
 

@@ -9,54 +9,39 @@ import org.junit.Test
 
 class LlmProbeTest {
 
-    /** A CPU kernel build with canned speeds and logits: no native code, so the probe's protocol runs on the JVM. */
+    /** The self-test answer of a build whose arithmetic is right: the same in every build, up to `noise` (relative) of rounding. */
+    private fun answer(noise: Double = 0.0, salt: Int = 0) = FloatArray(LlmProbe.SELFTEST_LOGITS) {
+        val base = (it % 1024) * 7 % 13 + (it / 1024) * 3.0
+        (base + noise * ((it * 31 + salt) % 17 - 8)).toFloat()
+    }
+
+    /** A CPU kernel build with a canned self-test answer: no native code, so the probe's protocol runs on the JVM. */
     private class FakeLib(
-        override val variant: String, private val prefillRate: Double, private val decodeRate: Double,
-        private val logits: FloatArray = FloatArray(64) { (it * 7 % 13).toFloat() },
-        private val createError: String? = null, private val failPrefillOver: Int = Int.MAX_VALUE,
-        private val onCreate: () -> Unit = {}
+        override val variant: String, private val logits: FloatArray? = null, private val failure: String? = null,
+        private val throws: Throwable? = null, private val onSelftest: () -> Unit = {}
     ) : LlmCpuLib {
         override val library = "libfake_$variant.so"
-        val prefills = ArrayList<Int>()
-        val destroyed = ArrayList<Long>()
-        val threadCalls = ArrayList<Pair<Int, Int>>()
-        val coreCalls = ArrayList<List<Int>>()
-        var cancelled = 0
-        private var next = 1L
-        private var lastError = ""
-        override fun create(threads: Int, seed: Long, error: Array<String?>): Long {
-            onCreate()
-            if (createError != null) { error[0] = createError; return 0 }
-            return next++
+        val selftests = ArrayList<Int>()
+        override fun create(threads: Int, seed: Long, error: Array<String?>): Long = error("the self-test builds no 3B model")
+        override fun setThreads(handle: Long, threads: Int, batchThreads: Int) = error("the self-test times no threads")
+        override fun prefill(handle: Long, tokens: Int): Double = error("nothing is timed")
+        override fun reset(handle: Long) = error("nothing is timed")
+        override fun next(handle: Long, token: IntArray?): Double = error("nothing is timed")
+        override fun cancel(handle: Long) {}
+        override fun error(handle: Long) = ""
+        override fun lastSample(handle: Long): FloatArray = error("not used")
+        override fun destroy(handle: Long) {}
+        override fun kernelSelftest(threads: Int, error: Array<String?>): FloatArray? {
+            selftests += threads
+            onSelftest()
+            throws?.let { throw it }
+            if (logits == null) { error[0] = failure ?: "the self-test failed"; return null }
+            return logits
         }
-        override fun setThreads(handle: Long, threads: Int, batchThreads: Int) { threadCalls += threads to batchThreads }
-        override fun setCores(handle: Long, cores: IntArray, pinDecode: Boolean, pinPrompt: Boolean): Int { coreCalls += cores.toList(); return cores.size }
-        override fun prefill(handle: Long, tokens: Int): Double {
-            prefills += tokens
-            if (tokens > failPrefillOver) { lastError = "out of memory"; return -1.0 }
-            return tokens / prefillRate
-        }
-        override fun reset(handle: Long) {}
-        override fun next(handle: Long, token: IntArray?) = 1.0 / decodeRate
-        override fun cancel(handle: Long) { cancelled++ }
-        override fun error(handle: Long) = lastError
-        override fun lastSample(handle: Long) = logits
-        override fun destroy(handle: Long) { destroyed += handle }
     }
 
-    private fun run(vararg libs: LlmCpuLib, active: () -> Boolean = { true }, events: MutableList<String> = ArrayList()) =
-        LlmProbe.run(libs.toList(), 6, 5, active, around = { lib, start -> events += "${lib.variant}${if (start) "+" else "-"}" })
-
-    @Test
-    fun `the prompt is sized to about two seconds in multiples of 16 within the model's limits`() {
-        assertEquals(96, LlmProbe.promptFor(45.0))
-        assertEquals(160, LlmProbe.promptFor(78.0))
-        assertEquals("a slow CPU still reads a minimum", 32, LlmProbe.promptFor(5.0))
-        assertEquals("a fast one is held to the model's context", 512, LlmProbe.promptFor(800.0))
-        assertEquals(32, LlmProbe.promptFor(0.0))
-        assertEquals(32, LlmProbe.promptFor(Double.NaN))
-        assertEquals(32, LlmProbe.promptFor(-3.0))
-    }
+    private fun check(base: LlmCpuLib, candidate: LlmCpuLib, active: () -> Boolean = { true }, events: MutableList<String> = ArrayList(), nanoTime: () -> Long = System::nanoTime) =
+        LlmProbe.checkKernels(base, candidate, 4, active, nanoTime, around = { lib, start -> events += "${lib.variant}${if (start) "+" else "-"}" })
 
     @Test
     fun `logit samples correlate like the GPU's check against the CPU's`() {
@@ -69,179 +54,145 @@ class LlmProbeTest {
         assertEquals(0.0, LlmProbe.correlation(FloatArray(0), FloatArray(0)), 0.0)
     }
 
-    @Test
-    fun `every build gets the same prompt, sized by the first, and its rates come out as measured`() {
-        val dot = FakeLib("dotprod", prefillRate = 45.0, decodeRate = 21.0)
-        val i8 = FakeLib("i8mm", prefillRate = 90.0, decodeRate = 22.0)
-        val r = run(dot, i8)
-        assertEquals(2, r.runs.size)
-        assertEquals(96, r.promptTokens)
-        assertEquals(listOf(8, 16, 96), dot.prefills)
-        assertEquals("the second build reads the first's prompt, not one sized for itself", listOf(8, 16, 96), i8.prefills)
-        assertEquals(45.0, r.runs[0].prefill, 1e-9); assertEquals(21.0, r.runs[0].decode, 1e-9)
-        assertEquals(90.0, r.runs[1].prefill, 1e-9); assertEquals(22.0, r.runs[1].decode, 1e-9)
-        assertNull("the first build is the reference", r.runs[0].agreement)
-        assertEquals(1.0, r.runs[1].agreement!!, 1e-9)
-        assertEquals(listOf(6 to 5), dot.threadCalls)
-        assertEquals(6, r.threads); assertEquals(5, r.batchThreads)
-        assertEquals(LlmProbe.REPLY, r.replyTokens)
-        assertEquals("every model is freed", listOf(1L), dot.destroyed); assertEquals(listOf(1L), i8.destroyed)
-    }
+    // ── the i8mm build's self-test ─────────────────────────────────────────────
 
     @Test
-    fun `a build whose answer to the prompt differs is reported as different`() {
-        val dot = FakeLib("dotprod", 45.0, 21.0)
-        val wrong = FakeLib("i8mm", 90.0, 22.0, logits = FloatArray(64) { ((it * 37) % 29).toFloat() })
-        val r = run(dot, wrong)
-        assertTrue(r.runs[1].agreement!! < LlmProbe.MIN_AGREEMENT)
-        assertTrue(LlmProbe.lines(r).any { it.contains("DIFFERENT") })
-    }
-
-    @Test
-    fun `a build that can't make its model or fails a prompt is a row with its reason and the rest carry on`() {
-        val noModel = FakeLib("dotprod", 45.0, 21.0, createError = "not enough memory")
-        val bigFail = FakeLib("i8mm", 90.0, 22.0, failPrefillOver = 64)
+    fun `answers that agree choose the i8mm build, and each build runs its self-test once on the threads asked`() {
+        val dot = FakeLib("dotprod", answer()); val i8 = FakeLib("i8mm", answer(noise = 1e-4, salt = 5))
         val events = ArrayList<String>()
-        val r = run(noModel, bigFail, events = events)
-        assertEquals("not enough memory", r.runs[0].error)
-        assertEquals("out of memory", r.runs[1].error)
-        assertEquals(0.0, r.runs[1].prefill, 0.0)
-        assertEquals("both start and stop are announced, failing or not", listOf("dotprod+", "dotprod-", "i8mm+", "i8mm-"), events)
-        assertEquals(listOf(1L), bigFail.destroyed)
-        assertTrue(noModel.destroyed.isEmpty())
+        val r = check(dot, i8, events = events)
+        assertEquals("i8mm", r.chosen)
+        assertTrue(r.why!!, r.why!!.contains("agree"))
+        assertEquals(listOf(4), dot.selftests); assertEquals(listOf(4), i8.selftests)
+        assertEquals("each build leaves its crash marker only while it runs", listOf("dotprod+", "dotprod-", "i8mm+", "i8mm-"), events)
+        assertEquals(listOf("dotprod", "i8mm"), r.checks.map { it.variant })
+        assertNull("the first build is the reference", r.checks[0].promptAgreement)
+        assertTrue(r.checks[1].promptAgreement!! > 0.999 && r.checks[1].nextAgreement!! > 0.999)
     }
 
     @Test
-    fun `the first build failing leaves the second to size the prompt`() {
-        val dot = FakeLib("dotprod", 45.0, 21.0, createError = "no")
-        val i8 = FakeLib("i8mm", 78.0, 22.0)
-        val r = run(dot, i8)
-        assertEquals(160, r.promptTokens)
-        assertNull("with no reference there is nothing to agree with", r.runs[1].agreement)
+    fun `nothing is timed against the 3B model, only the self-test's own milliseconds are reported`() {
+        var t = 0L
+        val dot = FakeLib("dotprod", answer(), onSelftest = { t += 5_000_000 })
+        val i8 = FakeLib("i8mm", answer(), onSelftest = { t += 7_000_000 })
+        val r = check(dot, i8, nanoTime = { t })
+        assertEquals(5.0, r.checks[0].ms, 1e-9); assertEquals(7.0, r.checks[1].ms, 1e-9)
+        assertEquals(0.012, r.seconds, 1e-9)
     }
 
     @Test
-    fun `a second build that would end past the budget isn't started`() {
-        var now = 0L
-        val slow = FakeLib("dotprod", 9.0, 5.0, onCreate = { now += 14_000_000_000L })     // a 14 s build on a slow CPU
-        val i8 = FakeLib("i8mm", 90.0, 22.0)
-        val r = LlmProbe.run(listOf(slow, i8), 6, 5, { true }, nanoTime = { now })
-        assertEquals(1, r.runs.size)
-        assertTrue(r.skipped.getValue("i8mm"), r.skipped.getValue("i8mm").startsWith("out of time"))
-        assertTrue(i8.prefills.isEmpty() && i8.destroyed.isEmpty())
-        assertTrue(LlmProbe.lines(r).any { it.startsWith("  CPU i8mm · not tried: out of time") })
-
-        var t = 0L                                                                         // a flagship: 3 s builds, both fit
-        val fast = FakeLib("dotprod", 45.0, 21.0, onCreate = { t += 3_000_000_000L })
-        val fast8 = FakeLib("i8mm", 90.0, 22.0, onCreate = { t += 3_000_000_000L })
-        val both = LlmProbe.run(listOf(fast, fast8), 6, 5, { true }, nanoTime = { t })
-        assertEquals(2, both.runs.size)
-        assertTrue(both.skipped.isEmpty())
+    fun `an answer that differs keeps the dot-product build, whichever half differs`() {
+        val garbage = FloatArray(LlmProbe.SELFTEST_LOGITS) { ((it * 2654435761L) % 1000).toFloat() }
+        val a = check(FakeLib("dotprod", answer()), FakeLib("i8mm", garbage))
+        assertEquals("dotprod", a.chosen); assertTrue(a.why!!, a.why!!.contains("differ"))
+        // right for the prompt, wrong for the next token (the matrix-vector kernels)
+        val half = answer().also { for (i in 1024 until 2048) it[i] = garbage[i] }
+        val b = check(FakeLib("dotprod", answer()), FakeLib("i8mm", half))
+        assertEquals("dotprod", b.chosen)
+        assertTrue(b.checks[1].promptAgreement!! > 0.999 && b.checks[1].nextAgreement!! < LlmProbe.SELFTEST_MIN_AGREEMENT)
+        // …and the other way round
+        val other = answer().also { for (i in 0 until 1024) it[i] = garbage[i] }
+        assertEquals("dotprod", check(FakeLib("dotprod", answer()), FakeLib("i8mm", other)).chosen)
     }
 
     @Test
-    fun `a stopped run returns what it has and frees what it built`() {
-        val dot = FakeLib("dotprod", 45.0, 21.0)
-        val i8 = FakeLib("i8mm", 90.0, 22.0)
-        var calls = 0
-        val r = run(dot, i8, active = { ++calls <= 1 })   // the second library's turn finds the run stopped
-        assertEquals(1, r.runs.size)
-        assertTrue(i8.prefills.isEmpty())
-        assertTrue(run(FakeLib("dotprod", 1.0, 1.0), active = { false }).runs.isEmpty())
+    fun `a flat or non-matching answer has no correlation and is not chosen`() {
+        assertEquals("dotprod", check(FakeLib("dotprod", answer()), FakeLib("i8mm", FloatArray(LlmProbe.SELFTEST_LOGITS))).chosen)
+        assertEquals("a short answer isn't an answer", "dotprod", check(FakeLib("dotprod", answer()), FakeLib("i8mm", FloatArray(100) { it.toFloat() })).chosen)
     }
 
     @Test
-    fun `the report says which build is how much faster and what wasn't tried`() {
-        val r = run(FakeLib("dotprod", 45.0, 21.0), FakeLib("i8mm", 90.0, 22.05))
+    fun `the threshold is at the documented line`() {
+        val at = answer()
+        // the answer plus `k` times noise: the bigger k, the worse the worse half correlates with `at`
+        fun noisy(k: Double) = FloatArray(LlmProbe.SELFTEST_LOGITS) { (at[it] + k * (((it * 2654435761L) % 2001) - 1000) / 1000.0).toFloat() }
+        fun worstHalf(v: FloatArray) = minOf(LlmProbe.correlation(at.copyOfRange(0, 1024), v.copyOfRange(0, 1024)),
+            LlmProbe.correlation(at.copyOfRange(1024, 2048), v.copyOfRange(1024, 2048)))
+        var low = 0.0; var high = 100.0                   // worstHalf(noisy(low)) ≥ the threshold > worstHalf(noisy(high))
+        repeat(60) { val mid = (low + high) / 2; if (worstHalf(noisy(mid)) >= LlmProbe.SELFTEST_MIN_AGREEMENT) low = mid else high = mid }
+        assertTrue("the bisection found the line ($low)", low > 0.1 && low < 50)
+        assertEquals("i8mm", check(FakeLib("dotprod", at), FakeLib("i8mm", noisy(low * 0.9))).chosen)
+        assertEquals("dotprod", check(FakeLib("dotprod", at), FakeLib("i8mm", noisy(high * 1.1))).chosen)
+    }
+
+    @Test
+    fun `a self-test that fails or throws, in either build, keeps the dot-product build with the reason`() {
+        val failed = check(FakeLib("dotprod", answer()), FakeLib("i8mm", failure = "llama.cpp could not build the self-test model"))
+        assertEquals("dotprod", failed.chosen); assertTrue(failed.why!!, failed.why!!.contains("could not build the self-test model"))
+        assertEquals("llama.cpp could not build the self-test model", failed.checks[1].error)
+        val thrown = check(FakeLib("dotprod", answer()), FakeLib("i8mm", throws = UnsatisfiedLinkError("no kernelSelftest")))
+        assertEquals("dotprod", thrown.chosen); assertEquals("no kernelSelftest", thrown.checks[1].error)
+        val reference = check(FakeLib("dotprod", failure = "no memory"), FakeLib("i8mm", answer()))
+        assertEquals("with no reference there is nothing to agree with", "dotprod", reference.chosen)
+        assertTrue(reference.why!!, reference.why!!.contains("dot-product build's own self-test failed"))
+    }
+
+    @Test
+    fun `a self-test that throws still takes its crash marker down`() {
+        val events = ArrayList<String>()
+        check(FakeLib("dotprod", answer()), FakeLib("i8mm", throws = IllegalStateException("boom")), events = events)
+        assertEquals(listOf("dotprod+", "dotprod-", "i8mm+", "i8mm-"), events)
+    }
+
+    @Test
+    fun `a stopped run doesn't start the next build`() {
+        val dot = FakeLib("dotprod", answer()); val i8 = FakeLib("i8mm", answer())
+        var asked = 0
+        val r = check(dot, i8, active = { asked++ < 1 })
+        assertEquals(listOf(4), dot.selftests); assertTrue(i8.selftests.isEmpty())
+        assertEquals("dotprod", r.chosen)
+        assertTrue(check(FakeLib("dotprod", answer()), FakeLib("i8mm", answer()), active = { false }).checks.isEmpty())
+    }
+
+    @Test
+    fun `choose over canned checks`() {
+        fun c(variant: String, p: Double? = null, n: Double? = null, error: String? = null) = LlmKernelCheck(variant, "lib", 5.0, p, n, error)
+        assertEquals("i8mm", LlmProbe.choose(listOf(c("dotprod"), c("i8mm", 0.99999, 0.99998))).variant)
+        assertEquals("i8mm", LlmProbe.choose(listOf(c("dotprod"), c("i8mm", LlmProbe.SELFTEST_MIN_AGREEMENT, LlmProbe.SELFTEST_MIN_AGREEMENT))).variant)
+        assertEquals("dotprod", LlmProbe.choose(listOf(c("dotprod"), c("i8mm", LlmProbe.SELFTEST_MIN_AGREEMENT - 0.001, 1.0))).variant)
+        assertEquals("dotprod", LlmProbe.choose(listOf(c("dotprod"), c("i8mm", 1.0, Double.NaN))).variant)
+        assertEquals("dotprod", LlmProbe.choose(listOf(c("dotprod"), c("i8mm"))).variant)               // never compared
+        assertEquals("dotprod", LlmProbe.choose(emptyList()).variant)
+        assertEquals("dotprod", LlmProbe.choose(listOf(c("dotprod"))).variant)
+        assertEquals("dotprod", LlmProbe.choose(listOf(c("i8mm", 1.0, 1.0))).variant)                    // no reference build
+    }
+
+    @Test
+    fun `the report says which build ran the CPU test and how the answers compared`() {
+        val r = check(FakeLib("dotprod", answer()), FakeLib("i8mm", answer(noise = 1e-4)))
             .copy(skipped = mapOf("sve" to "nothing"), cpuFeatures = "CPU features · asimddp yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"),
-                opencl = listOf("OpenCL · 1 platform"), chosen = "i8mm", why = "×1.42 over the dot-product build")
+                opencl = listOf("OpenCL · 1 platform"))
         val lines = LlmProbe.lines(r)
-        assertTrue(lines[0], lines[0].startsWith("LLM probe · ") && lines[0].contains("a 96-token prompt on 5 threads and a 12-token reply on 6, unpinned") &&
-            lines[0].endsWith("the CPU test ran in the i8mm build: ×1.42 over the dot-product build"))
-        assertTrue(lines[1], lines[1].startsWith("  CPU dotprod · libfake_dotprod.so · prefill 45.00 tok/s · decode 21.00 tok/s · built in ") && !lines[1].contains("USED"))
-        assertTrue(lines[2], lines[2].contains("CPU i8mm · libfake_i8mm.so · prefill 90.00 tok/s (×2.00) · decode 22.05 tok/s (×1.05) · answers agree 1.0000"))
+        assertTrue(lines[0], lines[0].startsWith("LLM probe · kernel self-test, ") && lines[0].contains("nothing is timed against the 3B model") &&
+            lines[0].contains("the CPU test ran in the i8mm build: its self-test answers agree"))
+        assertTrue(lines[1], lines[1].startsWith("  CPU dotprod · libfake_dotprod.so · self-test ") && !lines[1].contains("USED") && !lines[1].contains("agree"))
+        assertTrue(lines[2], lines[2].contains("CPU i8mm · libfake_i8mm.so · self-test ") && lines[2].contains("answers agree: prompt 1.0") && lines[2].contains("next token 1.0") && !lines[2].contains("DIFFERENT"))
         assertTrue("the build the score came from is marked", lines[2].endsWith("USED FOR THE SCORE"))
         assertEquals("  CPU sve · not tried: nothing", lines[3])
         assertEquals(listOf("CPU features · asimddp yes", "Vulkan · loader 1.3.0 · 1 device", "OpenCL · 1 platform"), lines.drop(4))
     }
 
     @Test
-    fun `the probe pins every build to the same cores and says so`() {
-        val dot = FakeLib("dotprod", 45.0, 21.0); val i8 = FakeLib("i8mm", 90.0, 22.0)
-        val r = LlmProbe.run(listOf(dot, i8), 4, 4, { true }, cores = listOf(7, 4, 5, 6))
-        assertEquals(listOf(listOf(7, 4, 5, 6)), dot.coreCalls)
-        assertEquals("the same cores for each build, so the comparison is one of kernels", dot.coreCalls, i8.coreCalls)
-        assertEquals(listOf(7, 4, 5, 6), r.pinnedCores)
-        assertTrue(LlmProbe.lines(r)[0], LlmProbe.lines(r)[0].contains("pinned to cores 7,4,5,6"))
-        val plain = run(FakeLib("dotprod", 45.0, 21.0))
-        assertTrue("with no cores nothing is pinned", plain.pinnedCores.isEmpty())
+    fun `a different answer is shown as different and the dot-product build as the one used`() {
+        val garbage = FloatArray(LlmProbe.SELFTEST_LOGITS) { ((it * 2654435761L) % 1000).toFloat() }
+        val lines = LlmProbe.lines(check(FakeLib("dotprod", answer()), FakeLib("i8mm", garbage)))
+        assertTrue(lines[0], lines[0].contains("the CPU test ran in the dotprod build: the i8mm build's answers differ"))
+        assertTrue(lines[2], lines[2].contains("— DIFFERENT") && !lines[2].contains("USED"))
+        assertTrue(lines[1], lines[1].endsWith("USED FOR THE SCORE"))
     }
 
     @Test
-    fun `a phone with only the dot-product build says why nothing was probed and still reports what it offers`() {
+    fun `a phone with only the dot-product build says why nothing was checked and still reports what it offers`() {
         val lines = LlmProbe.lines(LlmProbeResult(skipped = mapOf("i8mm" to "this CPU doesn't report i8mm (AT_HWCAP2 bit 13)"),
             cpuFeatures = "CPU features · asimddp yes · i8mm no"))
-        assertEquals(listOf("LLM probe · not run: the dot-product build is the only CPU build that applies on this phone",
+        assertEquals(listOf("LLM probe · no kernel self-test: the dot-product build is the only CPU build that applies on this phone",
             "  CPU i8mm · not tried: this CPU doesn't report i8mm (AT_HWCAP2 bit 13)", "CPU features · asimddp yes · i8mm no"), lines)
     }
 
     @Test
-    fun `a build that failed shows as zero with the reason`() {
-        val r = run(FakeLib("dotprod", 1.0, 1.0, createError = "no model"))
-        assertEquals("  CPU dotprod · libfake_dotprod.so · 0 (no model)", LlmProbe.lines(r)[1])
-    }
-
-    // ── which kernel build the CPU test runs in ─────────────────────────────────
-
-    private fun runs(prefill: Double, decode: Double, agreement: Double? = 0.9999, error: String? = null) = listOf(
-        LlmProbeRun("dotprod", "libbenchllm.so", 45.0, 20.0),
-        LlmProbeRun("i8mm", "libbenchllm_i8mm.so", prefill, decode, agreement = agreement, error = error))
-
-    @Test
-    fun `the i8mm build is chosen when it is clearly faster over both phases and agrees`() {
-        val c = LlmProbe.choose(runs(prefill = 90.0, decode = 20.4))      // prompt ×2.0, reply ×1.02: geometric mean ×1.43
-        assertEquals("i8mm", c.variant)
-        assertTrue(c.why, c.why.contains("×1.43"))
-        assertEquals("a gain from the prompt alone counts", "i8mm", LlmProbe.choose(runs(prefill = 50.0, decode = 20.0)).variant)   // ×1.054
-    }
-
-    @Test
-    fun `a gain under five percent, or noise, keeps the dot-product build`() {
-        val c = LlmProbe.choose(runs(prefill = 46.0, decode = 20.5))
-        assertEquals("dotprod", c.variant)
-        assertTrue(c.why, c.why.contains("gains only"))
-        assertEquals("dotprod", LlmProbe.choose(runs(prefill = 47.0, decode = 20.0)).variant)       // ×1.044
-    }
-
-    @Test
-    fun `a build that is clearly slower in either phase can't win however fast the other is`() {
-        val c = LlmProbe.choose(runs(prefill = 120.0, decode = 18.0))      // prompt ×2.67 but reply ×0.90
-        assertEquals("dotprod", c.variant)
-        assertTrue(c.why, c.why.contains("slower at writing the reply"))
-        assertEquals("dotprod", LlmProbe.choose(runs(prefill = 40.0, decode = 30.0)).variant)
-        assertEquals("within the margin of noise it isn't 'clearly slower'", "i8mm", LlmProbe.choose(runs(prefill = 100.0, decode = 19.1)).variant)   // reply ×0.955
-    }
-
-    @Test
-    fun `answers that differ, a failed build or a missing reference keep the dot-product build`() {
-        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0, agreement = 0.5)).variant)
-        assertTrue(LlmProbe.choose(runs(200.0, 40.0, agreement = 0.5)).why.contains("differs"))
-        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0, agreement = LlmProbe.MIN_AGREEMENT - 0.01)).variant)
-        assertEquals("i8mm", LlmProbe.choose(runs(200.0, 40.0, agreement = LlmProbe.MIN_AGREEMENT)).variant)
-        assertEquals("dotprod", LlmProbe.choose(runs(0.0, 0.0, error = "out of memory")).variant)
-        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0, agreement = null)).variant)
-        assertEquals("dotprod", LlmProbe.choose(emptyList()).variant)
-        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0).take(1)).variant)
-        // the dot-product build's own run failed: no baseline, so no switch on a guess
-        assertEquals("dotprod", LlmProbe.choose(listOf(LlmProbeRun("dotprod", "a", error = "boom"), runs(200.0, 40.0)[1])).variant)
-    }
-
-    @Test
-    fun `the whole probe picks the build the numbers say`() {
-        val r = run(FakeLib("dotprod", 45.0, 21.0), FakeLib("i8mm", 90.0, 22.0))
-        assertEquals("i8mm", LlmProbe.choose(r.runs).variant)
-        val slow = run(FakeLib("dotprod", 45.0, 21.0), FakeLib("i8mm", 45.5, 21.0))
-        assertEquals("dotprod", LlmProbe.choose(slow.runs).variant)
+    fun `a build whose self-test failed shows the reason`() {
+        val r = check(FakeLib("dotprod", answer()), FakeLib("i8mm", failure = "no model"))
+        assertEquals("  CPU i8mm · libfake_i8mm.so · self-test failed (no model)", LlmProbe.lines(r)[2])
     }
 
     // ── Vulkan on an Adreno: report only ─────────────────────────────────────────

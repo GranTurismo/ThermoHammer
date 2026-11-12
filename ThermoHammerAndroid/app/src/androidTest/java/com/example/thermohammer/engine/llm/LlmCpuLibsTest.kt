@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -13,9 +11,8 @@ import org.junit.runner.RunWith
 
 /**
  * The two CPU kernel builds on a real CPU or the emulator: what the kernel says the CPU has, the i8mm library loading
- * only where it says i8mm, the two builds answering one prompt alike, and the device probes (Vulkan, OpenCL) returning
- * text instead of crashing. Rates go to the instrumentation status as "dotprod_prefill", "i8mm_prefill" and so on — they
- * are this device's, and an emulator's are not a phone's.
+ * only where it says i8mm, the two builds answering one prompt on the real model alike, and the device probes (Vulkan,
+ * OpenCL) returning text instead of crashing. (The few-millisecond self-test is in LlmStage2DeviceTest.)
  */
 @RunWith(AndroidJUnit4::class)
 class LlmCpuLibsTest {
@@ -47,27 +44,35 @@ class LlmCpuLibsTest {
         val forced = InstrumentationRegistry.getArguments().getString("forceI8mm") == "true"
         assumeTrue("this CPU doesn't report i8mm", forced || CpuFeatures.supportsI8mm(hw[0], hw[1]))
         assertTrue("libbenchllm_i8mm.so must load here: ${LlmNativeI8mm.loadError}", LlmNativeI8mm.loaded)
-        // no time limit here: this checks the answers, and a slow emulator would otherwise (rightly) skip the second build
-        val r = LlmProbe.run(listOf(DotprodLib, I8mmLib), threads = 4, batchThreads = 4, isActive = { true }, budgetS = Double.MAX_VALUE)
-        val status = Bundle().apply {
+        // the real 3B model in both builds, one short prompt each: nothing is timed, this checks the answers
+        val dot = answer(DotprodLib)
+        val i8 = answer(I8mmLib)
+        val agreement = LlmProbe.correlation(dot, i8)
+        instrumentation.sendStatus(0, Bundle().apply {
             putString("forced", if (forced && !CpuFeatures.supportsI8mm(hw[0], hw[1])) "yes: the kernel reports no i8mm" else "no")
-            putString("probe", LlmProbe.lines(r).joinToString("\n"))
-            r.runs.forEach { putString("${it.variant}_rates", "prefill %.2f decode %.2f build %.1f s".format(it.prefill, it.decode, it.buildS)) }
-        }
-        for (run in r.runs) assertTrue("${run.variant}: ${run.error}", run.error == null && run.prefill > 0 && run.decode > 0)
-        val agreement = r.runs[1].agreement
-        assertNotNull(agreement)
-        assertTrue("the i8mm build's logits correlate %.4f with the dot-product build's".format(agreement), agreement!! >= LlmProbe.MIN_AGREEMENT)
-        instrumentation.sendStatus(0, status)
+            putString("agreement", "the i8mm build's logits correlate %.6f with the dot-product build's (%d logits)".format(agreement, dot.size))
+        })
+        assertEquals(dot.size, i8.size)
+        assertTrue("the i8mm build's logits correlate %.4f with the dot-product build's".format(agreement), agreement >= LlmProbe.MIN_AGREEMENT)
+    }
+
+    /** The sampled logits of a 32-token prompt on the real model in `lib`. */
+    private fun answer(lib: LlmCpuLib): FloatArray {
+        val error = arrayOfNulls<String>(1)
+        val h = lib.create(4, LlmNative.SEED, error)
+        assertTrue("${lib.variant}: ${error[0]}", h != 0L)
+        try {
+            lib.setThreads(h, 4, 4)
+            assertTrue("${lib.variant}: ${lib.error(h)}", lib.prefill(h, 32) > 0)
+            return lib.lastSample(h)
+        } finally { lib.destroy(h) }
     }
 
     @Test
     fun theDotProductBuildAloneStillRuns() {
         assumeTrue(LlmNative.loaded && LlmNative.cpuSupported())
-        val r = LlmProbe.run(listOf(DotprodLib), threads = 4, batchThreads = 4, isActive = { true })
-        assertEquals(1, r.runs.size)
-        assertTrue(r.runs[0].error ?: "", r.runs[0].error == null && r.runs[0].prefill > 0 && r.runs[0].decode > 0)
-        assertFalse(r.runs[0].agreement != null)
+        val sample = answer(DotprodLib)
+        assertTrue("a logit sample is kept", sample.size > 1000 && sample.all { it.isFinite() })
     }
 
     @Test

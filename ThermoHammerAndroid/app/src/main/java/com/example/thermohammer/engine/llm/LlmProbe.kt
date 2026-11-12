@@ -1,24 +1,22 @@
 package com.example.thermohammer.engine.llm
 
 import kotlin.concurrent.thread
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM PROBE — which CPU kernel build is faster on THIS phone, and what else the phone's GPU stack offers.
+// LLM PROBE — is the i8mm CPU kernel build safe to run the CPU test in on THIS phone, and what else the phone's GPU
+// stack offers.
 //
 //   libbenchllm.so's CPU kernels use the Arm dot product; libbenchllm_i8mm.so's also use i8mm, which a CPU that has it
-//   runs a prompt on in fewer instructions. Which is faster here isn't known until it's measured, so before the CPU
-//   test each build gets the same short test — build the seeded model, read one prompt, write one reply — and the
-//   CPU test runs in the i8mm build only if it is clearly faster ([choose]: at least 5% over both phases, not
-//   clearly slower in either) AND its answer to the prompt agrees with the dot-product build's (its logits
-//   correlate with theirs), the rule the GPU has to meet against the CPU. Otherwise the CPU test is what it always
-//   was. Every rate goes into the report either way.
+//   runs a prompt on in fewer instructions. A CPU whose kernel feature words say it has i8mm gets a few-millisecond
+//   SELF-TEST in both builds (bc_llm_kernel_selftest: a tiny seeded model reads a prompt and one more token) and the
+//   CPU test runs in the i8mm build when its logits agree with the dot-product build's ([choose]). Nothing is timed:
+//   a timing race between the two 3B-model builds took about 14 s of CPU work just before the scored CPU test and
+//   started it on a warm phone, and the phone is on the scoreboard by what it does cold. The rates the CPU test then
+//   measures are in the report beside the runs of builds without i8mm, so whether it helped is read from those.
 //
-//   Where the GPU isn't a Vulkan-only one the probe also runs llama.cpp's Vulkan backend on an Adreno, REPORT ONLY:
-//   the scored GPU backend stays OpenCL there (see runGpu).
+//   Where the GPU isn't a Vulkan-only one the probe also runs llama.cpp's Vulkan backend on an Adreno, REPORT ONLY,
+//   AFTER every scored test (the LLM test is the last of them): the scored GPU backend stays OpenCL there (see runGpu).
 //
 //   Plain Kotlin over [LlmCpuLib] and [LlmGpuLib], so the protocol and its numbers are tested on the JVM with fakes.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,6 +40,8 @@ internal interface LlmCpuLib {
     fun error(handle: Long): String
     fun lastSample(handle: Long): FloatArray
     fun destroy(handle: Long)
+    /** The few-millisecond kernel self-test (BenchCore's bc_llm_kernel_selftest): [LlmProbe.SELFTEST_LOGITS] logits, or null with the reason in error[0]. */
+    fun kernelSelftest(threads: Int, error: Array<String?>): FloatArray? { error[0] = "this library has no self-test"; return null }
 }
 
 /** One GPU backend as the probe drives it: LlmNative with its backend choice set (a fake in the tests). */
@@ -92,6 +92,7 @@ internal object DotprodLib : LlmCpuLib {
     override fun error(handle: Long) = LlmNative.error(handle)
     override fun lastSample(handle: Long) = LlmNative.lastSample(handle)
     override fun destroy(handle: Long) = LlmNative.destroy(handle)
+    override fun kernelSelftest(threads: Int, error: Array<String?>) = LlmNative.kernelSelftest(threads, error)
 }
 
 internal object I8mmLib : LlmCpuLib {
@@ -109,16 +110,16 @@ internal object I8mmLib : LlmCpuLib {
     override fun error(handle: Long) = LlmNativeI8mm.error(handle)
     override fun lastSample(handle: Long) = LlmNativeI8mm.lastSample(handle)
     override fun destroy(handle: Long) = LlmNativeI8mm.destroy(handle)
+    override fun kernelSelftest(threads: Int, error: Array<String?>) = LlmNativeI8mm.kernelSelftest(threads, error)
 }
 
-/** One build's short test (rates 0 and [error] set when it couldn't run). */
-data class LlmProbeRun(
+/** One CPU build's kernel self-test: how long it took, and how its answers compare with the first build's (null for the first). */
+data class LlmKernelCheck(
     val variant: String,
     val library: String,
-    val prefill: Double = 0.0,            // tokens/s reading the probe's prompt
-    val decode: Double = 0.0,             // tokens/s writing the reply
-    val buildS: Double = 0.0,             // seconds to build the seeded model (not part of either rate)
-    val agreement: Double? = null,        // correlation of its prompt's logits with the first build's (null for the first)
+    val ms: Double = 0.0,
+    val promptAgreement: Double? = null,      // correlation of its prompt logits with the first build's
+    val nextAgreement: Double? = null,        // …and of the logits of the token after it
     val error: String? = null
 )
 
@@ -142,11 +143,7 @@ data class LlmGpuProbe(
  * CPU test ran in; everything else here is reported only.
  */
 data class LlmProbeResult(
-    val runs: List<LlmProbeRun> = emptyList(),
-    val promptTokens: Int = 0,
-    val replyTokens: Int = 0,
-    val threads: Int = 0,                 // decode threads the builds were compared on
-    val batchThreads: Int = 0,            // prompt threads
+    val checks: List<LlmKernelCheck> = emptyList(),
     val seconds: Double = 0.0,
     val skipped: Map<String, String> = emptyMap(),   // variant → why it wasn't tried (no i8mm here, crashed before, library missing)
     val cpuFeatures: String? = null,
@@ -154,7 +151,6 @@ data class LlmProbeResult(
     val opencl: List<String> = emptyList(),
     val chosen: String = "dotprod",       // the kernel build the CPU test ran in
     val why: String? = null,              // why that one
-    val pinnedCores: List<Int> = emptyList(),        // the cores both builds were pinned to for the comparison (empty: unpinned)
     val topology: String? = null,         // CpuTopology.line()
     val vulkanBuild: String? = null,      // which Vulkan shader families the library was built with
     val backendLog: List<String> = emptyList(),      // what ggml's GPU backends said about the device they chose (its own device line)
@@ -163,23 +159,17 @@ data class LlmProbeResult(
 )
 
 object LlmProbe {
-    const val WARMUP_TOKENS = 8           // the first prompt builds the compute graph: it sizes nothing
-    const val SIZING_TOKENS = 16          // the second one sizes the probe's prompt
     const val REPLY = 12
-    const val TARGET_PREFILL_S = 2.0      // a prompt this long per build; with its model build and reply about 7 s each on a flagship
-    /** The probe's own limit: a build isn't started if it would likely end past this (the first build's time is the guess). */
-    const val BUDGET_S = 20.0
-    const val MIN_PROMPT = 32
-    const val MAX_PROMPT = 512            // BC_LLM_PROMPT
     /** Logits at least this correlated with the first build's, as the GPU's have to be with the CPU's. */
     const val MIN_AGREEMENT = 0.9
-    private const val SEED = 3L           // BC_LLM_SEED: the same weights in every build
-
-    /** The prompt that takes about [TARGET_PREFILL_S] at `tokensPerS`, in multiples of 16 within the model's limits. */
-    fun promptFor(tokensPerS: Double): Int {
-        if (!(tokensPerS > 0)) return MIN_PROMPT
-        return min(MAX_PROMPT, max(MIN_PROMPT, (tokensPerS * TARGET_PREFILL_S / 16).roundToInt() * 16))
-    }
+    /** BC_LLM_SELFTEST_LOGITS: the prompt's logits, then the next token's (1024 each). */
+    const val SELFTEST_LOGITS = 2048
+    /**
+     * What the i8mm build's self-test answers must reach against the dot-product build's, for the prompt and the next
+     * token each. The two builds do the same arithmetic in a different order (an Apple M-series host measures 0.999998);
+     * a build whose instructions are wrong gives noise. Stricter than [MIN_AGREEMENT] because no timing follows it.
+     */
+    const val SELFTEST_MIN_AGREEMENT = 0.99
 
     /** Pearson correlation of two logit samples; 0 when they don't line up or one is flat. */
     fun correlation(a: FloatArray, b: FloatArray): Double {
@@ -193,112 +183,59 @@ object LlmProbe {
     }
 
     /**
-     * Runs every library in `libs` the same way, in order, and returns their rates. `threads` and `batchThreads` are
-     * what the scored CPU run settled on, so the builds differ in kernels only. The first library sizes the prompt
-     * and its logits are what the others' are compared with. A library that fails is a row with its reason; a stopped
-     * run (`isActive` false) returns what it has. `onStep(label, fraction)` keeps the stage moving; `around(lib, true)`
-     * is told just before a library builds its model and `around(lib, false)` just after it is freed, so the caller
-     * can keep a crash marker for exactly the library that is running. A library that wouldn't finish inside
-     * `budgetS` (judged by how long the first took) isn't started: the probe adds to the run no more than that.
-     * With `cores` (the fastest cores, fastest first) every build's threads are pinned to the first n of them, the same
-     * way in each, so the comparison doesn't depend on where the system happens to put the threads.
+     * The kernel self-test in `base` (the dot-product build: the reference) and then in `candidate` (the i8mm build),
+     * `threads` each — a few milliseconds apiece, nothing timed. `around(lib, true)` is told just before a library
+     * runs and `around(lib, false)` just after, so the caller can keep a crash marker for exactly the library that is
+     * running. The candidate is chosen by [choose]. A stopped run (`isActive` false) returns what it has.
      */
-    internal fun run(libs: List<LlmCpuLib>, threads: Int, batchThreads: Int, isActive: () -> Boolean,
-                     nanoTime: () -> Long = System::nanoTime, around: (LlmCpuLib, Boolean) -> Unit = { _, _ -> },
-                     budgetS: Double = BUDGET_S, cores: List<Int> = emptyList(),
-                     onStep: (String, Float) -> Unit = { _, _ -> }): LlmProbeResult {
+    internal fun checkKernels(base: LlmCpuLib, candidate: LlmCpuLib, threads: Int, isActive: () -> Boolean,
+                              nanoTime: () -> Long = System::nanoTime, around: (LlmCpuLib, Boolean) -> Unit = { _, _ -> }): LlmProbeResult {
         val started = nanoTime()
-        val runs = ArrayList<LlmProbeRun>()
-        val skipped = LinkedHashMap<String, String>()
-        var prompt = 0
+        val checks = ArrayList<LlmKernelCheck>()
         var reference: FloatArray? = null
-        var firstS = 0.0
-        for ((i, lib) in libs.withIndex()) {
+        for (lib in listOf(base, candidate)) {
             if (!isActive()) break
-            val elapsed = (nanoTime() - started) / 1e9
-            if (i > 0 && elapsed + firstS > budgetS) {
-                skipped[lib.variant] = "out of time: %.0f s in, and the first build took %.0f s of %.0f".format(elapsed, firstS, budgetS)
-                continue
-            }
-            val label = "${lib.variant.uppercase()} KERNELS · CHECKING WHICH IS FASTER"
-            onStep("$label · BUILDING THE MODEL", i / libs.size.toFloat())
             val error = arrayOfNulls<String>(1)
             around(lib, true)
             val t0 = nanoTime()
-            val h = lib.create(threads, SEED, error)
-            val build = (nanoTime() - t0) / 1e9
-            if (h == 0L) {
-                around(lib, false)
-                runs += LlmProbeRun(lib.variant, lib.library, buildS = build, error = error[0] ?: "the model could not be built")
+            val logits = try { lib.kernelSelftest(threads, error) } catch (e: Throwable) {
+                error[0] = e.message ?: e.javaClass.simpleName; null
+            } finally { around(lib, false) }
+            val ms = (nanoTime() - t0) / 1e6
+            if (logits == null || logits.size != SELFTEST_LOGITS) {
+                checks += LlmKernelCheck(lib.variant, lib.library, ms, error = error[0] ?: "the self-test returned no logits")
                 continue
             }
-            val done = java.util.concurrent.atomic.AtomicBoolean(false)
-            thread(isDaemon = true, name = "llm-probe-cancel") {      // a stopped run cancels a prompt from here, as LlmBench's does
-                while (!done.get()) { if (!isActive()) { lib.cancel(h); break }; Thread.sleep(100) }
-            }
-            try {
-                fun fail(what: String) = runs.add(LlmProbeRun(lib.variant, lib.library, buildS = build,
-                    error = if (!isActive()) "stopped" else lib.error(h).ifEmpty { what }))
-                if (cores.isNotEmpty()) lib.setCores(h, cores.toIntArray(), true, true)
-                lib.setThreads(h, threads, batchThreads)
-                onStep("$label · WARMING UP", (i + 0.2f) / libs.size)
-                if (lib.prefill(h, WARMUP_TOKENS) < 0) { fail("the warm-up prompt failed"); continue }
-                val sizing = lib.prefill(h, SIZING_TOKENS)
-                if (sizing < 0) { fail("the warm-up prompt failed"); continue }
-                if (prompt == 0) prompt = promptFor(SIZING_TOKENS / sizing)
-                onStep("$label · READING A $prompt-TOKEN PROMPT", (i + 0.4f) / libs.size)
-                val s = lib.prefill(h, prompt)
-                if (s < 0) { fail("the prompt failed"); continue }
-                val sample = lib.lastSample(h)
-                val agreement = reference?.let { correlation(it, sample) }
-                if (reference == null) reference = sample
-                onStep("$label · WRITING A $REPLY-TOKEN REPLY", (i + 0.7f) / libs.size)
-                lib.reset(h)
-                repeat(2) { lib.next(h, null) }                      // the first tokens warm the decode path
-                var seconds = 0.0
-                var failed = false
-                repeat(REPLY) { if (!failed) { val x = lib.next(h, null); if (x < 0) failed = true else seconds += x } }
-                if (failed) { fail("the reply failed"); continue }
-                runs += LlmProbeRun(lib.variant, lib.library, prompt / s, REPLY / seconds, build, agreement)
-            } finally {
-                done.set(true)
-                lib.destroy(h)
-                around(lib, false)
-                if (i == 0) firstS = (nanoTime() - started) / 1e9
-            }
+            val ref = reference
+            if (ref == null) reference = logits
+            val half = SELFTEST_LOGITS / 2
+            checks += LlmKernelCheck(lib.variant, lib.library, ms,
+                ref?.let { correlation(it.copyOfRange(0, half), logits.copyOfRange(0, half)) },
+                ref?.let { correlation(it.copyOfRange(half, SELFTEST_LOGITS), logits.copyOfRange(half, SELFTEST_LOGITS)) })
         }
-        return LlmProbeResult(runs, prompt, REPLY, threads, batchThreads, (nanoTime() - started) / 1e9, skipped,
-            pinnedCores = cores.take(threads.coerceAtLeast(batchThreads)))
+        val choice = choose(checks)
+        return LlmProbeResult(checks, (nanoTime() - started) / 1e9, chosen = choice.variant, why = choice.why)
     }
-
-    /** At least this much faster (geometric mean of the prompt and reply rates) for the i8mm build to be used. */
-    const val MIN_GAIN = 1.05
-    /** …and not slower than this fraction of the dot-product build in either phase. */
-    const val MAX_LOSS = 0.95
 
     /** The kernel build the CPU test runs in, and why. */
     data class Choice(val variant: String, val why: String)
 
     /**
-     * The i8mm build only where it measured clearly faster than the dot-product build, in both phases together
-     * ([MIN_GAIN]) and in neither clearly slower ([MAX_LOSS]), and its prompt answer agrees with the dot-product
-     * build's ([MIN_AGREEMENT]); in every other case the dot-product build, which is what the test always ran.
+     * The i8mm build where its self-test ran and its answers — to the prompt and to the next token — agree with the
+     * dot-product build's ([SELFTEST_MIN_AGREEMENT]); in every other case the dot-product build, which is what the
+     * test always ran. Nothing here asks which is faster: see the header comment.
      */
-    fun choose(runs: List<LlmProbeRun>): Choice {
-        val base = runs.firstOrNull { it.variant == "dotprod" }
-        val i8 = runs.firstOrNull { it.variant == "i8mm" } ?: return Choice("dotprod", "the i8mm build wasn't measured")
-        if (base == null || base.error != null || base.prefill <= 0 || base.decode <= 0)
-            return Choice("dotprod", "no dot-product rates to compare the i8mm build with")
-        if (i8.error != null) return Choice("dotprod", "the i8mm build failed (${i8.error})")
-        val agreement = i8.agreement ?: return Choice("dotprod", "the i8mm build's answer wasn't compared")
-        if (agreement < MIN_AGREEMENT) return Choice("dotprod", "the i8mm build's answer differs (correlation %.2f)".format(agreement))
-        val prefill = i8.prefill / base.prefill
-        val decode = i8.decode / base.decode
-        if (prefill < MAX_LOSS || decode < MAX_LOSS)
-            return Choice("dotprod", "the i8mm build is slower at %s (×%.2f)".format(if (prefill < decode) "reading the prompt" else "writing the reply", min(prefill, decode)))
-        val gain = sqrt(prefill * decode)
-        return if (gain >= MIN_GAIN) Choice("i8mm", "×%.2f over the dot-product build (prompt ×%.2f, reply ×%.2f)".format(gain, prefill, decode))
-        else Choice("dotprod", "the i8mm build gains only ×%.2f (under ×%.2f)".format(gain, MIN_GAIN))
+    fun choose(checks: List<LlmKernelCheck>): Choice {
+        val base = checks.firstOrNull { it.variant == "dotprod" }
+        val i8 = checks.firstOrNull { it.variant == "i8mm" } ?: return Choice("dotprod", "the i8mm build's self-test wasn't run")
+        if (base == null) return Choice("dotprod", "no dot-product answers to compare the i8mm build's with")
+        if (base.error != null) return Choice("dotprod", "the dot-product build's own self-test failed (${base.error})")
+        if (i8.error != null) return Choice("dotprod", "the i8mm build's self-test failed (${i8.error})")
+        val prompt = i8.promptAgreement ?: return Choice("dotprod", "the i8mm build's answers weren't compared")
+        val next = i8.nextAgreement ?: return Choice("dotprod", "the i8mm build's answers weren't compared")
+        if (!(prompt >= SELFTEST_MIN_AGREEMENT) || !(next >= SELFTEST_MIN_AGREEMENT))
+            return Choice("dotprod", "the i8mm build's answers differ (correlation %.4f for the prompt, %.4f for the next token)".format(prompt, next))
+        return Choice("i8mm", "its self-test answers agree with the dot-product build's (prompt %.5f, next token %.5f), %.0f ms".format(prompt, next, i8.ms))
     }
 
     // ── Vulkan on an Adreno: a comparison, never a score ─────────────────────────────────────────────────────
@@ -384,18 +321,16 @@ object LlmProbe {
     /** Report lines: the rates, each build against the first, whether the answers agree, what wasn't tried; then what the phone offers. */
     fun lines(p: LlmProbeResult): List<String> {
         val out = ArrayList<String>()
-        val first = p.runs.firstOrNull { it.error == null }
-        out += if (p.runs.isEmpty()) "LLM probe · not run: the dot-product build is the only CPU build that applies on this phone"
-            else "LLM probe · %.1f s · CPU kernels, a %d-token prompt on %d threads and a %d-token reply on %d%s · the CPU test ran in the %s build: %s".format(
-                p.seconds, p.promptTokens, p.batchThreads, p.replyTokens, p.threads,
-                if (p.pinnedCores.isEmpty()) ", unpinned" else ", pinned to cores ${p.pinnedCores.joinToString(",")}", p.chosen, p.why ?: "")
-        for (r in p.runs) {
-            out += if (r.error != null) "  CPU ${r.variant} · ${r.library} · 0 (${r.error})"
-            else "  CPU %s · %s · prefill %.2f tok/s%s · decode %.2f tok/s%s%s · built in %.1f s%s".format(r.variant, r.library, r.prefill,
-                if (first != null && r !== first && first.prefill > 0) " (×%.2f)".format(r.prefill / first.prefill) else "", r.decode,
-                if (first != null && r !== first && first.decode > 0) " (×%.2f)".format(r.decode / first.decode) else "",
-                r.agreement?.let { a -> " · answers agree %.4f%s".format(a, if (a < MIN_AGREEMENT) " — DIFFERENT" else "") } ?: "", r.buildS,
-                if (p.runs.size > 1 && r.variant == p.chosen) " · USED FOR THE SCORE" else "")
+        out += if (p.checks.isEmpty()) "LLM probe · no kernel self-test: the dot-product build is the only CPU build that applies on this phone"
+            else "LLM probe · kernel self-test, %.0f ms in all (a tiny seeded model reads a 24-token prompt, then one more token; nothing is timed against the 3B model) · the CPU test ran in the %s build: %s".format(
+                p.seconds * 1000, p.chosen, p.why ?: "")
+        for (r in p.checks) {
+            out += if (r.error != null) "  CPU ${r.variant} · ${r.library} · self-test failed (${r.error})"
+            else "  CPU %s · %s · self-test %.0f ms%s%s".format(r.variant, r.library, r.ms,
+                if (r.promptAgreement != null && r.nextAgreement != null)
+                    " · answers agree: prompt %.5f, next token %.5f%s".format(r.promptAgreement, r.nextAgreement,
+                        if (r.promptAgreement < SELFTEST_MIN_AGREEMENT || r.nextAgreement < SELFTEST_MIN_AGREEMENT) " — DIFFERENT" else "") else "",
+                if (p.checks.size > 1 && r.variant == p.chosen) " · USED FOR THE SCORE" else "")
         }
         for ((variant, why) in p.skipped) out += "  CPU $variant · not tried: $why"
         p.topology?.let { out += it }

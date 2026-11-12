@@ -7,7 +7,7 @@ import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.ai.AiTuningRow
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.example.thermohammer.engine.llm.LlmProbeResult
-import com.example.thermohammer.engine.llm.LlmProbeRun
+import com.example.thermohammer.engine.llm.LlmKernelCheck
 import com.example.thermohammer.engine.llm.LlmTrial
 import com.example.thermohammer.engine.llm.LlmTuneReport
 import com.example.thermohammer.engine.cpu.CpuTestRun
@@ -69,19 +69,19 @@ class BenchmarkReportTest {
     @Test
     fun `report carries the LLM probe, the CPU's features and the GPU drivers' answers, and the score is the rates alone`() {
         val probe = LlmProbeResult(
-            runs = listOf(LlmProbeRun("dotprod", "libbenchllm.so", 45.1, 21.0, 3.2), LlmProbeRun("i8mm", "libbenchllm_i8mm.so", 80.2, 21.5, 3.1, 0.9998)),
-            promptTokens = 112, replyTokens = 16, threads = 6, batchThreads = 8, seconds = 17.4,
+            checks = listOf(LlmKernelCheck("dotprod", "libbenchllm.so", 4.0), LlmKernelCheck("i8mm", "libbenchllm_i8mm.so", 5.0, 0.99998, 0.99997)),
+            seconds = 0.012,
             cpuFeatures = "CPU features · asimddp yes · i8mm yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"), opencl = listOf("OpenCL · 1 platform"),
-            chosen = "i8mm", why = "×1.33 over the dot-product build (prompt ×1.78, reply ×1.02)")
+            chosen = "i8mm", why = "its self-test answers agree with the dot-product build's (prompt 0.99998, next token 0.99997), 5 ms")
         val llm = LlmResult(listOf(LlmRun(LlmAccel.CPU, 44.9, 21.0, threads = 6, batchThreads = 8, kernels = "i8mm"), LlmRun(LlmAccel.GPU, 23.1, 21.2)),
             gpuName = "Mali-G1-Ultra MC12", freeGb = 9.1, largestModel = 8)
         val withProbe = llm.copy(probe = probe)
         assertEquals("the probe's text is not part of the score", llm.score, withProbe.score)
         assertEquals(llm.prefill, withProbe.prefill, 0.0)
         val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "Mali-G1-Ultra MC12", 0, llm = withProbe), "vivo X300 Pro", "16", "MT6993", "2.1", "2026-11-12 10:00")
-        for (needle in listOf("LLM probe · 17.4 s · CPU kernels, a 112-token prompt on 8 threads and a 16-token reply on 6, unpinned · the CPU test ran in the i8mm build: ×1.33 over the dot-product build",
+        for (needle in listOf("LLM probe · kernel self-test, 12 ms in all (a tiny seeded model reads a 24-token prompt, then one more token; nothing is timed against the 3B model) · the CPU test ran in the i8mm build: its self-test answers agree with the dot-product build's",
                 "LLM CPU · prefill 44.90 tok/s · decode 21.00 tok/s · 6 threads (prompt 8) · i8mm kernels",
-                "CPU i8mm · libbenchllm_i8mm.so · prefill 80.20 tok/s (×1.78)", "answers agree 0.9998", "USED FOR THE SCORE",
+                "CPU i8mm · libbenchllm_i8mm.so · self-test 5 ms · answers agree: prompt 0.99998, next token 0.99997", "USED FOR THE SCORE",
                 "CPU features · asimddp yes · i8mm yes", "Vulkan · loader 1.3.0 · 1 device", "OpenCL · 1 platform")) {
             assertTrue("report lacks '$needle':\n$text", text.contains(needle))
         }

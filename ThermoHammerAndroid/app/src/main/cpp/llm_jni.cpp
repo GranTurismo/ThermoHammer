@@ -61,6 +61,20 @@ LLM_JNI(jlong, create)(JNIEnv* env, jclass, jboolean gpu, jint threads, jlong se
     return reinterpret_cast<jlong>(h);
 }
 
+/** The few-millisecond kernel self-test (BenchCore/llm): this library's logits from a tiny seeded model, or null with the reason in error[0]. */
+LLM_JNI(jfloatArray, kernelSelftest)(JNIEnv* env, jclass, jint threads, jobjectArray error) {
+    std::vector<float> logits(static_cast<size_t>(BC_LLM_SELFTEST_LOGITS), 0.0f);
+    char err[256] = "";
+    const int n = bc_llm_kernel_selftest(threads, logits.data(), static_cast<int>(logits.size()), err, sizeof err);
+    if (n <= 0) {
+        if (error && env->GetArrayLength(error) > 0) env->SetObjectArrayElement(error, 0, env->NewStringUTF(err));
+        return nullptr;
+    }
+    jfloatArray a = env->NewFloatArray(n);
+    if (a) env->SetFloatArrayRegion(a, 0, n, logits.data());
+    return a;
+}
+
 /** What the tuning callback needs to reach LlmNative.TuneListener.onTrial; it runs on the thread that called tuneThreads. */
 struct TuneCall {
     JNIEnv* env;

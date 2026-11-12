@@ -4,8 +4,8 @@ package com.example.thermohammer.engine.llm
  * JNI surface of libbenchllm_i8mm.so: the LLM test's CPU kernels built for CPUs with i8mm (CMakeLists.txt) — the same
  * sources and C API as [LlmNative], CPU only. Its functions answer to this class's name, so it never meets the other
  * library's. Touch it only after [CpuFeatures.supportsI8mm] says the CPU has i8mm: a CPU without it would fault the
- * moment a kernel ran. LlmProbe measures it against the dot-product library first; the CPU test runs in it only
- * when it is clearly faster there and its answers agree.
+ * moment a kernel ran. LlmProbe self-tests it against the dot-product library first; the CPU test runs in it only
+ * when its answers agree.
  */
 internal object LlmNativeI8mm {
     /** Why the library didn't load (null: it did): a phone without it in the build, or a loader refusal. */
@@ -24,4 +24,5 @@ internal object LlmNativeI8mm {
     @JvmStatic external fun error(handle: Long): String
     @JvmStatic external fun lastSample(handle: Long): FloatArray
     @JvmStatic external fun destroy(handle: Long)
+    @JvmStatic external fun kernelSelftest(threads: Int, error: Array<String?>): FloatArray?
 }

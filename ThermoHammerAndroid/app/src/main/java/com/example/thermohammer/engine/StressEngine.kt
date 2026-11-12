@@ -1192,8 +1192,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             }
             if (skip != null) { runs += LlmRun(accel, 0.0, 0.0, error = skip); continue }
             if (accel == LlmAccel.CPU) {
-                // which CPU kernel build is faster here, measured before the CPU test: it runs in the winner
-                val (probe, lib) = chooseLlmKernels(pinCores, topology) ?: return@withContext null
+                // which CPU kernel build the CPU test runs in: the i8mm one where its few-millisecond self-test agrees
+                // with the dot-product build's (nothing is timed, so the CPU test starts as cold as it would without it)
+                val (probe, lib) = chooseLlmKernels(topology) ?: return@withContext null
                 kernelProbe = probe
                 kernels = lib
             }
@@ -1237,36 +1238,28 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     /**
      * Which CPU kernel build the CPU test runs in. Where the CPU reports i8mm, the dot-product build and the i8mm one
-     * each get the same short test (the same threads, pinned the same way: LlmProbe.run), and the i8mm one is chosen
-     * only if it is clearly faster there and answers the prompt the same way (LlmProbe.choose); every other phone, or
-     * a probe that can't decide, keeps the dot-product build the test always used — and spends no time here at all.
-     * This adds about two model builds and short runs (14 s on a flagship, never past LlmProbe.BUDGET_S) to a phone
-     * with i8mm. Null if the run was stopped.
+     * each run a few-millisecond self-test (a tiny seeded model: LlmProbe.checkKernels) and the i8mm one is chosen
+     * when its answers agree with the dot-product build's (LlmProbe.choose). Nothing is timed, so the phone's CPU is as
+     * cold at the start of the CPU test as it was before; every other phone, or a self-test that can't decide, keeps
+     * the dot-product build the test always used — and spends no time here at all. Null if the run was stopped.
      */
-    private fun chooseLlmKernels(pinCores: List<Int>, topology: CpuTopology): Pair<LlmProbeResult, LlmCpuLib>? {
+    private fun chooseLlmKernels(topology: CpuTopology): Pair<LlmProbeResult, LlmCpuLib>? {
         val hw = LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }
         val decision = LlmProbe.i8mmDecision(hw?.get(0), hw?.get(1), "LLM:i8mm" in llmCrashedProbes()) { LlmNativeI8mm.loadError }
         val base = LlmProbeResult(skipped = decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap(),
             cpuFeatures = hw?.let { CpuFeatures.line(it[0], it[1]) }, topology = topology.line())
         if (!decision.use || !LlmNative.loaded) return base to DotprodLib
-        val threads = if (pinCores.isNotEmpty()) pinCores.size else min(4, Runtime.getRuntime().availableProcessors())
-        _state.update { it.copy(llmAccel = LlmAccel.CPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
-            llmDetail = "CPU KERNELS · CHECKING WHICH IS FASTER · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
-        val ran = LlmProbe.run(listOf(DotprodLib, I8mmLib), threads, threads, { _state.value.isRunning },
+        val ran = LlmProbe.checkKernels(DotprodLib, I8mmLib, min(4, Runtime.getRuntime().availableProcessors()), { _state.value.isRunning },
             around = { lib, start ->
                 // each build leaves the marker it would leave as the CPU test: the dot-product build's crash is the CPU's
                 // (it is the test), the i8mm build's only drops that build next time
                 val (key, value) = if (lib.variant == "i8mm") KEY_LLM_PROBE_RUNNING to "$installStamp:LLM:i8mm"
                     else KEY_LLM_RUNNING to "$installStamp:${LlmAccel.CPU.name}"
                 if (start) benchPrefs.edit().putString(key, value).commit() else benchPrefs.edit().remove(key).commit()
-            }, cores = pinCores) { label, fraction ->
-            _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
-        }
+            })
         if (!_state.value.isRunning) return null
-        val choice = LlmProbe.choose(ran.runs)
-        val lib: LlmCpuLib = if (choice.variant == "i8mm") I8mmLib else DotprodLib
-        return ran.copy(skipped = ran.skipped + base.skipped, cpuFeatures = base.cpuFeatures, topology = base.topology,
-            chosen = choice.variant, why = choice.why) to lib
+        val lib: LlmCpuLib = if (ran.chosen == "i8mm") I8mmLib else DotprodLib
+        return ran.copy(skipped = ran.skipped + base.skipped, cpuFeatures = base.cpuFeatures, topology = base.topology) to lib
     }
 
     /**

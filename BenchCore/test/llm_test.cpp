@@ -1,5 +1,7 @@
 // Host test of the LLM test (bench_llm.h): builds the seeded model on the CPU and the GPU, checks it runs and
 // stays finite, and prints what the phones measure — prefill and decode tokens/s. Built by test/llm_run.sh.
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -100,6 +102,38 @@ static void run(int gpu) {
     }
 }
 
+/** The few-millisecond kernel self-test: finite, the same on every call and with any thread count, and quick. */
+static void selftest() {
+    std::printf("── kernel self-test\n");
+    std::vector<float> a(BC_LLM_SELFTEST_LOGITS), b(BC_LLM_SELFTEST_LOGITS), c(BC_LLM_SELFTEST_LOGITS);
+    char err[256] = "";
+    auto timed = [&](int threads, std::vector<float>& out) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const int n = bc_llm_kernel_selftest(threads, out.data(), int(out.size()), err, sizeof err);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        return std::make_pair(n, ms);
+    };
+    const auto first = timed(4, a);
+    check(first.first == BC_LLM_SELFTEST_LOGITS, "the self-test runs");
+    if (first.first != BC_LLM_SELFTEST_LOGITS) { std::printf("        %s\n", err); return; }
+    const auto again = timed(4, b);
+    const auto single = timed(1, c);
+    std::printf("        %.0f ms the first time, %.0f ms the second, %.0f ms on one thread\n", first.second, again.second, single.second);
+    check(again.first == BC_LLM_SELFTEST_LOGITS && std::memcmp(a.data(), b.data(), a.size() * sizeof(float)) == 0, "the same answer every time");
+    // the logits are not a constant, and one thread agrees with four to rounding
+    double lo = a[0], hi = a[0], worst = 0;
+    for (float v : a) { lo = std::min<double>(lo, v); hi = std::max<double>(hi, v); }
+    for (size_t i = 0; i < a.size(); i++) worst = std::max<double>(worst, std::fabs(double(a[i]) - double(c[i])));
+    check(hi > lo, "the logits are not flat");
+    check(worst <= 1e-3 * (hi - lo), "one thread and four agree");
+    char small[16] = "";
+    float few[8];
+    check(bc_llm_kernel_selftest(1, few, 8, small, sizeof small) == 0 && *small, "a buffer that is too small fails with a reason");
+    if (const char* path = std::getenv("LLM_DUMP_SELFTEST")) {          // for llm_i8mm_check.sh
+        if (FILE* f = std::fopen(path, "w")) { for (float v : a) std::fprintf(f, "%.9g\n", v); std::fclose(f); }
+    }
+}
+
 int main(int argc, char** argv) {
     std::printf("weights %.2f GB · largest model in 8 GB: %dB, in 3 GB: %dB, in 0.5 GB: %dB\n",
                 bc_llm_weight_bytes() / 1e9, bc_llm_largest_model(8e9), bc_llm_largest_model(3e9), bc_llm_largest_model(0.5e9));
@@ -113,7 +147,7 @@ int main(int argc, char** argv) {
     bc_llm_set_gpu_api("");
     check(usual == bc_llm_gpu_name(), "naming none restores the usual GPU");
     check(bc_llm_backend_log() != nullptr, "the backends' own device lines can be read");
-    if (cpu) run(0);
+    if (cpu) { selftest(); run(0); }
     if (gpu && *bc_llm_gpu_name()) run(1);
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures ? 1 : 0;
