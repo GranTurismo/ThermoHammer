@@ -162,6 +162,14 @@ class LlmProbeTest {
     }
 
     @Test
+    fun `a phone with only the dot-product build says why nothing was probed and still reports what it offers`() {
+        val lines = LlmProbe.lines(LlmProbeResult(skipped = mapOf("i8mm" to "this CPU doesn't report i8mm (AT_HWCAP2 bit 13)"),
+            cpuFeatures = "CPU features · asimddp yes · i8mm no"))
+        assertEquals(listOf("LLM probe · not run: the dot-product build is the only CPU build that applies on this phone",
+            "  CPU i8mm · not tried: this CPU doesn't report i8mm (AT_HWCAP2 bit 13)", "CPU features · asimddp yes · i8mm no"), lines)
+    }
+
+    @Test
     fun `a build that failed shows as zero with the reason`() {
         val r = run(FakeLib("dotprod", 1.0, 1.0, createError = "no model"))
         assertEquals("  CPU dotprod · libfake_dotprod.so · 0 (no model)", LlmProbe.lines(r)[1])

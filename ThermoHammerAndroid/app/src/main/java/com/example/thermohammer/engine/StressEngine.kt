@@ -1200,19 +1200,22 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val libs = if (LlmNative.loaded) listOf<LlmCpuLib>(DotprodLib) + listOfNotNull(I8mmLib.takeIf { decision.use }) else emptyList()
         val threads = cpuRun?.threads?.takeIf { it > 0 } ?: min(4, Runtime.getRuntime().availableProcessors())
         val batchThreads = cpuRun?.batchThreads?.takeIf { it > 0 } ?: threads
-        val prefix = "CPU KERNELS · NOT SCORED"
-        _state.update { it.copy(llmAccel = LlmAccel.CPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
-            llmDetail = "$prefix · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
-        val ran = LlmProbe.run(libs, threads, batchThreads, { _state.value.isRunning },
-            around = { lib, start ->
-                // only the i8mm build is the probe's own risk (the dot-product one just ran as the CPU test): its marker
-                // turns a crash into a dropped probe next time, never into a lost CPU score
-                if (lib.variant == "i8mm") {
-                    if (start) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
-                    else benchPrefs.edit().remove(KEY_LLM_PROBE_RUNNING).commit()
-                }
-            }) { label, fraction ->
-            _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
+        // with only the dot-product build there is nothing to compare it with (and it just ran as the CPU test): a phone
+        // without i8mm spends no time here at all
+        val ran = if (libs.size < 2) LlmProbeResult() else {
+            _state.update { it.copy(llmAccel = LlmAccel.CPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
+                llmDetail = "CPU KERNELS · NOT SCORED · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
+            LlmProbe.run(libs, threads, batchThreads, { _state.value.isRunning },
+                around = { lib, start ->
+                    // only the i8mm build is the probe's own risk (the dot-product one just ran as the CPU test): its marker
+                    // turns a crash into a dropped probe next time, never into a lost CPU score
+                    if (lib.variant == "i8mm") {
+                        if (start) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
+                        else benchPrefs.edit().remove(KEY_LLM_PROBE_RUNNING).commit()
+                    }
+                }) { label, fraction ->
+                _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
+            }
         }
         if (!_state.value.isRunning) return null
         val vulkan = if (LlmNative.loaded) runCatching { LlmNative.vulkanReport(gpuName).lines() }.getOrDefault(listOf("Vulkan · the probe failed")) else emptyList()

@@ -211,8 +211,9 @@ object LlmProbe {
     fun lines(p: LlmProbeResult): List<String> {
         val out = ArrayList<String>()
         val first = p.runs.firstOrNull { it.error == null }
-        out += "LLM probe · NOT SCORED · %.1f s · CPU kernels, a %d-token prompt on %d threads and a %d-token reply on %d".format(
-            p.seconds, p.promptTokens, p.batchThreads, p.replyTokens, p.threads)
+        out += if (p.runs.isEmpty()) "LLM probe · not run: the dot-product build is the only CPU build that applies on this phone"
+            else "LLM probe · NOT SCORED · %.1f s · CPU kernels, a %d-token prompt on %d threads and a %d-token reply on %d".format(
+                p.seconds, p.promptTokens, p.batchThreads, p.replyTokens, p.threads)
         for (r in p.runs) {
             out += if (r.error != null) "  CPU ${r.variant} · ${r.library} · 0 (${r.error})"
             else "  CPU %s · %s · prefill %.2f tok/s%s · decode %.2f tok/s%s%s · built in %.1f s".format(r.variant, r.library, r.prefill,
