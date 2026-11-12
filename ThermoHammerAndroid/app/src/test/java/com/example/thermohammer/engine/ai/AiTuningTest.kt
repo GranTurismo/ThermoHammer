@@ -236,6 +236,121 @@ class AiTuningTest {
     }
 
     @Test
+    fun `every op LiteRT can name comes out by name, whichever plugin names it`() {
+        // the numbers are TFLite's BuiltinOperator values (schema.fbs)
+        assertEquals("ADD", LiteRtLog.opName(0)); assertEquals("CONV_2D", LiteRtLog.opName(3)); assertEquals("EXP", LiteRtLog.opName(47))
+        assertEquals("CAST", LiteRtLog.opName(53)); assertEquals("ARG_MAX", LiteRtLog.opName(56)); assertEquals("RSQRT", LiteRtLog.opName(76))
+        assertEquals("REDUCE_MAX", LiteRtLog.opName(82)); assertEquals("RESIZE_NEAREST_NEIGHBOR", LiteRtLog.opName(97))
+        assertEquals("QUANTIZE", LiteRtLog.opName(114)); assertEquals("BATCH_MATMUL", LiteRtLog.opName(126)); assertEquals("GELU", LiteRtLog.opName(150))
+        assertEquals("op 9999", LiteRtLog.opName(9999)); assertEquals("op -1", LiteRtLog.opName(-1))
+    }
+
+    @Test
+    fun `ops the plugin won't take at all are named too, and a model with ops but no partition line is flagged`() {
+        val unsupported = listOf("E/litert: [x.cc:1] Unsupported op: 53", "E/litert: [x.cc:2] Unlegalized op: 47")
+        val d = LiteRtLog.delegation(AiTest.DETECT, unsupported)!!
+        assertFalse("no partition line was logged", d.logged)
+        assertEquals(listOf("CAST", "EXP"), d.notOnNpu)
+        assertEquals(listOf("AI 2 OBJECT DETECTION · NPU delegation unknown: LiteRT's log had no \"Partitioned subgraph\" line for this model · ops its plugin couldn't legalize: CAST, EXP"),
+            AiTuner.delegationLines(listOf(d)))
+        // a model LiteRT logged nothing for: the caller's placeholder says so rather than staying silent
+        assertEquals(listOf("AI 6 SOUND RECOGNITION · NPU delegation unknown: LiteRT's log had no \"Partitioned subgraph\" line for this model"),
+            AiTuner.delegationLines(listOf(AiDelegation(AiTest.SOUND, 0, 0, 0, emptyList(), logged = false))))
+    }
+
+    @Test
+    fun `ops that stayed on the CPU without a name are still counted`() {
+        val lines = listOf("I/litert: [x.cc:739] Partitioned subgraph<0>, selected 300 ops, from a total of 317 ops. resulted in 2 partitions.")
+        assertEquals(listOf("AI 2 OBJECT DETECTION · NPU took 300 of 317 ops in 2 partitions · 17 ops stayed on the CPU (LiteRT named none)"),
+            AiTuner.delegationLines(listOf(LiteRtLog.delegation(AiTest.DETECT, lines)!!)))
+    }
+
+    // ── the CPU's settings ──────────────────────────────────────────────────────
+
+    private val cpuModels = AiSettings.CPU_MODELS
+    private val fast = listOf(7, 4, 5, 6)                  // a Dimensity 9500's Ultra and Premium cores, fastest first
+
+    @Test
+    fun `a phone with fast cores and ADPF offers four CPU settings, the default first`() {
+        val list = AiSettings.cpu(fast, totalCores = 8, adpf = true)
+        assertEquals(listOf("default", "pin-fast", "adpf", "pin-fast+adpf"), list.map { it.id })
+        assertTrue(list.first().isDefault)
+        assertEquals(fast, list[1].cpuPin); assertFalse(list[1].adpf)
+        assertTrue(list[2].cpuPin.isEmpty()); assertTrue(list[2].adpf)
+        assertEquals(fast, list[3].cpuPin); assertTrue(list[3].adpf)
+        assertTrue(list[1].label, list[1].label.contains("7,4,5,6"))
+        assertEquals(list.size, list.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun `the cores for pinning are the four fastest, and only where there is something to choose from`() {
+        assertEquals(fast, AiSettings.cpu(listOf(7, 4, 5, 6, 0, 1), 8, adpf = false)[1].cpuPin)
+        assertEquals(listOf("default", "pin-fast"), AiSettings.cpu(fast, 8, adpf = false).map { it.id })
+        assertEquals("fewer fast cores than threads: pinning would pile threads on a core", listOf("default", "adpf"), AiSettings.cpu(listOf(7, 4, 5), 8, true).map { it.id })
+        assertEquals("a four-core phone has no cores to leave out", listOf("default", "adpf"), AiSettings.cpu(listOf(0, 1, 2, 3), 4, true).map { it.id })
+        assertEquals("unknown topology, no ADPF: nothing to try", emptyList<AiSetting>(), AiSettings.cpu(emptyList(), 8, false))
+        assertEquals(listOf("default", "adpf"), AiSettings.cpu(emptyList(), 8, true).map { it.id })
+    }
+
+    @Test
+    fun `each CPU setting changes one thing or the two together, and none touches the accelerators' options`() {
+        for (s in AiSettings.cpu(fast, 8, true).drop(1)) {
+            assertEquals(GpuBackend.AUTOMATIC, s.gpuBackend); assertFalse(s.srcQuantized); assertNull(s.cpuThreads); assertFalse(s.gpuTakesRest)
+            assertTrue(s.cpuPin.isNotEmpty() || s.adpf)
+        }
+    }
+
+    private fun cpuTune(rates: Map<String, Double>, outputs: (String) -> List<ByteArray> = { listOf(ramp) },
+                        fail: (String) -> String? = { null }, calls: MutableList<String> = ArrayList()) =
+        AiTuner.tune(AiAccel.CPU, "CPU · fast cores 7,4,5,6 first", AiSettings.cpu(fast, 8, true), cpuModels, { null }, { null }, { true },
+            Long.MAX_VALUE) { test, s ->
+            calls += "${s.id}/${test.name}"
+            fail(s.id)?.let { throw IllegalStateException(it) }
+            AiSample(rates.getValue(s.id), outputs(s.id), note = if (s.cpuPin.isNotEmpty()) "LiteRT started 3 threads: 3 of 3 inside the asked cores cpu4-7 (masks cpu4-7 ×3)" else null)
+        }
+
+    @Test
+    fun `a CPU setting clearly faster on both models and agreeing with the default's outputs is adopted`() {
+        val t = cpuTune(mapOf("default" to 100.0, "pin-fast" to 118.0, "adpf" to 103.0, "pin-fast+adpf" to 112.0))
+        assertEquals("pin-fast", t.chosen.id)
+        assertEquals("with no CPU reference the outputs are compared with the default's", "default", t.reference)
+        assertEquals(AiAccel.CPU, t.accel)
+    }
+
+    @Test
+    fun `a CPU setting under five percent faster, or slower, keeps the default`() {
+        assertTrue(cpuTune(mapOf("default" to 100.0, "pin-fast" to 104.0, "adpf" to 100.0, "pin-fast+adpf" to 101.0)).chosen.isDefault)
+        assertTrue(cpuTune(mapOf("default" to 100.0, "pin-fast" to 80.0, "adpf" to 90.0, "pin-fast+adpf" to 85.0)).chosen.isDefault)
+    }
+
+    @Test
+    fun `an ADPF setting that fails to start is rejected with its reason and the others still run`() {
+        val t = cpuTune(mapOf("default" to 100.0, "pin-fast" to 120.0, "adpf" to 0.0, "pin-fast+adpf" to 0.0),
+            fail = { if (it.contains("adpf")) "the hint session was refused: no governor" else null })
+        assertEquals("pin-fast", t.chosen.id)
+        val lines = AiTuner.lines(t)
+        assertTrue(lines.joinToString("\n"), lines.any { it.contains("performance hint session") && it.contains("rejected: failed: the hint session was refused: no governor") })
+    }
+
+    @Test
+    fun `the report says where LiteRT's threads ended up for a pinned CPU setting`() {
+        val t = cpuTune(mapOf("default" to 100.0, "pin-fast" to 120.0, "adpf" to 100.0, "pin-fast+adpf" to 100.0))
+        val lines = AiTuner.lines(t)
+        assertTrue(lines[0], lines[0].startsWith("AI tuning · CPU · CPU · fast cores 7,4,5,6 first · scored with threads on the 4 fastest cores (7,4,5,6)"))
+        val pinned = lines.first { it.contains("threads on the 4 fastest cores") && !it.startsWith("AI tuning") }
+        assertTrue(pinned, pinned.contains("LiteRT started 3 threads: 3 of 3 inside the asked cores cpu4-7") && pinned.endsWith("(masks cpu4-7 ×3)"))
+        assertTrue("the default row has no note", lines.first { it.startsWith("  default") }.let { !it.contains("LiteRT started") })
+    }
+
+    @Test
+    fun `the default is still first and alone in having no changes in every list including the CPU's`() {
+        for (list in listOf(AiSettings.gpu(), AiSettings.mediatekNpu(), AiSettings.cpu(fast, 8, true))) {
+            assertTrue(list.first().isDefault); assertEquals(1, list.count { it.isDefault })
+        }
+        assertTrue(AiSettings.DEFAULT.cpuPin.isEmpty()); assertFalse(AiSettings.DEFAULT.adpf)
+    }
+
+    @Test
     fun `the GPU backend is OpenGL only when LiteRT says OpenCL isn't usable`() {
         assertEquals("OpenCL", LiteRtLog.gpuBackend(emptyList()))
         assertNotNull(LiteRtLog.gpuBackend(listOf("I/litert: [x.cc:1] OpenCL not supported on this platform. Using OpenGL instead.")).takeIf { it.startsWith("OpenGL ES") })

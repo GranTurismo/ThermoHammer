@@ -12,7 +12,9 @@ import kotlin.math.sqrt
 //
 //   LiteRT's defaults are tuned for the phones Google tests: on a GPU that isn't an Adreno the delegate picks its
 //   API by itself (OpenCL, or OpenGL ES when the driver hides OpenCL from apps), and on a MediaTek NPU the ops
-//   its compiler can't take (YOLOX's ArgMax and Exp) run on one CPU thread. Nothing says which is best, so a
+//   its compiler can't take (YOLOX's ArgMax and Exp) run on one CPU thread. On the CPU, XNNPACK's threads go
+//   wherever the system puts them: a phone with fast and slow cores can do better with them on the fast ones, or
+//   with the system told the work is latency-critical (ADPF). Nothing says which is best, so a
 //   short probe before the scored runs tries each setting on two models, and the scored runs use the winner.
 //   A setting only wins by being clearly faster (MIN_GAIN) without losing on either probe model (MAX_LOSS) and
 //   with outputs that still agree with the CPU's (MIN_AGREEMENT) — a fast wrong answer doesn't count, as with the
@@ -42,7 +44,14 @@ data class AiSetting(
     /** NPU: threads for the ops the NPU's compiler doesn't take — LiteRT's own default is one. */
     val cpuThreads: Int? = null,
     /** NPU: the ops it doesn't take go to the GPU delegate first and only then to the CPU. */
-    val gpuTakesRest: Boolean = false
+    val gpuTakesRest: Boolean = false,
+    /**
+     * CPU: the calling thread is limited to these cores (the fast ones) while the model is built, so the threads
+     * XNNPACK starts for it inherit that mask; empty leaves the threads where the system puts them.
+     */
+    val cpuPin: List<Int> = emptyList(),
+    /** CPU: an ADPF hint session (PerformanceHintManager, Android 12+) over the threads that run the model, told how long each inference took. */
+    val adpf: Boolean = false
 ) {
     val isDefault: Boolean get() = id == DEFAULT_ID
 
@@ -71,6 +80,27 @@ object AiSettings {
         AiSetting("fp16", "FP16 precision", gpuPrecision = GpuPrecision.FP16),
         AiSetting("int8-input", "8-bit input quantization", srcQuantized = true))
 
+    /** Models the CPU settings are tried on: MobileNet is many small ops (placement and clocks matter), MiDaS bigger convolutions; both run many inferences in a probe's 0.8 s. */
+    val CPU_MODELS = listOf(AiTest.CLASSIFY, AiTest.DEPTH)
+
+    /**
+     * Tried on every phone's CPU test (they are vendor-neutral): where the XNNPACK threads run and whether the system
+     * is told the work is latency-critical. `fastCores` are the CPU's fast cores, fastest first (CpuTopology; empty when
+     * unknown); `totalCores` how many cores the phone has; `adpf` whether a hint session can be made (Android 12+).
+     * Pinning is offered only when there are cores to choose from — at least [CPU_THREADS] fast ones, and some that
+     * aren't among them. Empty when nothing but the default is possible.
+     */
+    fun cpu(fastCores: List<Int>, totalCores: Int, adpf: Boolean): List<AiSetting> {
+        val pin = fastCores.take(CPU_THREADS)
+        val canPin = pin.size == CPU_THREADS && totalCores > CPU_THREADS
+        val list = ArrayList<AiSetting>()
+        list += DEFAULT
+        if (canPin) list += AiSetting("pin-fast", "threads on the $CPU_THREADS fastest cores (${pin.joinToString(",")})", cpuPin = pin)
+        if (adpf) list += AiSetting("adpf", "performance hint session", adpf = true)
+        if (canPin && adpf) list += AiSetting("pin-fast+adpf", "fastest cores and a performance hint session", cpuPin = pin, adpf = true)
+        return if (list.size > 1) list else emptyList()
+    }
+
     /** Tried on MediaTek NeuroPilot: LiteRT 2.3.0's Kotlin API has no MediaTek options, so only what runs beside the NPU can change. */
     fun mediatekNpu(): List<AiSetting> = listOf(
         DEFAULT,
@@ -89,12 +119,13 @@ data class AiProbeResult(
     val agreement: Double = 1.0,
     val writeMs: Double = -1.0,           // copying the input in (the timed loop doesn't: it's written once)
     val readMs: Double = -1.0,            // copying the outputs back (read once, after the loop)
-    val error: String? = null
+    val error: String? = null,
+    val note: String? = null              // CPU placement: where LiteRT's threads ended up
 )
 
 /** What a probe run hands back for one model: its rate, its outputs (to compare), the copy times, or why it failed. */
 class AiSample(val ips: Double, val outputs: List<ByteArray> = emptyList(), val writeMs: Double = -1.0,
-               val readMs: Double = -1.0, val error: String? = null)
+               val readMs: Double = -1.0, val error: String? = null, val note: String? = null)
 
 data class AiTuningRow(
     val setting: AiSetting,
@@ -119,7 +150,9 @@ data class AiDelegation(
     val selected: Int,
     val total: Int,
     val partitions: Int,
-    val notOnNpu: List<String>
+    val notOnNpu: List<String>,
+    /** False: LiteRT's log had no "Partitioned subgraph" line for this model (the counts are 0; any ops named are all that is known). */
+    val logged: Boolean = true
 )
 
 // ── outputs agreeing ─────────────────────────────────────────────────────────
@@ -231,7 +264,7 @@ object AiTuner {
                 if (setting.isDefault && s.error == null) baseOutputs[test] = s.outputs
                 val against = ref ?: baseOutputs[test]
                 val agreement = if (s.error == null && against != null) AiAgreement.of(test, s.outputs, against) else 1.0
-                results[test] = AiProbeResult(s.ips, agreement, s.writeMs, s.readMs, s.error)
+                results[test] = AiProbeResult(s.ips, agreement, s.writeMs, s.readMs, s.error, s.note)
                 if (s.error != null) break
             }
             val row = AiTuningRow(setting, results, skipped)
@@ -263,14 +296,21 @@ object AiTuner {
                     ?: if (gain(row, base, models) >= MIN_GAIN) "a faster setting was used" else "gain under ${((MIN_GAIN - 1) * 100).toInt()}%, default kept"
                 else -> ""
             }
-            "  ${row.setting.label} · ${parts.joinToString(" · ").ifEmpty { "no result" }}${if (verdict.isEmpty()) "" else " · $verdict"}"
+            val note = row.results.values.firstNotNullOfOrNull { it.note }?.let { " · $it" } ?: ""
+            "  ${row.setting.label} · ${parts.joinToString(" · ").ifEmpty { "no result" }}${if (verdict.isEmpty()) "" else " · $verdict"}$note"
         }
     }
 
     /** Report lines for the NPU's delegation: ops on the NPU, partitions, and the ops that stayed on the CPU. */
     fun delegationLines(d: List<AiDelegation>): List<String> = d.map {
+        if (!it.logged) {
+            "AI %d %s · NPU delegation unknown: LiteRT's log had no \"Partitioned subgraph\" line for this model%s".format(it.test.number, it.test.title,
+                if (it.notOnNpu.isEmpty()) "" else " · ops its plugin couldn't legalize: ${it.notOnNpu.joinToString(", ")}")
+        } else
         "AI %d %s · NPU took %d of %d ops in %d partition%s%s".format(it.test.number, it.test.title, it.selected, it.total, it.partitions,
-            if (it.partitions == 1) "" else "s", if (it.notOnNpu.isEmpty()) "" else " · not on the NPU: ${it.notOnNpu.joinToString(", ")}")
+            if (it.partitions == 1) "" else "s",
+            if (it.notOnNpu.isNotEmpty()) " · not on the NPU: ${it.notOnNpu.joinToString(", ")}"
+            else if (it.selected < it.total) " · ${it.total - it.selected} ops stayed on the CPU (LiteRT named none)" else "")
     }
 }
 
@@ -279,21 +319,43 @@ object AiTuner {
 /** What LiteRT says about a model's compile, read from the app's own logcat lines (the Kotlin API reports none of it). */
 object LiteRtLog {
     private val PARTITIONED = Regex("""Partitioned subgraph<\d+>, selected (\d+) ops, from a total of (\d+) ops\. resulted in (\d+) partitions""")
-    private val UNLEGALIZED = Regex("""Unlegalized op: (\d+)""")
+    /** The MediaTek plugin says "Unlegalized op: N" for an op it can't turn into a Neuron op and "Unsupported op: N" for one it won't take at all. */
+    private val UNLEGALIZED = Regex("""(?:Unlegalized|Unsupported) op: (\d+)""")
 
-    /** LiteRT's op codes are TFLite's builtin operator numbers; these are the ones the six models and MediaTek's list involve. */
-    private val OPS = mapOf(0 to "ADD", 1 to "AVERAGE_POOL_2D", 2 to "CONCATENATION", 3 to "CONV_2D", 4 to "DEPTHWISE_CONV_2D",
-        6 to "DEQUANTIZE", 9 to "FULLY_CONNECTED", 14 to "LOGISTIC", 17 to "MAX_POOL_2D", 18 to "MUL", 19 to "RELU", 22 to "RESHAPE",
-        23 to "RESIZE_BILINEAR", 25 to "SOFTMAX", 34 to "PAD", 39 to "TRANSPOSE", 40 to "MEAN", 41 to "SUB", 42 to "DIV",
-        45 to "STRIDED_SLICE", 47 to "EXP", 53 to "CAST", 54 to "PRELU", 55 to "MAXIMUM", 56 to "ARG_MAX", 57 to "MINIMUM",
-        82 to "REDUCE_MAX", 97 to "RESIZE_NEAREST_NEIGHBOR", 114 to "QUANTIZE")
+    /**
+     * LiteRT's op codes are TFLite's builtin operator numbers (schema.fbs BuiltinOperator, which LiteRtOpCode mirrors):
+     * the whole table, so whichever op a plugin names comes out by name.
+     */
+    private val OPS: Map<Int, String> = listOf(
+        "ADD", "AVERAGE_POOL_2D", "CONCATENATION", "CONV_2D", "DEPTHWISE_CONV_2D", "DEPTH_TO_SPACE", "DEQUANTIZE", "EMBEDDING_LOOKUP",
+        "FLOOR", "FULLY_CONNECTED", "HASHTABLE_LOOKUP", "L2_NORMALIZATION", "L2_POOL_2D", "LOCAL_RESPONSE_NORMALIZATION", "LOGISTIC",
+        "LSH_PROJECTION", "LSTM", "MAX_POOL_2D", "MUL", "RELU", "RELU_N1_TO_1", "RELU6", "RESHAPE", "RESIZE_BILINEAR", "RNN", "SOFTMAX",
+        "SPACE_TO_DEPTH", "SVDF", "TANH", "CONCAT_EMBEDDINGS", "SKIP_GRAM", "CALL", "CUSTOM", "EMBEDDING_LOOKUP_SPARSE", "PAD",
+        "UNIDIRECTIONAL_SEQUENCE_RNN", "GATHER", "BATCH_TO_SPACE_ND", "SPACE_TO_BATCH_ND", "TRANSPOSE", "MEAN", "SUB", "DIV", "SQUEEZE",
+        "UNIDIRECTIONAL_SEQUENCE_LSTM", "STRIDED_SLICE", "BIDIRECTIONAL_SEQUENCE_RNN", "EXP", "TOPK_V2", "SPLIT", "LOG_SOFTMAX", "DELEGATE",
+        "BIDIRECTIONAL_SEQUENCE_LSTM", "CAST", "PRELU", "MAXIMUM", "ARG_MAX", "MINIMUM", "LESS", "NEG", "PADV2", "GREATER", "GREATER_EQUAL",
+        "LESS_EQUAL", "SELECT", "SLICE", "SIN", "TRANSPOSE_CONV", "SPARSE_TO_DENSE", "TILE", "EXPAND_DIMS", "EQUAL", "NOT_EQUAL", "LOG",
+        "SUM", "SQRT", "RSQRT", "SHAPE", "POW", "ARG_MIN", "FAKE_QUANT", "REDUCE_PROD", "REDUCE_MAX", "PACK", "LOGICAL_OR", "ONE_HOT",
+        "LOGICAL_AND", "LOGICAL_NOT", "UNPACK", "REDUCE_MIN", "FLOOR_DIV", "REDUCE_ANY", "SQUARE", "ZEROS_LIKE", "FILL", "FLOOR_MOD", "RANGE",
+        "RESIZE_NEAREST_NEIGHBOR", "LEAKY_RELU", "SQUARED_DIFFERENCE", "MIRROR_PAD", "ABS", "SPLIT_V", "UNIQUE", "CEIL", "REVERSE_V2",
+        "ADD_N", "GATHER_ND", "COS", "WHERE", "RANK", "ELU", "REVERSE_SEQUENCE", "MATRIX_DIAG", "QUANTIZE", "MATRIX_SET_DIAG", "ROUND",
+        "HARD_SWISH", "IF", "WHILE", "NON_MAX_SUPPRESSION_V4", "NON_MAX_SUPPRESSION_V5", "SCATTER_ND", "SELECT_V2", "DENSIFY", "SEGMENT_SUM",
+        "BATCH_MATMUL", "PLACEHOLDER_FOR_GREATER_OP_CODES", "CUMSUM", "CALL_ONCE", "BROADCAST_TO", "RFFT2D", "CONV_3D", "IMAG", "REAL",
+        "COMPLEX_ABS", "HASHTABLE", "HASHTABLE_FIND", "HASHTABLE_IMPORT", "HASHTABLE_SIZE", "REDUCE_ALL", "CONV_3D_TRANSPOSE", "VAR_HANDLE",
+        "READ_VARIABLE", "ASSIGN_VARIABLE", "BROADCAST_ARGS", "RANDOM_STANDARD_NORMAL", "BUCKETIZE", "RANDOM_UNIFORM", "MULTINOMIAL", "GELU",
+        "DYNAMIC_UPDATE_SLICE", "RELU_0_TO_1", "UNSORTED_SEGMENT_PROD", "UNSORTED_SEGMENT_MAX", "UNSORTED_SEGMENT_SUM", "ATAN2",
+        "UNSORTED_SEGMENT_MIN", "SIGN", "BITCAST", "BITWISE_XOR", "RIGHT_SHIFT").withIndex().associate { it.index to it.value }
 
     fun opName(code: Int): String = OPS[code] ?: "op $code"
 
-    /** The last "Partitioned subgraph" line (what the final compile kept) and every op the plugin couldn't legalize. */
+    /**
+     * The last "Partitioned subgraph" line (what the final compile kept) and every op the plugin couldn't legalize or
+     * wouldn't take. A model whose log has ops but no partition line still reports them, flagged as not fully logged;
+     * one with neither gives null (the caller says LiteRT logged nothing).
+     */
     fun delegation(test: AiTest, lines: List<String>): AiDelegation? {
-        val m = lines.mapNotNull { PARTITIONED.find(it) }.lastOrNull() ?: return null
         val off = lines.mapNotNull { UNLEGALIZED.find(it)?.groupValues?.get(1)?.toIntOrNull() }.distinct().map { opName(it) }
+        val m = lines.mapNotNull { PARTITIONED.find(it) }.lastOrNull() ?: return if (off.isEmpty()) null else AiDelegation(test, 0, 0, 0, off, logged = false)
         return AiDelegation(test, m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt(), off)
     }
 

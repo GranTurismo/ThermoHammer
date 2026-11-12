@@ -104,6 +104,24 @@ class BenchmarkReportTest {
     }
 
     @Test
+    fun `report says which CPU settings the AI test tried and where LiteRT's threads went`() {
+        val models = AiSettings.CPU_MODELS
+        val settings = AiSettings.cpu(listOf(7, 4, 5, 6), 8, adpf = true)
+        val rows = settings.mapIndexed { i, s ->
+            AiTuningRow(s, models.associateWith { AiProbeResult(100.0 + 10 * i, 1.0, note = if (s.cpuPin.isNotEmpty()) "LiteRT started 3 threads: 3 of 3 inside the asked cores cpu4-7 (masks cpu4-7 ×3)" else null) })
+        }
+        val ai = AiResult(listOf(AiRun(AiTest.CLASSIFY, AiAccel.CPU, 110.0)), npuRuntime = null,
+            tuning = listOf(AiTuning(AiAccel.CPU, "CPU · fast cores 7,4,5,6 first", models, rows, rows[1].setting, "default", 9.1)),
+            delegation = listOf(AiDelegation(AiTest.DETECT, 0, 0, 0, emptyList(), logged = false)))
+        val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "?", 0, ai = ai), "d", "16", "s", "2.1", "t")
+        for (needle in listOf("AI tuning · CPU · CPU · fast cores 7,4,5,6 first · scored with threads on the 4 fastest cores (7,4,5,6)",
+                "  performance hint session · classify 120.00/s ×1.20", "LiteRT started 3 threads: 3 of 3 inside the asked cores cpu4-7",
+                "AI 2 OBJECT DETECTION · NPU delegation unknown")) {
+            assertTrue("report lacks '$needle':\n$text", text.contains(needle))
+        }
+    }
+
+    @Test
     fun `report lists what the AI tuning tried and what the NPU left to the CPU`() {
         val models = AiSettings.GPU_MODELS
         val rows = AiSettings.gpu().take(2).mapIndexed { i, setting ->

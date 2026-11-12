@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.example.thermohammer.engine.AiAccel
 import com.example.thermohammer.engine.AiTest
+import com.example.thermohammer.engine.CpuAffinity
+import com.example.thermohammer.engine.ThreadTasks
 import com.google.ai.edge.litert.Accelerator
 import com.google.ai.edge.litert.CompiledModel
 import com.google.ai.edge.litert.Environment
@@ -130,7 +132,9 @@ class AiBench(private val context: Context) {
      * the copy of the input into the model's buffer and of the outputs back out (ms; -1 when not measured): the timed
      * loop does neither, so this is what a caller that did would add per inference.
      */
-    class Measured(val ips: Double, val outputs: List<ByteArray>, val writeMs: Double = -1.0, val readMs: Double = -1.0)
+    class Measured(val ips: Double, val outputs: List<ByteArray>, val writeMs: Double = -1.0, val readMs: Double = -1.0,
+                   /** A CPU placement setting: what the threads LiteRT started ended up allowed to run on (reported). */
+                   val note: String? = null)
 
     /** The Hexagon DSP images QNN can load here, e.g. "V79 skel" — what the npu/ Play modules installed. */
     fun npuFiles(): String {
@@ -180,8 +184,8 @@ class AiBench(private val context: Context) {
      * An NPU run that fails through the narrowed dispatch folder is tried once more through the plain library folder
      * (what the app used before the narrowing); that folder is kept only if it works, so a model that fails for
      * another reason can't switch the narrowing off for the models after it.
-     * `setting`: a tuning probe's way of running the model on a GPU that isn't an Adreno or on a MediaTek NPU
-     * (null or the default: exactly what the app has always done, which is what every other phone gets).
+     * `setting`: a tuning probe's way of running the model on a GPU that isn't an Adreno, on a MediaTek NPU, or on
+     * the CPU (cores for its threads, an ADPF hint session); null or the default: exactly what the app has always done.
      */
     fun run(test: AiTest, accel: AiAccel, input: ByteArray, seconds: Double,
             isActive: () -> Boolean, burst: Boolean = true, setting: AiSetting? = null,
@@ -239,42 +243,69 @@ class AiBench(private val context: Context) {
             }
             AiAccel.GPU -> tuned?.let { options.gpuOptions = gpuOptions(it) }
         }
-        val e = env
-        val compiled = if (e != null) CompiledModel.create(context.assets, test.asset, options, e)
-            else CompiledModel.create(context.assets, test.asset, options)
-        compiled.use { model ->
-            val inputs = model.createInputBuffers()
-            val outputs = model.createOutputBuffers()
-            try {
-                inputs[0].writeInt8(input)
-                repeat(WARMUP_RUNS) { model.run(inputs, outputs) }
-                var n = 0
-                val t0 = System.nanoTime()
-                val limit = (seconds * 1e9).toLong()
-                var lastReport = t0
-                while (System.nanoTime() - t0 < limit && isActive()) {
-                    model.run(inputs, outputs)
-                    n++
-                    val now = System.nanoTime()
-                    if (now - lastReport > 150_000_000L) {
-                        lastReport = now
-                        onProgress(((now - t0).toFloat() / limit).coerceAtMost(1f), n * 1e9 / (now - t0))
+        // CPU placement settings: the calling thread is limited to the fast cores while LiteRT builds its pool, so the
+        // threads the pool starts inherit the mask; the thread gets its own mask back when the run ends, however it ends
+        val cpuTuned = accel == AiAccel.CPU && tuned != null
+        var saved: CpuAffinity.Saved? = null
+        var hint: AdpfHint? = null
+        var note: String? = null
+        try {
+            val tasksBefore = if (cpuTuned) ThreadTasks.ids() else emptySet()
+            if (cpuTuned && tuned!!.cpuPin.isNotEmpty())
+                saved = CpuAffinity.pin(tuned.cpuPin) ?: throw IllegalStateException("the kernel refused the core mask ${tuned.cpuPin.joinToString(",")}")
+            val e = env
+            val compiled = if (e != null) CompiledModel.create(context.assets, test.asset, options, e)
+                else CompiledModel.create(context.assets, test.asset, options)
+            compiled.use { model ->
+                val inputs = model.createInputBuffers()
+                val outputs = model.createOutputBuffers()
+                try {
+                    inputs[0].writeInt8(input)
+                    repeat(WARMUP_RUNS) { model.run(inputs, outputs) }
+                    // the threads LiteRT started for the model: what is new in /proc/self/task after the warm-up (a pool
+                    // that starts its threads on first use has them by now). A pinned run says where they ended up — that
+                    // is the check that the pool inherited the mask — and an ADPF session covers them and this thread.
+                    val started = if (cpuTuned) ThreadTasks.added(tasksBefore, ThreadTasks.ids()) else emptySet()
+                    if (cpuTuned && tuned!!.cpuPin.isNotEmpty()) note = ThreadTasks.describe(ThreadTasks.masks(started), tuned.cpuPin)
+                    if (cpuTuned && tuned!!.adpf) {
+                        if (!AdpfHint.supported()) throw IllegalStateException("ADPF needs Android 12")
+                        hint = AdpfHint.start(context, (started + CpuAffinity.tid()).filter { it > 0 }.toIntArray())
+                        note = (note?.let { "$it · " } ?: "") + "hint session over ${started.size + 1} threads"
                     }
+                    var n = 0
+                    val t0 = System.nanoTime()
+                    val limit = (seconds * 1e9).toLong()
+                    var lastReport = t0
+                    var roundStart = t0
+                    while (System.nanoTime() - t0 < limit && isActive()) {
+                        model.run(inputs, outputs)
+                        n++
+                        val now = System.nanoTime()
+                        hint?.report(now - roundStart)
+                        roundStart = now
+                        if (now - lastReport > 150_000_000L) {
+                            lastReport = now
+                            onProgress(((now - t0).toFloat() / limit).coerceAtMost(1f), n * 1e9 / (now - t0))
+                        }
+                    }
+                    val ips = n * 1e9 / (System.nanoTime() - t0)
+                    if (setting == null) return Measured(ips, outputs.map { it.readInt8() })
+                    // a tuning probe also times what copying in and out would cost per inference (the loop above doesn't)
+                    val w0 = System.nanoTime()
+                    repeat(COPY_TRIALS) { inputs[0].writeInt8(input) }
+                    val writeMs = (System.nanoTime() - w0) / (COPY_TRIALS * 1e6)
+                    val r0 = System.nanoTime()
+                    var last = outputs.map { it.readInt8() }
+                    repeat(COPY_TRIALS - 1) { last = outputs.map { it.readInt8() } }
+                    return Measured(ips, last, writeMs, (System.nanoTime() - r0) / (COPY_TRIALS * 1e6), note)
+                } finally {
+                    inputs.forEach { it.close() }
+                    outputs.forEach { it.close() }
                 }
-                val ips = n * 1e9 / (System.nanoTime() - t0)
-                if (setting == null) return Measured(ips, outputs.map { it.readInt8() })
-                // a tuning probe also times what copying in and out would cost per inference (the loop above doesn't)
-                val w0 = System.nanoTime()
-                repeat(COPY_TRIALS) { inputs[0].writeInt8(input) }
-                val writeMs = (System.nanoTime() - w0) / (COPY_TRIALS * 1e6)
-                val r0 = System.nanoTime()
-                var last = outputs.map { it.readInt8() }
-                repeat(COPY_TRIALS - 1) { last = outputs.map { it.readInt8() } }
-                return Measured(ips, last, writeMs, (System.nanoTime() - r0) / (COPY_TRIALS * 1e6))
-            } finally {
-                inputs.forEach { it.close() }
-                outputs.forEach { it.close() }
             }
+        } finally {
+            hint?.close()
+            CpuAffinity.restore(saved)
         }
     }
 }

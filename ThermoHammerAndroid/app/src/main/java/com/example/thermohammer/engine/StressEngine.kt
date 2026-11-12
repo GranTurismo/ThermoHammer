@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import com.example.thermohammer.engine.ai.AdpfHint
 import com.example.thermohammer.engine.ai.AiBench
 import com.example.thermohammer.engine.ai.AiDelegation
 import com.example.thermohammer.engine.ai.AiInputs
@@ -234,7 +235,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         private const val KEY_AI_PROBE_CRASHED = "ai_probe_crashed"   // {"install:ACCEL:setting"} that took the app down
         private const val AI_PROBE_SECONDS = 0.8                      // a tuning probe measures each setting this long
         private const val AI_TUNE_BUDGET_NS = 60_000_000_000L         // and stops trying settings after this long per accelerator
-        private val AI_DELEGATION_LOG = Regex("Partitioned subgraph|Unlegalized op")   // what LiteRT logs of a model's NPU compile
+        private const val AI_CPU_TUNE_BUDGET_NS = 20_000_000_000L     // the CPU's four settings need about 8 s on a flagship: never past this
+        private val AI_DELEGATION_LOG = Regex("Partitioned subgraph|Unlegalized op|Unsupported op")   // what LiteRT logs of a model's NPU compile
         private val AI_GPU_BACKEND_LOG = Regex("OpenCL not supported on this platform")  // and when its GPU delegate falls back to OpenGL
         private const val KEY_LLM_RUNNING = "llm_running"        // "install:accel" while an LLM run is in flight
         private const val KEY_LLM_CRASHED = "llm_crashed"        // {"install:accel"} that took the app down
@@ -972,10 +974,16 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val runs = ArrayList<AiRun>()
 
         // A GPU that isn't an Adreno and a MediaTek NPU first try a few ways of running the models (AiTuning.kt) and
-        // the scored runs below use the fastest that still agrees with the CPU. Qualcomm's NPU, Adreno GPUs and
-        // every other phone skip this: they run exactly as they always have.
+        // the scored runs below use the fastest that still agrees with the CPU. Qualcomm's NPU and Adreno GPUs
+        // skip this: they run exactly as they always have. The CPU is tried on every phone: its XNNPACK threads on
+        // the fast cores (CpuTopology), and/or with an ADPF performance hint, adopted only where measured clearly faster.
         val mediatekNpu = npuProblem == null && bench.npuRuntime() == "MediaTek NeuroPilot"
+        val topology = CpuTopologyReader.read()
+        val cpuSettings = if (AiAccel.CPU !in crashed)
+            AiSettings.cpu(if (topology.canPin) topology.big else emptyList(), Runtime.getRuntime().availableProcessors(), AdpfHint.supported())
+        else emptyList()
         val tuned = buildList {
+            if (cpuSettings.isNotEmpty()) add(AiAccel.CPU)
             if (AiAccel.GPU in available && AiAccel.GPU !in crashed && AiSettings.gpuApplies(gpuRenderer)) add(AiAccel.GPU)
             if (mediatekNpu && AiAccel.NPU !in crashed) add(AiAccel.NPU)
         }
@@ -983,8 +991,13 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val tuning = ArrayList<AiTuning>()
         val chosen = HashMap<AiAccel, AiSetting>()
         for (accel in tuned) {
-            val t = tuneAi(bench, inputs, accel, if (accel == AiAccel.GPU) gpuRenderer else "MediaTek NeuroPilot", crashedSettings,
-                cpuCrashed = AiAccel.CPU in crashed) ?: return@withContext null
+            val device = when (accel) {
+                AiAccel.CPU -> topology.takeIf { it.canPin }?.let { "CPU · fast cores ${it.big.joinToString(",")} first" } ?: "CPU"
+                AiAccel.GPU -> gpuRenderer
+                else -> "MediaTek NeuroPilot"
+            }
+            val t = tuneAi(bench, inputs, accel, device, crashedSettings, cpuCrashed = AiAccel.CPU in crashed,
+                settings = when (accel) { AiAccel.CPU -> cpuSettings; AiAccel.GPU -> AiSettings.gpu(); else -> AiSettings.mediatekNpu() }) ?: return@withContext null
             tuning += t
             chosen[accel] = t.chosen
         }
@@ -1046,8 +1059,10 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 } finally {
                     benchPrefs.edit().remove(KEY_AI_RUNNING).remove(KEY_AI_PROBE_RUNNING).commit()
                 }
+                // which ops of the model stayed on the CPU, from LiteRT's own log; a model it logged nothing for is said so
                 if (measured != null && accel == AiAccel.NPU && mediatekNpu)
-                    LiteRtLog.delegation(test, bench.litertLines(startedMs - 500, AI_DELEGATION_LOG))?.let { delegation += it }
+                    delegation += LiteRtLog.delegation(test, bench.litertLines(startedMs - 500, AI_DELEGATION_LOG))
+                        ?: AiDelegation(test, 0, 0, 0, emptyList(), logged = false)
                 if (measured == null || !_state.value.isRunning) continue
                 runs += AiRun(test, accel, BenchmarkScore.round2(measured.ips))
                 if (decodedAt == 0L) {
@@ -1073,9 +1088,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
      * against the CPU's, and only a setting that wins clearly (AiTuner) is used by the scored runs.
      */
     private fun tuneAi(bench: AiBench, inputs: AiInputs, accel: AiAccel, device: String, crashedSettings: Set<String>,
-                       cpuCrashed: Boolean): AiTuning? {
-        val settings = if (accel == AiAccel.GPU) AiSettings.gpu() else AiSettings.mediatekNpu()
-        val models = if (accel == AiAccel.GPU) AiSettings.GPU_MODELS else AiSettings.NPU_MODELS
+                       cpuCrashed: Boolean, settings: List<AiSetting>): AiTuning? {
+        val models = when (accel) { AiAccel.CPU -> AiSettings.CPU_MODELS; AiAccel.GPU -> AiSettings.GPU_MODELS; else -> AiSettings.NPU_MODELS }
         val prepared = models.associateWith { inputs.input(it) }
         val total = (settings.size * models.size).toFloat()
         var done = 0
@@ -1087,7 +1101,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         // the CPU's outputs for the probe models: what a setting's outputs have to agree with (not asked of a CPU that
         // took the app down before; and its own marker, like any CPU run's, so a crash here is recorded as the CPU's)
         val references = models.associateWith { test ->
-            if (cpuCrashed) return@associateWith null
+            // the CPU's own settings are compared with its default's outputs: the CPU is the reference
+            if (cpuCrashed || accel == AiAccel.CPU) return@associateWith null
             show(test, "${accel.label} · TUNING · CHECKING THE CPU'S ANSWER · ${test.model.uppercase()} · NOT SCORED", -1.0, 0f)
             benchPrefs.edit().putString(KEY_AI_RUNNING, "$installStamp:${test.name}:${AiAccel.CPU.name}").commit()
             try {
@@ -1098,7 +1113,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val result = AiTuner.tune(accel, device, settings, models, reference = { references[it] },
             skip = { s -> if ("${accel.name}:${s.id}" in crashedSettings) "crashed the app here last time" else null },
-            isActive = { _state.value.isRunning }, deadlineNs = System.nanoTime() + AI_TUNE_BUDGET_NS) { test, setting ->
+            isActive = { _state.value.isRunning },
+            deadlineNs = System.nanoTime() + if (accel == AiAccel.CPU) AI_CPU_TUNE_BUDGET_NS else AI_TUNE_BUDGET_NS) { test, setting ->
             val label = "${accel.label} · TUNING · ${setting.label.uppercase()} · ${test.model.uppercase()} · NOT SCORED"
             show(test, label, -1.0, done / total)
             // the defaults are what the scored run is too: their crash is the accelerator's, any other setting's is its own
@@ -1112,7 +1128,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 }
                 if (accel == AiAccel.GPU && setting.isDefault && backend == null)
                     backend = LiteRtLog.gpuBackend(bench.litertLines(startedMs - 500, AI_GPU_BACKEND_LOG))
-                AiSample(m.ips, m.outputs, m.writeMs, m.readMs)
+                AiSample(m.ips, m.outputs, m.writeMs, m.readMs, note = m.note)
             } catch (e: Exception) {
                 AiSample(0.0, error = e.message ?: e.javaClass.simpleName)
             } finally {
