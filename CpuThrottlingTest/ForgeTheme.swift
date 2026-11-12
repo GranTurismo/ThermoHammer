@@ -138,8 +138,10 @@ enum ThermoFont {
     static let monoMedium   = "JetBrainsMono-Medium"
     static let monoBold     = "JetBrainsMono-Bold"
     static let monoBlack    = "JetBrainsMono-ExtraBold"
-    static let displayMed   = "SpaceGrotesk-Medium"
-    static let displayBold  = "SpaceGrotesk-Bold"
+    // The PostScript names inside the bundled files (weights 500 and 700, cut from the variable font, whose default
+    // instance is "Light" — hence the name). A name that doesn't match makes iOS fall back to the system font silently.
+    static let displayMed   = "SpaceGroteskLight-Medium"
+    static let displayBold  = "SpaceGroteskLight-Bold"
 
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         let name: String

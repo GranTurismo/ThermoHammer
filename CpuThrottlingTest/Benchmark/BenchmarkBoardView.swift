@@ -62,9 +62,27 @@ extension BenchmarkUpload {
     }
 }
 
+/** The platform tabs under the board toggle; `rawValue` is the server's OsPlatform (0 = every platform). */
+enum LeaderboardPlatform: Int, CaseIterable {
+    case all = 0, windows = 4, macOS = 3, android = 2, iOS = 1
+
+    var tab: String { self == .all ? "ALL" : name.uppercased() }
+    var name: String {
+        switch self {
+        case .all: return "All"
+        case .windows: return "Windows"
+        case .macOS: return "macOS"
+        case .android: return "Android"
+        case .iOS: return "iOS"
+        }
+    }
+    func includes(_ os: Int) -> Bool { self == .all || os == rawValue }
+}
+
 /** Leaderboard tab: the benchmark board (default) or the sustained stress board — Android's LeaderboardScreen. */
 struct LeaderboardTab: View {
     @State private var board = 0          // 0 benchmark · 1 stress
+    @State private var platform = LeaderboardPlatform.all
 
     var body: some View {
         VStack(spacing: 0) {
@@ -84,14 +102,36 @@ struct LeaderboardTab: View {
             .cornerRadius(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Forge.hairline, lineWidth: 1))
             .padding(.horizontal, 16).padding(.top, 14)
-            if board == 0 { BenchmarkBoardView() } else { LeaderboardView() }
+            platformTabs
+            if board == 0 { BenchmarkBoardView(platform: platform) } else { LeaderboardView(platform: platform) }
         }
         .background(Color.black.ignoresSafeArea())
+    }
+
+    /// Text tabs with an underline, lighter than the pill toggle above; both boards filter on the same choice.
+    private var platformTabs: some View {
+        HStack(spacing: 0) {
+            ForEach(LeaderboardPlatform.allCases, id: \.self) { p in
+                Button { withAnimation(.easeOut(duration: 0.15)) { platform = p } } label: {
+                    Text(p.tab).font(ThermoFont.mono(9, weight: platform == p ? .black : .regular)).tracking(0.5)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundColor(platform == p ? Forge.phaseMeasured : Forge.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .overlay(alignment: .bottom) {
+                            Rectangle().fill(platform == p ? Forge.phaseMeasured : Color.clear).frame(height: 2)
+                        }
+                }
+                .accessibilityAddTraits(platform == p ? .isSelected : [])
+            }
+        }
+        .overlay(alignment: .bottom) { Rectangle().fill(Forge.hairline).frame(height: 1) }
+        .padding(.horizontal, 16).padding(.top, 6)
     }
 }
 
 /** Best benchmark score per phone model, highest first. */
 struct BenchmarkBoardView: View {
+    let platform: LeaderboardPlatform
     @State private var entries: [BenchmarkDto] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -101,15 +141,31 @@ struct BenchmarkBoardView: View {
     @State private var submittingId: UUID?
     @State private var submitNote: String?
     @State private var selected: BenchmarkDto?
+    // comparing two runs: tap two rows (A, then B), or start from a run's details
+    @State private var picking = false
+    @State private var picked: [PickedRun] = []
+    @State private var comparePair: (PickedRun, PickedRun)?
+
+    private struct PickedRun { let entry: BenchmarkDto; let rank: Int }
+
+    private func pick(_ e: BenchmarkDto, rank: Int) {
+        if picked.contains(where: { $0.entry.id == e.id }) { picked.removeAll { $0.entry.id == e.id } } else { picked.append(PickedRun(entry: e, rank: rank)) }
+        if picked.count == 2 { withAnimation(.spring()) { comparePair = (picked[0], picked[1]) } }
+    }
+
+    private func stopComparing() { comparePair = nil; picking = false; picked = [] }
 
     /// This device's verified runs that haven't reached the leaderboard yet (made offline, or not submitted).
     private var unsubmitted: [BenchmarkRecord] {
         history.records.filter { $0.version == BenchmarkScore.version && $0.complete && $0.validityFlags == 0 && !$0.submitted }.reversed()
     }
 
+    /// The chosen platform's phones, highest first: ranks and the score bars are relative to these.
+    private var onPlatform: [BenchmarkDto] { entries.filter { platform.includes($0.os) } }
+
     private var shown: [(Int, BenchmarkDto)] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        return entries.enumerated().map { ($0.offset + 1, $0.element) }.filter { _, e in
+        return onPlatform.enumerated().map { ($0.offset + 1, $0.element) }.filter { _, e in
             q.isEmpty || e.deviceModel.lowercased().contains(q) || e.deviceManufacturer.lowercased().contains(q)
                 || (e.gpuName?.lowercased().contains(q) ?? false)
         }
@@ -124,10 +180,31 @@ struct BenchmarkBoardView: View {
                         Text("All six sections · best verified run per phone").font(ThermoFont.mono(9)).foregroundColor(Forge.ink0.opacity(0.4))
                     }
                     Spacer()
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { if picking { stopComparing() } else { picking = true; picked = [] } }
+                    } label: {
+                        Text(picking ? "✕ CANCEL" : "⇄ COMPARE").font(ThermoFont.mono(9, weight: .black))
+                            .foregroundColor(picking ? Forge.bg : Forge.phaseMeasured)
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .background(picking ? Forge.phaseMeasured : Forge.phaseMeasured.opacity(0.1)).cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Forge.phaseMeasured.opacity(0.5), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
                     Button { Task { await load() } } label: {
                         Text("↻").font(.system(size: 18, weight: .bold)).foregroundColor(Forge.ink0)
                     }
                     .disabled(isLoading)
+                }
+                if picking {
+                    HStack {
+                        Text(picked.first.map { "Now tap the one to compare with \($0.entry.name)" } ?? "Tap two devices to compare them")
+                            .font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Forge.ink0)
+                        Spacer()
+                        Text("\(picked.count)/2").font(ThermoFont.mono(11, weight: .black)).foregroundColor(Forge.phaseMeasured)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(Forge.phaseMeasured.opacity(0.08)).cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Forge.phaseMeasured.opacity(0.3), lineWidth: 1))
                 }
                 HStack {
                     Text("🔍").font(.system(size: 12))
@@ -151,15 +228,17 @@ struct BenchmarkBoardView: View {
                     }
                     .padding(30)
                 } else if shown.isEmpty {
-                    Text(entries.isEmpty ? "No benchmark runs yet — be the first." : "No phones match.")
+                    Text(!onPlatform.isEmpty ? "No phones match."
+                         : platform == .all ? "No benchmark runs yet — be the first." : "No \(platform.name) runs yet.")
                         .font(ThermoFont.mono(11)).foregroundColor(Forge.ink0.opacity(0.4)).padding(30)
                 } else {
-                    let top = max(entries.first?.totalScore ?? 1, 1)
+                    let top = max(onPlatform.first?.totalScore ?? 1, 1)
                     let mine = LeaderboardService.shared.getDeviceModelName()
                     ForEach(shown, id: \.1.id) { rank, e in
-                        row(rank, e, fraction: Double(e.totalScore) / Double(top), mine: e.deviceModel.caseInsensitiveCompare(mine) == .orderedSame)
+                        row(rank, e, fraction: Double(e.totalScore) / Double(top), mine: e.deviceModel.caseInsensitiveCompare(mine) == .orderedSame,
+                            pick: picking ? (picked.firstIndex { $0.entry.id == e.id } ?? -1) : nil)
                             .contentShape(Rectangle())
-                            .onTapGesture { withAnimation(.spring()) { selected = e } }
+                            .onTapGesture { if picking { pick(e, rank: rank) } else { withAnimation(.spring()) { selected = e } } }
                     }
                 }
             }
@@ -168,7 +247,18 @@ struct BenchmarkBoardView: View {
         .task { await load() }
         .overlay {
             if let e = selected {
-                BenchmarkDetailOverlay(entry: e) { withAnimation(.spring()) { selected = nil } }.transition(.opacity)
+                BenchmarkDetailOverlay(entry: e, onCompare: {
+                    let rank = (onPlatform.firstIndex { $0.id == e.id } ?? -1) + 1
+                    withAnimation(.spring()) { selected = nil; picking = true; picked = [PickedRun(entry: e, rank: rank)] }
+                }) { withAnimation(.spring()) { selected = nil } }.transition(.opacity)
+            }
+        }
+        .overlay {
+            if let pair = comparePair {
+                BenchmarkCompareOverlay(a: pair.0.entry, rankA: pair.0.rank, b: pair.1.entry, rankB: pair.1.rank) {
+                    withAnimation(.spring()) { stopComparing() }
+                }
+                .transition(.opacity)
             }
         }
     }
@@ -190,8 +280,7 @@ struct BenchmarkBoardView: View {
                             submittingId = r.id
                             Task {
                                 do {
-                                    let res = try await BenchmarkUpload.submit(r)
-                                    history.markSubmitted(r.id)
+                                    let res = try await BenchmarkUpload.submitAndRemember(r)
                                     submitNote = "Submitted · \(res.score.formatted()) points · rank #\(res.rank)"
                                     await load()
                                 } catch { submitNote = error.localizedDescription }
@@ -225,25 +314,28 @@ struct BenchmarkBoardView: View {
         isLoading = false
     }
 
-    private func row(_ rank: Int, _ e: BenchmarkDto, fraction: Double, mine: Bool) -> some View {
-        VStack(spacing: 8) {
+    private func row(_ rank: Int, _ e: BenchmarkDto, fraction: Double, mine: Bool, pick: Int? = nil) -> some View {
+        let pickColor: Color? = pick == 0 ? CompareColor.a : pick == 1 ? CompareColor.b : nil
+        return VStack(spacing: 8) {
+            // the phone and its score share the line; the long list of section scores sits below it, so it can never squeeze the name
             HStack(alignment: .center) {
                 Text("#\(rank)").font(ThermoFont.mono(11, weight: .black))
                     .foregroundColor(rank <= 3 ? Ramp.at(1 - Double(rank - 1) * 0.2) : Forge.ink2)
                     .frame(width: 38, alignment: .leading)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(e.name).font(ThermoFont.mono(12, weight: .bold)).foregroundColor(Forge.ink0).lineLimit(1)
+                    Text(e.name).font(ThermoFont.mono(12, weight: .bold)).foregroundColor(Forge.ink0).lineLimit(2)
                     Text([e.gpuName, LeaderboardService.osLabel(e.os, e.osVersion)].compactMap { $0 }.joined(separator: " · "))
                         .font(ThermoFont.mono(8)).foregroundColor(Forge.ink0.opacity(0.4)).lineLimit(1)
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(e.totalScore.formatted()).font(ThermoFont.mono(15, weight: .black)).foregroundColor(Forge.ink0)
-                    Text("CPU \(e.cpuScore.formatted()) · MEM \(e.memScore.formatted()) · GPU \(e.score.formatted()) · UX \(e.uxScore.formatted()) · AI \(e.aiScore.formatted()) · LLM \(e.llmScore.formatted()) · "
-                         + (e.rayTracing ? String(format: "RT %.0f FPS", e.test3Fps) : "NO RT"))
-                        .font(ThermoFont.mono(7)).foregroundColor(Forge.ink0.opacity(0.4)).lineLimit(1).minimumScaleFactor(0.7)
-                }
+                Spacer(minLength: 8)
+                Text(e.totalScore.formatted()).font(ThermoFont.mono(15, weight: .black)).foregroundColor(Forge.ink0)
+                if let pick { PickMark(slot: pick) }
             }
+            // each label stays with its number when the line wraps (non-breaking spaces)
+            Text("CPU\u{00A0}\(e.cpuScore.formatted()) · MEM\u{00A0}\(e.memScore.formatted()) · GPU\u{00A0}\(e.score.formatted()) · UX\u{00A0}\(e.uxScore.formatted()) · AI\u{00A0}\(e.aiScore.formatted()) · LLM\u{00A0}\(e.llmScore.formatted()) · "
+                 + (e.rayTracing ? String(format: "RT\u{00A0}%.0f\u{00A0}FPS", e.test3Fps) : "NO\u{00A0}RT"))
+                .font(ThermoFont.mono(7)).foregroundColor(Forge.ink0.opacity(0.4)).lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Forge.ink0.opacity(0.06))
@@ -256,6 +348,26 @@ struct BenchmarkBoardView: View {
         .padding(12)
         .background(Forge.surface)
         .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(mine ? Forge.phaseMeasured.opacity(0.6) : Forge.ink0.opacity(0.06), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .stroke(pickColor ?? (mine ? Forge.phaseMeasured.opacity(0.6) : Forge.ink0.opacity(0.06)), lineWidth: pickColor != nil ? 1.5 : 1))
+    }
+}
+
+/** While picking runs to compare: an empty ring, or the A / B the run was picked as. */
+private struct PickMark: View {
+    let slot: Int
+
+    var body: some View {
+        let color: Color? = slot == 0 ? CompareColor.a : slot == 1 ? CompareColor.b : nil
+        ZStack {
+            if let color {
+                Circle().fill(color)
+                Text(slot == 0 ? "A" : "B").font(ThermoFont.mono(10, weight: .black)).foregroundColor(Forge.bg)
+            } else {
+                Circle().stroke(Forge.ink0.opacity(0.3), lineWidth: 1.5)
+            }
+        }
+        .frame(width: 22, height: 22)
+        .padding(.leading, 6)
     }
 }

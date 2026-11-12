@@ -6,6 +6,10 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "16.0"
+    # the scheme runs the unit tests below (`xcodebuild test`)
+    scheme:
+      testTargets:
+        - CpuThrottlingTestTests
     sources:
       - path: CpuThrottlingTest
       # the benchmark's CPU and MEM tests: the same C++ as the Android app, optimised in debug builds too
@@ -107,8 +111,8 @@ targets:
       CODE_SIGNING_ALLOWED: YES
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       GENERATE_INFOPLIST_FILE: YES
-      MARKETING_VERSION: "2.0.2"
-      CURRENT_PROJECT_VERSION: "39"
+      MARKETING_VERSION: "2.1.0"
+      CURRENT_PROJECT_VERSION: "42"
       INFOPLIST_KEY_CFBundleDisplayName: "ThermoHammer"
       INFOPLIST_KEY_CFBundleName: "ThermoHammer"
       INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -130,3 +134,21 @@ targets:
         - "UIInterfaceOrientationPortraitUpsideDown"
         - "UIInterfaceOrientationLandscapeLeft"
         - "UIInterfaceOrientationLandscapeRight"
+  # unit tests of the pure logic (share links and texts, CSV, the stress curve, the speed check, benchmark update
+  # impact), hosted in the app: `xcodebuild test -scheme CpuThrottlingTest -destination 'platform=iOS Simulator,name=…'`
+  CpuThrottlingTestTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: CpuThrottlingTestTests
+    dependencies:
+      - target: CpuThrottlingTest
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+      PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.thermohammer.tests
+      DEVELOPMENT_TEAM: C58ABB3474
+      CODE_SIGN_STYLE: Automatic
+      # the app's module imports BenchCore through its bridging header
+      HEADER_SEARCH_PATHS: ["$(SRCROOT)/BenchCore/include", "$(SRCROOT)/BenchCore/third_party/zxing-cpp/src"]
+      "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64

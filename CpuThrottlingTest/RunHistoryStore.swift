@@ -24,6 +24,17 @@ final class RunHistoryStore: ObservableObject {
 
     func add(_ run: RunRecord) {
         records = UpdateImpact.appendCapped(records, run)
+        save()
+    }
+
+    /// The leaderboard's id for a submitted run (POST /hammer's X-Run-Id), so it can be linked to later.
+    func setServerId(_ runId: UUID, _ serverId: Int) {
+        guard let i = records.firstIndex(where: { $0.id == runId }) else { return }
+        records[i].serverId = serverId
+        save()
+    }
+
+    private func save() {
         // .atomic writes to a temp file then renames — a crash cannot leave half a file.
         try? JSONEncoder().encode(records).write(to: fileURL, options: .atomic)
     }

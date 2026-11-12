@@ -2,7 +2,14 @@ import SwiftUI
 
 /** One leaderboard run, as GET /benchmark/{id} returns it: every section's numbers already formatted by the server. */
 struct BenchmarkDetail: Decodable {
-    struct Row: Decodable { let label: String; let value: String }
+    struct Row: Decodable {
+        let label: String
+        let value: String
+        /// The measurement behind `value`, for comparing two runs; nil for text, or when the test didn't run.
+        let number: Double?
+        /// "higher" or "lower": which way `number` is better; nil when it's context rather than performance.
+        let better: String?
+    }
     struct Group: Decodable { let title: String; let points: Int?; let rows: [Row] }
     struct Section: Decodable, Identifiable {
         let key: String
@@ -26,11 +33,9 @@ struct BenchmarkDetail: Decodable {
     let sections: [Section]
 
     /// UTC time of the run, "27 Oct 2026" — the server sends .NET's 7 fractional digits, which are dropped here.
-    var date: String? {
-        let f = ISO8601DateFormatter()
-        guard let d = f.date(from: String(createdAt.prefix(19)) + "Z") else { return nil }
-        return d.formatted(date: .abbreviated, time: .omitted)
-    }
+    var date: String? { createdDate?.formatted(date: .abbreviated, time: .omitted) }
+
+    var createdDate: Date? { ISO8601DateFormatter().date(from: String(createdAt.prefix(19)) + "Z") }
 }
 
 extension BenchmarkUpload {
@@ -49,6 +54,7 @@ extension BenchmarkUpload {
 /** A benchmark leaderboard row opened: the device and its six sections, each a card that unfolds into its groups and rows. */
 struct BenchmarkDetailOverlay: View {
     let entry: BenchmarkDto
+    var onCompare: (() -> Void)? = nil
     let onClose: () -> Void
     @State private var detail: BenchmarkDetail?
     @State private var isLoading = true
@@ -67,11 +73,22 @@ struct BenchmarkDetailOverlay: View {
         }
     }
 
+    /// The run as the share card and the presentation show it (every leaderboard run is a verified one).
+    private var card: BenchmarkCard {
+        BenchmarkCard(device: entry.name, os: LeaderboardService.osLabel(detail?.os ?? entry.os, detail?.osVersion ?? entry.osVersion),
+                      date: detail?.createdDate, chip: detail?.socModel ?? entry.socModel, total: detail?.totalScore ?? entry.totalScore,
+                      sections: SectionScore.of(entry), verified: true, serverId: entry.id, mine: false)
+    }
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.85).ignoresSafeArea().onTapGesture(perform: onClose)
             VStack(spacing: 14) {
                 header
+                HStack(spacing: 8) {
+                    AnchoredButton(action: { ShareService.share(.benchmark(card), from: $0) }) { RunActionLabel(text: "SHARE", size: 9) }
+                    Button { AppOverlays.shared.present = .benchmark(card) } label: { RunActionLabel(text: "PRESENT", size: 9) }
+                }
                 Divider().background(Forge.hairline)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 10) {
@@ -118,6 +135,15 @@ struct BenchmarkDetailOverlay: View {
                 Text("TOTAL POINTS").font(ThermoFont.mono(7)).foregroundColor(Forge.ink2)
             }
             Spacer()
+            if let onCompare {
+                Button(action: onCompare) {
+                    Text("⇄ COMPARE").font(ThermoFont.mono(9, weight: .black)).foregroundColor(Forge.phaseMeasured)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(Forge.phaseMeasured.opacity(0.1)).cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Forge.phaseMeasured.opacity(0.5), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundColor(Forge.ink0)
                     .frame(width: 32, height: 32).background(Forge.ink0.opacity(0.08)).clipShape(Circle())

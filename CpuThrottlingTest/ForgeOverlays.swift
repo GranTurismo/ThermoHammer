@@ -173,6 +173,8 @@ struct VerdictOverlay: View {
     let submitError: String?
     let canSubmit: Bool        // a verified run, not submitted yet
     var online = true
+    let card: StressCard       // the run as its share card and presentation show it
+    var lostWhileCool = false  // it throttled while still cool: likely a power setting (SpeedCheck.slowedWhileCool)
     let onSubmit: () -> Void
     let onDismiss: () -> Void
 
@@ -182,90 +184,124 @@ struct VerdictOverlay: View {
     var body: some View {
         ForgeOverlayScrim {
             ForgeCard {
-                VStack(spacing: 14) {
-                    // seal
-                    ZStack {
-                        Circle()
-                            .strokeBorder(sealColor.opacity(0.5), lineWidth: 1)
-                            .frame(width: 84, height: 84)
-                        Circle()
-                            .strokeBorder(sealColor, lineWidth: 2)
-                            .frame(width: 72, height: 72)
-                            .shadow(color: sealColor.opacity(0.6), radius: 10)
-                        VStack(spacing: 0) {
-                            Image(systemName: scorecard.isVerified ? "checkmark.seal.fill" : "flag.fill")
-                                .font(.system(size: 18))
-                                .foregroundColor(sealColor)
-                            Text(scorecard.isVerified ? "VERIFIED" : "FLAGGED")
-                                .font(ThermoFont.mono(7, weight: .black))
-                                .foregroundColor(sealColor)
-                        }
-                    }
-
-                    TickerText(value: capacity, format: { String(format: "%.1f%%", $0) },
-                               color: Ramp.forCapacity(capacity), size: 44,
-                               font: ThermoFont.display(44, weight: .bold))
-                    Engraved(text: "DELIVERED CAPACITY", size: 8)
-
-                    VStack(spacing: 5) {
-                        verdictRow("BASELINE", "\(Int(scorecard.baselineIps / 1000))K it/s")
-                        verdictRow("SUSTAINED", String(format: "%.1f%%", scorecard.sustainedRatio))
-                        verdictRow("MIN SUSTAINED", scorecard.minSustained.map { String(format: "%.1f%%", $0) } ?? "—")
-                        verdictRow("ONSET", scorecard.throttleOnsetSec.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } ?? "none")
-                        verdictRow("IN THROTTLE", String(format: "%.0f%%", scorecard.timeInThrottlePct))
-                        verdictRow("CONFIDENCE", "\(scorecard.confidence)/100")
-                    }
-
-                    let flags = validityFlagNames(scorecard.validityFlags)
-                    if !flags.isEmpty {
-                        VStack(spacing: 3) {
-                            ForEach(flags, id: \.self) { f in
-                                Text(f)
-                                    .font(ThermoFont.mono(8, weight: .bold))
-                                    .foregroundColor(Ramp.at(0.5))
-                                    .padding(.horizontal, 8).padding(.vertical, 2)
-                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Ramp.at(0.5).opacity(0.5), lineWidth: 1))
-                            }
-                        }
-                    }
-
-                    if let msg = submitMsg {
-                        Text(msg).font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Ramp.at(0.05))
-                    } else if let err = submitError {
-                        Text(err).font(ThermoFont.mono(8)).foregroundColor(Ramp.at(0.85))
-                    } else if submitting {
-                        HStack(spacing: 8) {
-                            ProgressView().tint(Forge.phaseMeasured).scaleEffect(0.8)
-                            Text("SUBMITTING…").font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Forge.ink1)
-                        }
-                    } else if !scorecard.isVerified {
-                        Text("Only verified runs go to the leaderboard. This one is kept on your \(LeaderboardService.isMac ? "Mac" : "iPhone") for your own comparisons.")
-                            .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
-                    } else if canSubmit && !online {
-                        Text("No internet connection. Turn on Wi-Fi or mobile data to submit this result — until then it's saved on your \(LeaderboardService.isMac ? "Mac" : "iPhone"), and you can submit it later from the leaderboard.")
-                            .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
-                    } else if canSubmit {
-                        Button(action: onSubmit) {
-                            Text("SUBMIT TO LEADERBOARD")
-                                .font(ThermoFont.mono(10, weight: .black))
-                                .foregroundColor(Forge.bg)
-                                .frame(maxWidth: .infinity).padding(.vertical, 11)
-                                .background(Forge.phaseMeasured)
-                                .cornerRadius(10)
-                        }
-                    }
-
-                    Button(action: onDismiss) {
-                        Text("DISMISS")
-                            .font(ThermoFont.mono(10, weight: .bold))
-                            .foregroundColor(Forge.ink1)
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(Forge.interact)
-                            .cornerRadius(10)
-                    }
+                // a short phone: the card scrolls instead of running off the screen
+                ViewThatFits(in: .vertical) {
+                    content
+                    ScrollView(showsIndicators: false) { content }
                 }
             }
             .frame(width: 320)
+            .padding(.vertical, 20)
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: 14) {
+            // seal
+            ZStack {
+                Circle()
+                    .strokeBorder(sealColor.opacity(0.5), lineWidth: 1)
+                    .frame(width: 84, height: 84)
+                Circle()
+                    .strokeBorder(sealColor, lineWidth: 2)
+                    .frame(width: 72, height: 72)
+                    .shadow(color: sealColor.opacity(0.6), radius: 10)
+                VStack(spacing: 0) {
+                    Image(systemName: scorecard.isVerified ? "checkmark.seal.fill" : "flag.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(sealColor)
+                    Text(scorecard.isVerified ? "VERIFIED" : "FLAGGED")
+                        .font(ThermoFont.mono(7, weight: .black))
+                        .foregroundColor(sealColor)
+                }
+            }
+
+            TickerText(value: capacity, format: { String(format: "%.1f%%", $0) },
+                       color: Ramp.forCapacity(capacity), size: 44,
+                       font: ThermoFont.display(44, weight: .bold))
+            Engraved(text: "DELIVERED CAPACITY", size: 8)
+
+            VStack(spacing: 5) {
+                verdictRow("BASELINE", "\(Int(scorecard.baselineIps / 1000))K it/s")
+                verdictRow("SUSTAINED", String(format: "%.1f%%", scorecard.sustainedRatio))
+                verdictRow("MIN SUSTAINED", scorecard.minSustained.map { String(format: "%.1f%%", $0) } ?? "—")
+                verdictRow("ONSET", scorecard.throttleOnsetSec.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } ?? "none")
+                verdictRow("IN THROTTLE", String(format: "%.0f%%", scorecard.timeInThrottlePct))
+                verdictRow("CONFIDENCE", "\(scorecard.confidence)/100")
+            }
+
+            let flags = validityFlagNames(scorecard.validityFlags)
+            if !flags.isEmpty {
+                VStack(spacing: 3) {
+                    ForEach(flags, id: \.self) { f in
+                        Text(f)
+                            .font(ThermoFont.mono(8, weight: .bold))
+                            .foregroundColor(Ramp.at(0.5))
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Ramp.at(0.5).opacity(0.5), lineWidth: 1))
+                    }
+                }
+            }
+
+            if let msg = submitMsg {
+                Text(msg).font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Ramp.at(0.05))
+            } else if let err = submitError {
+                Text(err).font(ThermoFont.mono(8)).foregroundColor(Ramp.at(0.85))
+            } else if submitting {
+                HStack(spacing: 8) {
+                    ProgressView().tint(Forge.phaseMeasured).scaleEffect(0.8)
+                    Text("SUBMITTING…").font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Forge.ink1)
+                }
+            } else if !scorecard.isVerified {
+                Text("Only verified runs go to the leaderboard. This one is kept on your \(LeaderboardService.isMac ? "Mac" : "iPhone") for your own comparisons.")
+                    .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
+            } else if canSubmit && !online {
+                Text("No internet connection. Turn on Wi-Fi or mobile data to submit this result — until then it's saved on your \(LeaderboardService.isMac ? "Mac" : "iPhone"), and you can submit it later from the leaderboard.")
+                    .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
+            } else if canSubmit {
+                Button(action: onSubmit) {
+                    Text("SUBMIT TO LEADERBOARD")
+                        .font(ThermoFont.mono(10, weight: .black))
+                        .foregroundColor(Forge.bg)
+                        .frame(maxWidth: .infinity).padding(.vertical, 11)
+                        .background(Forge.phaseMeasured)
+                        .cornerRadius(10)
+                }
+            }
+
+            if lostWhileCool {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("It slowed down while cool — likely a power setting.")
+                        .font(ThermoFont.mono(9, weight: .bold)).foregroundColor(Ramp.at(0.5))
+                    Button { AppOverlays.shared.lostSpeed = true } label: {
+                        Text("FIND MY LOST SPEED").font(ThermoFont.mono(9, weight: .black)).tracking(1.2)
+                            .foregroundColor(Ramp.at(0.5))
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(Ramp.at(0.5).opacity(0.10)).cornerRadius(9)
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Ramp.at(0.5).opacity(0.4), lineWidth: 1))
+                    }
+                }
+                .padding(10)
+                .background(Ramp.at(0.5).opacity(0.06)).cornerRadius(10)
+            }
+
+            HStack(spacing: 6) {
+                AnchoredButton(action: { ShareService.share(.stress(card), from: $0) }) { RunActionLabel(text: "SHARE", size: 9) }
+                Button { AppOverlays.shared.present = .stress(card) } label: { RunActionLabel(text: "PRESENT", size: 9) }
+                AnchoredButton(action: {
+                    ShareService.shareCSV(CsvExport.stress(stamps, baseline: scorecard.baselineIps),
+                                          name: ShareLinks.csvFileName(stress: true, device: card.device, date: card.date ?? Date()), from: $0)
+                }) { RunActionLabel(text: "EXPORT CSV", size: 9) }
+            }
+
+            Button(action: onDismiss) {
+                Text("DISMISS")
+                    .font(ThermoFont.mono(10, weight: .bold))
+                    .foregroundColor(Forge.ink1)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(Forge.interact)
+                    .cornerRadius(10)
+            }
         }
     }
 

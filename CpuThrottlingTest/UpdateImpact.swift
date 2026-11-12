@@ -28,6 +28,9 @@ struct RunRecord: Codable, Identifiable, Equatable {
     let onsetSec: Int?             // nil = never throttled
     let validityFlags: Int
     let confidence: Int
+    // 2.1 — optional, so history saved by earlier versions still loads
+    var serverId: Int? = nil       // the leaderboard's id once submitted (POST /hammer's X-Run-Id): SITE/stress/{id}/
+    var curve: [Double]? = nil     // throughput as % of baseline, ≤ 120 even steps (StressCurve) — share/present later
 
     var osKey: String { UpdateImpact.osKey(osVersion: osVersion, osBuild: osBuild) }
 }

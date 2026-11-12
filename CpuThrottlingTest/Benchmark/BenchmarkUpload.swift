@@ -39,6 +39,10 @@ struct BenchmarkRecord: Codable, Identifiable {
     var validityFlags = 0
     var complete = false
     var submitted = false
+    // 2.1 — optional, so runs saved by earlier versions still load
+    var osBuild: String?       // kern.osversion it ran on: the benchmark's "did the update slow my phone?"
+    var deviceModel: String?   // the model it ran on (nil in earlier runs: they count as this phone's)
+    var serverId: Int?         // the leaderboard's id once submitted (POST /benchmark's id): SITE/run/{id}/
 
     init(_ r: BenchmarkResult) {
         let q = BenchmarkScore.round2
@@ -88,6 +92,8 @@ struct BenchmarkRecord: Codable, Identifiable {
         validityFlags = r.validityFlags
         complete = r.isComplete
         osVersion = UIDevice.current.systemVersion
+        osBuild = StressEngine.osBuild()
+        deviceModel = LeaderboardService.shared.getDeviceModelName()
     }
 }
 
@@ -221,6 +227,14 @@ enum BenchmarkUpload {
         return try JSONDecoder().decode(BenchmarkSubmitResponse.self, from: data)
     }
 
+    /** Submits a run and marks it submitted with its leaderboard id — what its link and its certificate point at. */
+    @MainActor
+    static func submitAndRemember(_ r: BenchmarkRecord) async throws -> BenchmarkSubmitResponse {
+        let res = try await submit(r)
+        BenchmarkHistoryStore.shared.markSubmitted(r.id, serverId: res.id)
+        return res
+    }
+
     /** The phone's chip, from its model identifier — on a Mac, the chip's name (e.g. "Apple M5"). */
     static func chipName() -> String? {
         if LeaderboardService.isMac {
@@ -259,9 +273,15 @@ final class BenchmarkHistoryStore: ObservableObject {
 
     func add(_ r: BenchmarkRecord) { records = Array((records + [r]).suffix(30)); save() }
 
-    func markSubmitted(_ id: UUID) {
-        if let i = records.firstIndex(where: { $0.id == id }) { records[i].submitted = true; save() }
+    /// `serverId`: the leaderboard's id for the run (the submit's answer) — what its share link and certificate point at.
+    func markSubmitted(_ id: UUID, serverId: Int?) {
+        guard let i = records.firstIndex(where: { $0.id == id }) else { return }
+        records[i].submitted = true
+        if let serverId { records[i].serverId = serverId }
+        save()
     }
+
+    func record(_ id: UUID) -> BenchmarkRecord? { records.first { $0.id == id } }
 
     private func save() { try? JSONEncoder().encode(records).write(to: url, options: .atomic) }
 }

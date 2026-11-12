@@ -134,20 +134,30 @@ class LeaderboardService {
         return try decoder.decode(SessionResponse.self, from: data)
     }
     
-    func submitScore(payload: HammerPayload) async throws {
+    /// Submits a stress run and returns the leaderboard's id for it — the X-Run-Id header; nil from a server that
+    /// doesn't send one yet (the body stays plain text).
+    @discardableResult
+    func submitScore(payload: HammerPayload) async throws -> Int? {
         let url = baseURL.appendingPathComponent("hammer")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         let encoder = JSONEncoder()
         request.httpBody = try encoder.encode(payload)
-        
+
         let (_, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             throw NSError(domain: "LeaderboardService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Server rejected score submission"])
         }
+        return Self.runId(fromHeader: httpResponse.value(forHTTPHeaderField: "X-Run-Id"))   // looked up case-insensitively
+    }
+
+    /// The X-Run-Id header's value as an id: a positive integer, anything else nil.
+    static func runId(fromHeader value: String?) -> Int? {
+        guard let v = value.flatMap({ Int($0.trimmingCharacters(in: .whitespaces)) }), v > 0 else { return nil }
+        return v
     }
     
     /// The app also runs, unchanged, on Apple-silicon Macs ("Designed for iPad"): there it reports itself as a Mac.
@@ -296,4 +306,26 @@ struct HammerDto: Codable, Identifiable {
     let osVersion: String
     let stabilityPercentage: Double
     let testThreadingType: Int?
+    // newer servers (2.1) also send these; nil from older ones
+    var createdAt: String? = nil     // UTC, .NET's 7 fractional digits
+    var osBuild: String? = nil
+    var stressMode: Int? = nil       // 0 CPU · 1 GPU · 2 CPU+GPU; nil = CPU (every iOS run)
+    var socModel: String? = nil
+
+    /// "Apple iPhone 17 Pro" reads as "iPhone 17 Pro"; otherwise maker and model.
+    var name: String {
+        deviceModel.lowercased().hasPrefix(deviceManufacturer.lowercased()) ? deviceModel : "\(deviceManufacturer) \(deviceModel)"
+    }
+
+    /// When the run was made, nil from servers that don't say.
+    var date: Date? {
+        guard let s = createdAt else { return nil }
+        return ISO8601DateFormatter().date(from: String(s.prefix(19)) + "Z")
+    }
+
+    /// The load the run put on the phone, as the share card and the presentation name it.
+    var loadLabel: String { stressMode == 1 ? "GPU" : stressMode == 2 ? "CPU+GPU" : "CPU" }
+
+    /// The test's length in minutes (type 0/1/2 = 5/15/30).
+    var minutes: Int { type == 1 ? 15 : type == 2 ? 30 : 5 }
 }

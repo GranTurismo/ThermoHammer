@@ -170,10 +170,32 @@ enum PhoneHealth {
     }
 }
 
+/** The last Phone Health verdict against the model's median, kept so the speed check's note and the health
+ *  certificate can say it without asking the server again. */
+struct PhoneHealthMemo: Codable {
+    let recordId: UUID?
+    let model: String
+    let percent: Int        // the run's total as % of the model's median
+    let runs: Int           // verified runs of the model behind that median
+    let slower: Bool        // SLOWER or MUCH SLOWER
+
+    private static let key = "phoneHealth.last"
+
+    static var last: PhoneHealthMemo? {
+        UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(PhoneHealthMemo.self, from: $0) }
+    }
+
+    func save() {
+        if let data = try? JSONEncoder().encode(self) { UserDefaults.standard.set(data, forKey: Self.key) }
+    }
+}
+
 /** The run against its model and the phone's own history; the model's statistics load in the background. */
 struct HealthCard: View {
     let result: BenchmarkResult
     let record: BenchmarkRecord?
+    /// Shown when the verdict is SLOWER or MUCH SLOWER: the speed check looks for a setting holding the phone back.
+    var onFindLostSpeed: (() -> Void)? = nil
     @State private var stats: ModelStats?
     @State private var loaded = false
     @ObservedObject private var history = BenchmarkHistoryStore.shared
@@ -225,6 +247,15 @@ struct HealthCard: View {
                 }
                 .font(ThermoFont.mono(9))
             }
+            if report.verdict == .slower || report.verdict == .muchSlower, let onFindLostSpeed {
+                Button(action: onFindLostSpeed) {
+                    Text("FIND MY LOST SPEED").font(ThermoFont.mono(9, weight: .black)).tracking(1.2).foregroundColor(accent)
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .background(accent.opacity(0.10)).cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.4), lineWidth: 1))
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -235,7 +266,16 @@ struct HealthCard: View {
             guard network.isConnected, stats == nil else { return }
             stats = try? await BenchmarkUpload.fetchModelStats(model: model, os: LeaderboardService.osPlatform)
             loaded = true
+            remember()
         }
+    }
+
+    /// Keeps the verdict for the speed check's note and the certificate's health line.
+    private func remember() {
+        let r = PhoneHealth.assess(result, model: model, stats: stats, history: [], current: record, osVersion: UIDevice.current.systemVersion)
+        guard let p = r.percent else { return }
+        PhoneHealthMemo(recordId: record?.id, model: model, percent: p, runs: r.runs,
+                        slower: r.verdict == .slower || r.verdict == .muchSlower).save()
     }
 }
 

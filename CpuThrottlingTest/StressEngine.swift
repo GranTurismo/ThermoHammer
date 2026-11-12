@@ -898,6 +898,6 @@ struct ThermalEvent: Identifiable, Equatable {
 }
 
 /// On the charger? Never on a Mac: UIDevice's battery is made up there (1 %, "charging", whatever the Mac's own says).
-private func deviceCharging() -> Bool {
+func deviceCharging() -> Bool {
     !LeaderboardService.isMac && (UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full)
 }

@@ -11,6 +11,9 @@ struct ContentView: View {
     @StateObject private var pendingStore = PendingResultStore.shared
     @StateObject private var runHistory = RunHistoryStore.shared
     @StateObject private var bench = BenchmarkEngine.shared
+    @StateObject private var overlays = AppOverlays.shared   // speed check · presentation · certificate
+    @StateObject private var benchHistory = BenchmarkHistoryStore.shared
+    @StateObject private var benchDismissals = BenchmarkUpdateDismissals.shared
     @State private var runBenchmark = false            // the run kind picked: stress test or benchmark
 
     @State private var selectedDuration: TestDuration = .minutes5
@@ -27,12 +30,15 @@ struct ContentView: View {
     @State private var showConnectionRequest = false
     @State private var retainedScorecard: Scorecard? = nil   // kept mounted through exit animation
     @State private var retainedStamps: [StampV2] = []
+    @State private var retainedCurve: [Double] = []             // the verdict's run as % of baseline (StressCurve)
+    @State private var retainedDate = Date()
 
     // submission
     @State private var isSubmittingScore = false
     @State private var submitSuccessMessage: String? = nil
     @State private var submitErrorMessage: String? = nil
     @State private var currentPendingResultId: UUID? = nil
+    @State private var stressServerId: Int? = nil          // the verdict's run once on the leaderboard (X-Run-Id)
 
     private var capacity: Double {
         guard engine.state.baselineIps > 0 else { return 100 }
@@ -44,6 +50,15 @@ struct ContentView: View {
         runHistory.insight(deviceModel: LeaderboardService.shared.getDeviceModelName(),
                            osVersion: UIDevice.current.systemVersion,
                            osBuild: StressEngine.osBuild())
+    }
+
+    /// The same for the benchmark: this phone's benchmark runs before and after an OS update.
+    private var benchUpdateInsight: BenchmarkUpdateImpact.Insight? {
+        guard let i = BenchmarkUpdateImpact.insight(history: benchHistory.records,
+                                                    deviceModel: LeaderboardService.shared.getDeviceModelName(),
+                                                    osVersion: UIDevice.current.systemVersion, osBuild: StressEngine.osBuild()),
+              !benchDismissals.keys.contains(i.dismissKey) else { return nil }
+        return i
     }
 
     private var phaseProgress: Double {
@@ -101,6 +116,10 @@ struct ContentView: View {
                     submitError: submitErrorMessage,
                     canSubmit: retainedScorecard!.isVerified && submitSuccessMessage == nil,
                     online: networkMonitor.isConnected,
+                    card: stressCard(retainedScorecard!),
+                    lostWhileCool: SpeedCheck.slowedWhileCool(capacity: retainedScorecard!.deliveredCapacity,
+                                                              onsetSec: retainedScorecard!.throttleOnsetSec,
+                                                              stamps: retainedStamps.map { ($0.elapsedMs, $0.thermalState) }),
                     onSubmit: submitScore,
                     onDismiss: {
                         withAnimation(.easeOut(duration: 0.2)) { showVerdict = false }
@@ -135,6 +154,7 @@ struct ContentView: View {
         }
         .forgeGrain()
         .overlay { benchmarkLayer }   // above the grain: the stage is clean black
+        .overlay { appLayer }         // above the benchmark's result, which opens some of them
         .overlay {
             if (!welcomeSeen || showWelcome || ProcessInfo.processInfo.arguments.contains("-welcomePage") || ProcessInfo.processInfo.arguments.contains("-welcomeTour")) && !bench.isRunning && !engine.isRunning
                 && !ProcessInfo.processInfo.arguments.contains("-autoBenchmark") {
@@ -151,6 +171,11 @@ struct ContentView: View {
         }
         .onAppear {   // simulator checks: `simctl launch … -autoBenchmark` runs the benchmark without the launch checks
             if ProcessInfo.processInfo.arguments.contains("-autoBenchmark") { runBenchmark = true; bench.start() }
+            // `-lostSpeed` opens FIND MY LOST SPEED; with `-lostSpeedStart` it runs the check (the second one if a first is saved)
+            if ProcessInfo.processInfo.arguments.contains("-lostSpeed") {
+                overlays.lostSpeed = true
+                if ProcessInfo.processInfo.arguments.contains("-lostSpeedStart") { SpeedCheckRunner.shared.start(again: true) }
+            }
         }
     }
 
@@ -185,6 +210,56 @@ struct ContentView: View {
 
         }
         .animation(.easeOut(duration: 0.25), value: bench.phase)
+    }
+
+    /** The layers any screen can open (AppOverlays): find my lost speed, the health certificate, a run's presentation. */
+    @ViewBuilder private var appLayer: some View {
+        ZStack {
+            if overlays.lostSpeed {
+                LostSpeedView { withAnimation(.easeOut(duration: 0.2)) { overlays.lostSpeed = false } }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(30)
+            }
+            if let request = overlays.certificate {
+                CertificateView(request: request) { withAnimation(.easeOut(duration: 0.2)) { overlays.certificate = nil } }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(30)
+            }
+            if let card = overlays.present {
+                PresentView(card: card) { withAnimation(.easeOut(duration: 0.25)) { overlays.present = nil } }
+                    .transition(.opacity)
+                    .zIndex(31)
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: overlays.lostSpeed)
+        .animation(.easeOut(duration: 0.25), value: overlays.certificate != nil)
+        .animation(.easeOut(duration: 0.3), value: overlays.present != nil)
+    }
+
+    /** Always on the diagnostics screen (but not during a run): the 30-second speed check. */
+    private var lostSpeedEntry: some View {
+        Button {
+            ThermoHaptics.tap()
+            overlays.lostSpeed = true
+        } label: {
+            HStack(spacing: 10) {
+                StatusLED(color: Forge.phaseMeasured)
+                VStack(alignment: .leading, spacing: 3) {
+                    Engraved(text: "FIND MY LOST SPEED", color: Forge.phaseMeasured, size: 10)
+                    Text("A 30-second check of how fast your \(ShareService.noun) really runs, then what's slowing it down.")
+                        .font(ThermoFont.mono(8)).foregroundColor(Forge.ink1).multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 6)
+                Text("›").font(ThermoFont.mono(18)).foregroundColor(Forge.ink2)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Forge.surface)
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Forge.phaseMeasured.opacity(0.25), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: header
@@ -271,6 +346,8 @@ struct ContentView: View {
                         ScrollView(showsIndicators: false) {
                             VStack(spacing: 16) {
                                 updateCard
+                                benchUpdateCard
+                                if !engine.isRunning { lostSpeedEntry }
                                 phaseRail
                                 HStack(alignment: .top, spacing: 16) {
                                     VStack(spacing: 16) {
@@ -350,6 +427,18 @@ struct ContentView: View {
                             .padding(.top, 10)
                     }
 
+                    if !engine.isRunning && benchUpdateInsight != nil {
+                        benchUpdateCard
+                            .padding(.horizontal, 4)
+                            .padding(.top, 10)
+                    }
+
+                    if !engine.isRunning {
+                        lostSpeedEntry
+                            .padding(.horizontal, 4)
+                            .padding(.top, 10)
+                    }
+
                     phaseRail
                         .padding(.top, 10)
 
@@ -380,6 +469,22 @@ struct ContentView: View {
     }
 
     // MARK: the instrument's panels
+
+    @ViewBuilder private var benchUpdateCard: some View {
+        if !engine.isRunning, let insight = benchUpdateInsight {
+            BenchmarkUpdateCard(
+                insight: insight,
+                onRun: {
+                    // the normal benchmark flow: the benchmark picked, then pre-flight
+                    runBenchmark = true
+                    ThermoHaptics.tap()
+                    showPreflight = true
+                },
+                onDismiss: { withAnimation(.easeOut(duration: 0.2)) { benchDismissals.dismiss(insight) } }
+            )
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
 
     @ViewBuilder private var updateCard: some View {
         if !engine.isRunning, let insight = currentUpdateInsight {
@@ -605,6 +710,17 @@ struct ContentView: View {
 
     // MARK: run end → persist + verdict
 
+    /// The verdict's run as its share card and presentation show it.
+    private func stressCard(_ sc: Scorecard) -> StressCard {
+        StressCard(device: LeaderboardService.shared.getDeviceModelName(),
+                   os: LeaderboardService.osLabel(LeaderboardService.osPlatform, UIDevice.current.systemVersion),
+                   date: retainedDate, chip: BenchmarkUpload.chipName(), capacity: sc.deliveredCapacity,
+                   minutes: Int((engine.testDuration.timeInterval ?? 300) / 60), load: "CPU",
+                   threads: engine.testThreadingType == .single ? "1 THREAD" : "MULTI THREAD",
+                   curve: retainedCurve, durationS: Double(retainedStamps.last?.elapsedMs ?? 0) / 1000,
+                   onsetSec: sc.throttleOnsetSec, verified: sc.isVerified, serverId: stressServerId, mine: true)
+    }
+
     private func handleRunEnd() {
         guard engine.state.stamps.count > 0 else {
             if engine.wasCancelledDueToBackground || engine.abortedByUser {
@@ -646,19 +762,23 @@ struct ContentView: View {
         )
         PendingResultStore.shared.saveResult(pending)
         currentPendingResultId = pending.id
+        stressServerId = nil
 
-        // Local history for the before/after-update comparison (never uploaded).
+        // Local history for the before/after-update comparison (never uploaded), with the run's curve for sharing later.
         if engine.wasCompleted, let sc {
             runHistory.add(RunRecord(
                 id: pending.id, timestamp: pending.timestamp,
                 deviceModel: pending.deviceModel, osVersion: pending.osVersion, osBuild: pending.osBuild,
                 durationType: pending.testDurationType, threadingType: engine.testThreadingType.rawValue,
                 capacity: sc.deliveredCapacity, onsetSec: sc.throttleOnsetSec,
-                validityFlags: sc.validityFlags, confidence: sc.confidence))
+                validityFlags: sc.validityFlags, confidence: sc.confidence,
+                curve: StressCurve.downsample(StressCurve.percentOf(engine.state.stamps.map(\.ipsTotal), baseline: sc.baselineIps))))
         }
 
         retainedScorecard = sc
         retainedStamps = engine.state.stamps
+        retainedCurve = StressCurve.downsample(StressCurve.percentOf(engine.state.stamps.map(\.ipsTotal), baseline: sc?.baselineIps ?? 0))
+        retainedDate = Date(timeIntervalSince1970: pending.timestamp)
         if sc != nil {
             if sc!.isVerified { ThermoHaptics.confirmed() } else { ThermoHaptics.rejected() }
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { showVerdict = true }
@@ -710,11 +830,13 @@ struct ContentView: View {
                     hashV2: hashV2,
                     osBuild: StressEngine.osBuild()
                 )
-                try await LeaderboardService.shared.submitScore(payload: payload)
+                let runId = try await LeaderboardService.shared.submitScore(payload: payload)
                 await MainActor.run {
                     if let pid = currentPendingResultId {
                         PendingResultStore.shared.deleteResult(id: pid)
+                        if let runId { runHistory.setServerId(pid, runId) }
                     }
+                    stressServerId = runId
                     isSubmittingScore = false
                     submitSuccessMessage = "SUBMITTED TO LEADERBOARD"
                 }

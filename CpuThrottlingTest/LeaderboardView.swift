@@ -8,6 +8,7 @@ struct EntryWithStability: Identifiable {
 }
 
 struct LeaderboardView: View {
+    let platform: LeaderboardPlatform
     @State private var entries: [HammerDto] = []
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
@@ -28,7 +29,6 @@ struct LeaderboardView: View {
     // Client-side Filters
     @State private var showOnlyMyDevice = false
     @State private var showOnlyMyOSVersion = false
-    @State private var selectedPlatformFilter: Int? = nil // nil = All, 1 = iOS, 2 = Android
     @State private var selectedDurationFilter: Int? = nil // nil = All, 0 = 5 Min, 1 = 15 Min, 2 = 30 Min
 
     // Multi-select comparison system
@@ -36,8 +36,9 @@ struct LeaderboardView: View {
     @State private var showAutoCompareSheet = false
     @State private var comparisonMismatchAlert: String? = nil
     
+    /// Ranked within the chosen platform (the other filters below leave the rank as it is).
     var rankedEntries: [EntryWithStability] {
-        let mapped = entries.map { entry in
+        let mapped = entries.filter { platform.includes($0.os) }.map { entry in
             EntryWithStability(
                 id: entry.id,
                 entry: entry,
@@ -78,13 +79,6 @@ struct LeaderboardView: View {
             let matchesDevice = showOnlyMyDevice ? item.entry.deviceModel.caseInsensitiveCompare(myDeviceModel) == .orderedSame : true
             let matchesOS = showOnlyMyOSVersion ? item.entry.osVersion.contains(myOSVersion) : true
             
-            let matchesPlatform: Bool
-            switch selectedPlatformFilter {
-            case 1: matchesPlatform = item.entry.os == 1
-            case 2: matchesPlatform = item.entry.os == 2
-            default: matchesPlatform = true
-            }
-            
             let matchesDuration: Bool
             switch selectedDurationFilter {
             case 0: matchesDuration = item.entry.type == 0
@@ -93,7 +87,7 @@ struct LeaderboardView: View {
             default: matchesDuration = true
             }
             
-            return matchesSearch && matchesDevice && matchesOS && matchesPlatform && matchesDuration
+            return matchesSearch && matchesDevice && matchesOS && matchesDuration
         }
     }
 
@@ -317,25 +311,6 @@ struct LeaderboardView: View {
                     }
                     
                     customFilterChip(
-                        selected: selectedPlatformFilter != nil,
-                        label: {
-                            switch selectedPlatformFilter {
-                            case 1: return "Platform: iOS"
-                            case 2: return "Platform: Android"
-                            default: return "Platform: All"
-                            }
-                        }()
-                    ) {
-                        selectedPlatformFilter = {
-                            switch selectedPlatformFilter {
-                            case .none: return 1
-                            case 1: return 2
-                            default: return nil
-                            }
-                        }()
-                    }
-                    
-                    customFilterChip(
                         selected: selectedDurationFilter != nil,
                         label: {
                             switch selectedDurationFilter {
@@ -374,7 +349,7 @@ struct LeaderboardView: View {
                     
                     if filteredEntries.isEmpty {
                         VStack(spacing: 10) {
-                            Text("NO ENTRIES FOUND")
+                            Text(rankedEntries.isEmpty && platform != .all ? "No \(platform.name) runs yet." : "NO ENTRIES FOUND")
                                 .font(ThermoFont.mono(11, weight: .bold))
                                 .foregroundColor(.secondary)
                                 .padding(.top, 40)
@@ -574,9 +549,11 @@ struct LeaderboardView: View {
                     hashV2: pending.baselineScore != nil ? hashV2 : nil,
                     osBuild: pending.osBuild   // what was recorded at test time, never today's build
                 )
-                try await LeaderboardService.shared.submitScore(payload: payload)
+                let runId = try await LeaderboardService.shared.submitScore(payload: payload)
                 await MainActor.run {
                     PendingResultStore.shared.deleteResult(id: pending.id)
+                    // the pending run and its local history entry share an id: link the history to the leaderboard
+                    if let runId { RunHistoryStore.shared.setServerId(pending.id, runId) }
                     uploadingId = nil
                 }
             } catch {
@@ -734,6 +711,18 @@ struct LeaderboardView: View {
         return chartEvents
     }
     
+    /// A leaderboard run as its share card and presentation show it: the curve from its stamps, as % of the median
+    /// of its first five seconds (the server keeps no baseline). The board only lists runs that passed its checks.
+    private func stressCard(_ entry: HammerDto, _ stamps: [DeviceHammerStamp]) -> StressCard {
+        let ms = stamps.map(\.elapsedMs)
+        let pct = StressCurve.fromScores(elapsedMs: ms, scores: stamps.map(\.score))
+        return StressCard(device: entry.name, os: LeaderboardService.osLabel(entry.os, entry.osVersion), date: entry.date,
+                          chip: entry.socModel, capacity: entry.stabilityPercentage, minutes: entry.minutes, load: entry.loadLabel,
+                          threads: (entry.testThreadingType ?? 1) == 0 ? "1 THREAD" : "MULTI THREAD",
+                          curve: StressCurve.downsample(pct), durationS: Double(ms.last ?? 0) / 1000,
+                          onsetSec: StressCurve.onsetSec(elapsedMs: ms, percent: pct), verified: true, serverId: entry.id, mine: false)
+    }
+
     private func stampsDetailCard(entry: HammerDto, stamps: [DeviceHammerStamp], stabilityVal: Double) -> some View {
         let scores = stamps.map { Double($0.score) }
         let maxScore = scores.max() ?? 1.0
@@ -790,6 +779,18 @@ struct LeaderboardView: View {
                     .cornerRadius(14)
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(Forge.phaseMeasured.opacity(0.3), lineWidth: 1))
                 }
+
+                HStack(spacing: 8) {
+                    AnchoredButton(action: { ShareService.share(.stress(stressCard(entry, stamps)), from: $0) }) {
+                        RunActionLabel(text: "SHARE", size: 10)
+                    }
+                    Button { AppOverlays.shared.present = .stress(stressCard(entry, stamps)) } label: { RunActionLabel(text: "PRESENT", size: 10) }
+                    AnchoredButton(action: {
+                        ShareService.shareCSV(CsvExport.leaderboardStress(stamps),
+                                              name: ShareLinks.csvFileName(stress: true, device: entry.name, date: entry.date ?? Date()), from: $0)
+                    }) { RunActionLabel(text: "EXPORT CSV", size: 10) }
+                }
+                .disabled(stamps.isEmpty)
             }
         }
     }

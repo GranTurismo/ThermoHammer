@@ -11,6 +11,19 @@ struct BenchmarkResultView: View {
     @StateObject private var network = NetworkMonitor.shared
     @State private var submitMessage: String?
     @State private var copied = false
+    @ObservedObject private var history = BenchmarkHistoryStore.shared
+
+    /// The run's leaderboard id once submitted (here or from its certificate): its link, its certificate.
+    private var serverId: Int? { record.flatMap { history.record($0.id)?.serverId } }
+
+    /// The run as the share card and the presentation show it.
+    private var card: BenchmarkCard {
+        BenchmarkCard(device: LeaderboardService.shared.getDeviceModelName(),
+                      os: LeaderboardService.osLabel(LeaderboardService.osPlatform, record?.osVersion ?? UIDevice.current.systemVersion),
+                      date: record?.timestamp ?? Date(), chip: BenchmarkUpload.chipName(), total: result.total,
+                      sections: SectionScore.of(result), verified: result.isVerified && result.isComplete,
+                      serverId: serverId, mine: true)
+    }
 
     var body: some View {
         ForgeOverlayScrim {
@@ -37,7 +50,7 @@ struct BenchmarkResultView: View {
                     if !result.isVerified {
                         Text(validityNote(result.validityFlags)).font(ThermoFont.mono(9)).foregroundColor(Ramp.at(0.5)).multilineTextAlignment(.center)
                     }
-                    HealthCard(result: result, record: record)
+                    HealthCard(result: result, record: record, onFindLostSpeed: { AppOverlays.shared.lostSpeed = true })
                     if let cpu = result.cpu {
                         ForEach(CpuTest.allCases, id: \.self) { t in cpuCard(t, cpu) }
                     }
@@ -352,6 +365,25 @@ struct BenchmarkResultView: View {
             if let submitMessage {
                 Text(submitMessage).font(ThermoFont.mono(9)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
             }
+            HStack(spacing: 8) {
+                AnchoredButton(action: { ShareService.share(.benchmark(card), from: $0) }) { RunActionLabel(text: "SHARE") }
+                Button { AppOverlays.shared.present = .benchmark(card) } label: { RunActionLabel(text: "PRESENT") }
+                AnchoredButton(action: {
+                    ShareService.shareCSV(CsvExport.benchmark(result),
+                                          name: ShareLinks.csvFileName(stress: false, device: card.device, date: card.date ?? Date()), from: $0)
+                }) { RunActionLabel(text: "EXPORT CSV") }
+            }
+            // for selling the phone: the verified run as a page on the site, shown as a QR code by the phone itself
+            if let record, result.isVerified && result.isComplete {
+                Button {
+                    AppOverlays.shared.certificate = CertificateRequest(record: record, device: card.device, os: card.os, total: result.total)
+                } label: {
+                    Text("HEALTH CERTIFICATE").font(ThermoFont.mono(11, weight: .black)).tracking(1).foregroundColor(Forge.phaseMeasured)
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(Forge.phaseMeasured.opacity(0.10)).cornerRadius(10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Forge.phaseMeasured.opacity(0.45), lineWidth: 1))
+                }
+            }
             HStack(spacing: 10) {
                 Button {
                     UIPasteboard.general.string = BenchmarkReport.text(result, device: LeaderboardService.shared.getDeviceModelName(),
@@ -384,8 +416,7 @@ struct BenchmarkResultView: View {
                     submitting = true
                     Task {
                         do {
-                            let r = try await BenchmarkUpload.submit(record)
-                            BenchmarkHistoryStore.shared.markSubmitted(record.id)
+                            let r = try await BenchmarkUpload.submitAndRemember(record)
                             submitMessage = "Submitted · \(r.score.formatted()) points · rank #\(r.rank)"
                         } catch {
                             submitMessage = error.localizedDescription
