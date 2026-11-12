@@ -1,14 +1,17 @@
 #!/bin/bash
 # Builds and runs the LLM host test on a Mac (Apple silicon): llama.cpp with its CPU and Metal backends, the same
 # sources and flags as the apps. Objects are kept between runs. Args go to the test: "cpu" or "gpu" runs only one.
+# LLM_I8MM=1 builds the CPU kernels as the Android app's libbenchllm_i8mm.so does (+i8mm: M2 and later run them), in
+# a folder of its own; LLM_DUMP_SAMPLE=file makes the CPU run write its prompt's logit sample there, for
+# llm_i8mm_check.sh to compare the two builds.
 set -e
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 LL="$HERE/third_party/llama.cpp"
-OUT="${TMPDIR:-/tmp}/bench_llm_test"
+OUT="${TMPDIR:-/tmp}/bench_llm_test${LLM_I8MM:+_i8mm}"
 JOBS="$(sysctl -n hw.ncpu)"
 mkdir -p "$OUT.o"
 
-ARCH="-march=armv8.2-a+dotprod+fp16"              # the phones' CPU kernels: Arm dot product, no i8mm
+ARCH="-march=armv8.2-a+dotprod+fp16${LLM_I8MM:++i8mm}"     # the phones' CPU kernels: Arm dot product; i8mm only for LLM_I8MM
 INC="-I$LL/include -I$LL/ggml/include -I$LL/ggml/src -I$LL/ggml/src/ggml-cpu -I$LL/src -I$HERE/include"
 GGML_DEFS="-D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE -DGGML_SCHED_MAX_COPIES=4 -DGGML_USE_CPU -DGGML_USE_METAL"
 CPU_DEFS="-DGGML_USE_CPU_REPACK -DGGML_USE_LLAMAFILE"

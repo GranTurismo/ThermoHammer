@@ -1,8 +1,10 @@
 // Host test of the LLM test (bench_llm.h): builds the seeded model on the CPU and the GPU, checks it runs and
 // stays finite, and prints what the phones measure — prefill and decode tokens/s. Built by test/llm_run.sh.
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <vector>
 
 #include "bench_llm.h"
 
@@ -33,6 +35,17 @@ static void run(int gpu) {
     int passes = 0;
     while (total < 3 && s > 0) { s = bc_llm_prefill(llm, BC_LLM_PROMPT); total += s; passes++; }
     if (s > 0) std::printf("        prefill %.1f tokens/s (%d × %d)\n", passes * BC_LLM_PROMPT / total, passes, int(BC_LLM_PROMPT));
+    // the logits sample of that prompt: what the Android app compares its two CPU libraries' answers by
+    const int samples = bc_llm_last_sample(llm, nullptr, 0);
+    check(samples > 1000, "a logit sample is kept for the last prompt");
+    std::vector<float> sample(size_t(samples > 0 ? samples : 0), 0.0f);
+    check(bc_llm_last_sample(llm, sample.data(), samples) == samples, "the sample can be copied out");
+    if (!gpu && std::getenv("LLM_DUMP_SAMPLE")) {
+        if (FILE* f = std::fopen(std::getenv("LLM_DUMP_SAMPLE"), "w")) {
+            for (float v : sample) std::fprintf(f, "%.9g\n", v);
+            std::fclose(f);
+        }
+    }
     if (gpu) {
         std::printf("        agreement with the CPU %.6f\n", bc_llm_agreement(llm));
         check(s > 0 && bc_llm_agreement(llm) >= 0.9, "GPU agrees with the CPU");

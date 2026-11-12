@@ -77,6 +77,13 @@ const char* bc_llm_error(const bc_llm* llm);
  */
 double bc_llm_agreement(const bc_llm* llm);
 
+/**
+ * The logits (every 97th of the vocabulary) the last bc_llm_prefill produced, for comparing two builds of the same
+ * model — the Android app's two CPU libraries. Returns how many there are (0 before a prefill) and copies up to `cap`
+ * of them to `out` (may be null to just ask).
+ */
+int bc_llm_last_sample(const bc_llm* llm, float* out, int cap);
+
 void bc_llm_destroy(bc_llm* llm);
 
 /**

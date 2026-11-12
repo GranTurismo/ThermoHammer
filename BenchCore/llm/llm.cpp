@@ -253,6 +253,7 @@ struct bc_llm {
     std::string error;
     bool gpu = false;
     double agreement = 1;                    // the last prefill's correlation with the CPU's output
+    std::vector<float> last_sample;          // the last prefill's sampled logits: what two builds' outputs are compared by
     int threads = 0, batch_threads = 0;
     // the CPU's worker threads, kept for the whole run as llama-bench keeps them: without a pool ggml starts and
     // ends its threads for every graph — every token — and on a phone threads that new never look busy enough
@@ -435,6 +436,7 @@ double bc_llm_prefill(bc_llm* llm, int tokens) {
         if (!std::isfinite(logits[i])) { llm->error = "the model's output was not a number"; return -1; }
         sample.push_back(logits[i]);
     }
+    llm->last_sample = sample;
     {
         std::lock_guard<std::mutex> lock(g_ref_mutex);
         const auto key = std::make_pair(llm->seed, tokens);
@@ -503,6 +505,12 @@ void bc_llm_cancel(bc_llm* llm) { llm->cancelled = true; }
 const char* bc_llm_error(const bc_llm* llm) { return llm->error.c_str(); }
 
 double bc_llm_agreement(const bc_llm* llm) { return llm->agreement; }
+
+int bc_llm_last_sample(const bc_llm* llm, float* out, int cap) {
+    const int n = int(llm->last_sample.size());
+    if (out && cap > 0) std::memcpy(out, llm->last_sample.data(), sizeof(float) * size_t(std::min(n, cap)));
+    return n;
+}
 
 void bc_llm_destroy(bc_llm* llm) {
     if (!llm) return;
