@@ -304,7 +304,6 @@ object LlmProbe {
     // ── Vulkan on an Adreno: a comparison, never a score ─────────────────────────────────────────────────────
 
     const val GPU_PROMPT = 512            // BC_LLM_PROMPT: the length the CPU's reference answer exists for
-    const val GPU_BUDGET_S = 30.0         // the GPU probe isn't started if the run is stopped, and stops early past this
     private const val GPU_WARM_TOKENS = 2
 
     /** Whether Vulkan is also run on an Adreno (the scored GPU is its OpenCL), and if not why not. */
