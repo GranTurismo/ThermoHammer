@@ -100,6 +100,11 @@ void bc_qr_corners(const bc_qr* qr, int index, float corners[8]);
 int bc_qr_scan(bc_qr* qr, int index, float found[8]);
 void bc_qr_destroy(bc_qr* qr);
 
+/** A QR code for `text` (UTF-8, e.g. a certificate link) to show on screen — not part of any test. Writes the code's
+ *  modules row by row to `modules` (1 = dark, 0 = light; no quiet zone, error correction M) and returns the side in
+ *  modules; 0 when `text` is empty, too long, or the code needs more than `capacity` bytes (177 × 177 always fits). */
+int bc_qr_encode(const char* text, uint8_t* modules, int capacity);
+
 #ifdef __cplusplus
 }
 #endif

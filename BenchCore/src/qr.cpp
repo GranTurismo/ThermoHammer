@@ -214,4 +214,19 @@ int bc_qr_scan(bc_qr* qr, int index, float found[8]) {
 
 void bc_qr_destroy(bc_qr* qr) { delete qr; }
 
+int bc_qr_encode(const char* text, uint8_t* modules, int capacity) {
+    if (!text || !*text || !modules) return 0;
+    try {
+        ZXing::BitMatrix m = ZXing::QRCode::Writer()
+            .setMargin(0).setErrorCorrectionLevel(ZXing::QRCode::ErrorCorrectionLevel::Medium).encode(std::string(text), 0, 0);
+        const int n = m.width();
+        if (n <= 0 || n != m.height() || n * n > capacity) return 0;
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++) modules[y * n + x] = m.get(x, y) ? 1 : 0;
+        return n;
+    } catch (...) {
+        return 0;
+    }
+}
+
 }  // extern "C"

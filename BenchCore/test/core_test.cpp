@@ -13,6 +13,12 @@
 
 #include "../src/core.hpp"
 
+#include "Barcode.h"
+#include "HybridBinarizer.h"
+#include "ImageView.h"
+#include "ReaderOptions.h"
+#include "qrcode/QRReader.h"
+
 static int failures = 0;
 
 static void expect(bool ok, const std::string& what) {
@@ -181,6 +187,28 @@ int main(int argc, char** argv) {
         bc_qr_destroy(qr);
     } else {
         expect(false, "QR frames");
+    }
+
+    // QR encode (certificate links): the modules read back as the text, and bad input gives 0
+    {
+        const char* link = "https://thermohammer.gtgroup.dev/cert/12345/";
+        std::vector<uint8_t> m(177 * 177);
+        const int side = bc_qr_encode(link, m.data(), int(m.size()));
+        expect(side >= 21 && (side - 17) % 4 == 0, "QR encode side " + std::to_string(side));
+        const int quiet = 4, scale = 6, px = (side + 2 * quiet) * scale;
+        std::vector<uint8_t> img(size_t(px) * px, 255);
+        for (int y = 0; y < side; y++)
+            for (int x = 0; x < side; x++)
+                if (m[y * side + x])
+                    for (int dy = 0; dy < scale; dy++)
+                        std::memset(&img[size_t((y + quiet) * scale + dy) * px + (x + quiet) * scale], 0, scale);
+        ZXing::ReaderOptions opts;
+        opts.setFormats(ZXing::BarcodeFormat::QRCode);
+        const ZXing::QRCode::Reader reader(opts);
+        const ZXing::Barcode read = reader.decode(ZXing::HybridBinarizer(ZXing::ImageView(img.data(), px, px, ZXing::ImageFormat::Lum)));
+        expect(read.isValid() && read.text() == link, "QR encode reads back: " + read.text());
+        expect(bc_qr_encode("", m.data(), int(m.size())) == 0, "QR encode: empty text gives 0");
+        expect(bc_qr_encode(link, m.data(), 100) == 0, "QR encode: too little room gives 0");
     }
 
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
