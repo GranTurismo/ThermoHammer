@@ -64,3 +64,6 @@ ThermoHammerWindows/installer/.cache/
 ThermoHammerWindows/installer/out/
 ThermoHammerWindows/bin/
 ThermoHammerWindows/obj/
+ThermoHammerWindows/msix/.tools/
+ThermoHammerWindows/msix/.cache/
+ThermoHammerWindows/msix/out/
