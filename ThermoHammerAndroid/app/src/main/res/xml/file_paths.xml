@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the share sheet may hand to other apps (ui/share/ShareSheet.kt): share cards and CSV exports, both in the cache. -->
+<paths>
+    <cache-path name="share" path="share/" />
+    <cache-path name="export" path="export/" />
+</paths>

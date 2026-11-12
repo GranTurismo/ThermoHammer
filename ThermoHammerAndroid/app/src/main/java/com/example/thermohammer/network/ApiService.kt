@@ -4,6 +4,8 @@ import com.example.thermohammer.engine.StampV2
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.HttpException
+import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
@@ -77,7 +79,12 @@ data class HammerDto(
     @SerializedName("os") val os: Int,
     @SerializedName("osVersion") val osVersion: String,
     @SerializedName("stabilityPercentage") val stabilityPercentage: Double,
-    @SerializedName("testThreadingType") val testThreadingType: Int? = 1
+    @SerializedName("testThreadingType") val testThreadingType: Int? = 1,
+    // newer servers only — null otherwise
+    @SerializedName("createdAt") val createdAt: String? = null,
+    @SerializedName("osBuild") val osBuild: String? = null,
+    @SerializedName("stressMode") val stressMode: Int? = null,         // 0=CPU 1=GPU 2=COMBINED; null = CPU
+    @SerializedName("socModel") val socModel: String? = null
 )
 
 // ── GPU benchmark ──────────────────────────────────────────────────────────────
@@ -287,7 +294,11 @@ data class DetailGroupDto(
 
 data class DetailRowDto(
     @SerializedName("label") val label: String,
-    @SerializedName("value") val value: String
+    @SerializedName("value") val value: String,
+    /** The measurement behind [value], for comparing two runs; null for text, or when the test didn't run. */
+    @SerializedName("number") val number: Double? = null,
+    /** "higher" or "lower": which way [number] is better; null when it's context rather than performance. */
+    @SerializedName("better") val better: String? = null
 )
 
 // ── Retrofit Interface ─────────────────────────────────────────────────────────
@@ -296,8 +307,9 @@ interface ThermoApi {
     @POST("session")
     suspend fun createSession(): SessionResponse
 
+    /** The body stays plain text; the new run's id comes in the X-Run-Id header (absent on older servers). */
     @POST("hammer")
-    suspend fun submitScore(@Body payload: HammerPayload)
+    suspend fun submitScore(@Body payload: HammerPayload): Response<Unit>
 
     @GET("leaderboard")
     suspend fun fetchLeaderboard(): List<HammerDto>
@@ -319,6 +331,19 @@ interface ThermoApi {
     @GET("benchmark/model")
     suspend fun fetchModelStats(@Query("model") model: String, @Query("os") os: Int): ModelStatsDto
 }
+
+/**
+ * Submits a stress run: throws like the other calls on a non-2xx answer, and returns the leaderboard's id for it from
+ * the X-Run-Id header — null from a server that doesn't send one yet.
+ */
+suspend fun ThermoApi.submitHammer(payload: HammerPayload): Int? {
+    val response = submitScore(payload)
+    if (!response.isSuccessful) throw HttpException(response)
+    return runIdHeader(response.headers()["X-Run-Id"])          // OkHttp looks headers up case-insensitively
+}
+
+/** The X-Run-Id header's value as an id: a positive integer, anything else null. */
+fun runIdHeader(value: String?): Int? = value?.trim()?.toIntOrNull()?.takeIf { it > 0 }
 
 // ── Singleton Client ───────────────────────────────────────────────────────────
 

@@ -23,10 +23,17 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.thermohammer.data.PendingResultStore
 import com.example.thermohammer.data.PendingTestResult
+import com.example.thermohammer.data.CsvExport
+import com.example.thermohammer.data.MyDeviceName
+import com.example.thermohammer.data.RunHistoryStore
+import com.example.thermohammer.data.ShareLinks
+import com.example.thermohammer.data.deviceDisplayName
+import com.example.thermohammer.network.submitHammer
 import com.example.thermohammer.network.ApiClient
 import com.example.thermohammer.network.BenchmarkDetailDto
 import com.example.thermohammer.network.BenchmarkDto
@@ -37,15 +44,46 @@ import com.example.thermohammer.network.ThermoHasher
 import com.example.thermohammer.network.toWire
 import com.example.thermohammer.ui.components.*
 import com.example.thermohammer.ui.overlays.*
+import com.example.thermohammer.ui.share.RunCard
+import com.example.thermohammer.ui.share.ShareSheet
 import com.example.thermohammer.ui.theme.*
 import kotlinx.coroutines.launch
 
 data class RankedEntry(val entry: HammerDto, val rank: Int, val stability: Double)
 
-/** Leaderboard tab: the benchmark board (default) or the sustained stress board. */
+/** A run picked for comparing, with the rank it has on the board as shown. */
+private data class PickedRun(val entry: BenchmarkDto, val rank: Int)
+
+/** Platform tabs shared by both boards: 0 = every platform (default), otherwise the server's OsPlatform id. */
+private val platformTabs = listOf(0 to "ALL", 4 to "WINDOWS", 3 to "MACOS", 2 to "ANDROID", 1 to "IOS")
+
+private fun platformName(os: Int): String = when (os) { 1 -> "iOS"; 2 -> "Android"; 3 -> "macOS"; 4 -> "Windows"; else -> "" }
+
+/** The name this phone reports (what every upload sends): the manufacturer, then Build.MODEL — "HONOR VKP-NX9". */
+private fun reportedModel(): String {
+    val maker = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() }
+    return if (android.os.Build.MODEL.startsWith(maker, ignoreCase = true)) android.os.Build.MODEL else "$maker ${android.os.Build.MODEL}"
+}
+
+/** The name the boards list this phone under ("HONOR 600 Pro"): the server turns the code into it. Null until it answers, or offline. */
+@Composable
+private fun rememberMyBoardName(online: Boolean): String? {
+    val context = LocalContext.current
+    return produceState<String?>(null, online) {
+        if (online) value = runCatching { ApiClient.api.fetchModelStats(reportedModel(), 2).deviceModel }.getOrNull()
+            ?.also { MyDeviceName.remember(context, it) }          // the name share cards and the certificate use
+    }.value
+}
+
+/** Is this board entry this phone? By the server's name when it is known, and by the hardware code inside older names ("HONOR VKP-NX9"). */
+private fun isMyPhone(boardName: String, myName: String?): Boolean =
+    (myName != null && boardName.equals(myName, ignoreCase = true)) || boardName.contains(android.os.Build.MODEL, ignoreCase = true)
+
+/** Leaderboard tab: the benchmark board (default) or the sustained stress board, filtered by platform. */
 @Composable
 fun LeaderboardScreen(isNetworkConnected: Boolean) {
     var board by remember { mutableIntStateOf(0) }       // 0 benchmark · 1 stress
+    var platform by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)
@@ -65,21 +103,42 @@ fun LeaderboardScreen(isNetworkConnected: Boolean) {
                 }
             }
         }
+        PlatformTabs(platform) { platform = it }
         Box(Modifier.weight(1f)) {
-            if (board == 0) BenchmarkBoard(isNetworkConnected) else StressBoard(isNetworkConnected)
+            if (board == 0) BenchmarkBoard(isNetworkConnected, platform) else StressBoard(isNetworkConnected, platform)
         }
     }
 }
 
-/** Best benchmark score per device model, highest first. */
+/** ALL · WINDOWS · MACOS · ANDROID · IOS, a lighter strip than the board toggle above it. */
 @Composable
-private fun BenchmarkBoard(isNetworkConnected: Boolean) {
+internal fun PlatformTabs(selected: Int, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 6.dp)) {
+        for ((os, label) in platformTabs) {
+            val on = selected == os
+            Column(
+                Modifier.weight(1f).clickable { onSelect(os) }.padding(top = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(label, style = TextStyle(color = if (on) Forge.phaseMeasured else Forge.ink1, fontSize = 9.sp,
+                    fontFamily = InstrumentMono, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp), maxLines = 1)
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth().height(2.dp).background(if (on) Forge.phaseMeasured else Forge.hairline))
+            }
+        }
+    }
+}
+
+/** Best benchmark score per device model, highest first; [platform] narrows it to one OS (0 = all) and ranks within it. */
+@Composable
+private fun BenchmarkBoard(isNetworkConnected: Boolean, platform: Int) {
     var entries by remember { mutableStateOf<List<BenchmarkDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var searchText by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
-    val myModel = android.os.Build.MODEL
+    val context = LocalContext.current
+    val myName = rememberMyBoardName(isNetworkConnected)
 
     fun load() {
         if (!isNetworkConnected) { errorMsg = "Offline"; return }
@@ -116,10 +175,25 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
     }
     if (openRun != null) lastOpen = openRun
     BackHandler(enabled = openRun != null) { openRun = null }
+    var presentCard by remember { mutableStateOf<RunCard?>(null) }     // PRESENT: full screen, its own window
 
-    val top = entries.firstOrNull()?.totalScore?.coerceAtLeast(1) ?: 1
-    val shown = remember(entries, searchText) {
-        entries.withIndex().filter { (_, e) ->
+    // comparing two runs: tap two rows (A, then B), or start from a run's details
+    var picking by remember { mutableStateOf(false) }
+    var picked by remember { mutableStateOf<List<PickedRun>>(emptyList()) }
+    var comparePair by remember { mutableStateOf<Pair<PickedRun, PickedRun>?>(null) }
+    var lastCompare by remember { mutableStateOf<Pair<PickedRun, PickedRun>?>(null) }
+    fun stopComparing() { comparePair = null; picking = false; picked = emptyList() }
+    fun pick(e: BenchmarkDto, rank: Int) {
+        picked = if (picked.any { it.entry.id == e.id }) picked.filter { it.entry.id != e.id } else picked + PickedRun(e, rank)
+        if (picked.size == 2) comparePair = picked[0] to picked[1]
+    }
+    if (comparePair != null) lastCompare = comparePair
+    BackHandler(enabled = comparePair != null || picking) { stopComparing() }
+
+    val onPlatform = remember(entries, platform) { if (platform == 0) entries else entries.filter { it.os == platform } }
+    val top = onPlatform.firstOrNull()?.totalScore?.coerceAtLeast(1) ?: 1
+    val shown = remember(onPlatform, searchText) {
+        onPlatform.withIndex().filter { (_, e) ->
             searchText.isEmpty() || e.deviceModel.contains(searchText, true) ||
                 e.deviceManufacturer.contains(searchText, true) || (e.gpuName?.contains(searchText, true) == true)
         }
@@ -137,9 +211,23 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
                     Text("All six sections · best verified run per phone",
                         style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = InstrumentMono))
                 }
+                ComparePill(on = picking) { if (picking) stopComparing() else { picking = true; picked = emptyList() } }
                 IconButton(onClick = { load() }, enabled = !isLoading) {
                     Text("↻", color = Forge.ink0, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
+            }
+        }
+        if (picking) item {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Forge.phaseMeasured.copy(alpha = 0.08f))
+                    .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(picked.firstOrNull()?.let { "Now tap the one to compare with ${deviceDisplayName(it.entry.deviceManufacturer, it.entry.deviceModel)}" }
+                        ?: "Tap two devices to compare them",
+                    style = TextStyle(color = Forge.ink0, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f))
+                Text("${picked.size}/2", style = TextStyle(color = Forge.phaseMeasured, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
             }
         }
         item {
@@ -183,14 +271,19 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
             }
             shown.isEmpty() -> item {
                 Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-                    Text(if (entries.isEmpty()) "No benchmark runs yet — be the first." else "No phones match.",
+                    Text(when {
+                            onPlatform.isNotEmpty() -> "No phones match."
+                            platform == 0 -> "No benchmark runs yet — be the first."
+                            else -> "No ${platformName(platform)} runs yet."
+                        },
                         style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = InstrumentMono))
                 }
             }
             else -> items(shown, key = { it.value.id }) { (i, e) ->
                 BenchmarkRow(rank = i + 1, entry = e, fraction = e.totalScore.toFloat() / top,
-                    mine = e.deviceModel.contains(myModel, ignoreCase = true),
-                    onClick = { openRun = e; detail = null; loadDetail(e) })
+                    mine = isMyPhone(e.deviceModel, myName),
+                    pick = if (picking) picked.indexOfFirst { it.entry.id == e.id } else null,
+                    onClick = { if (picking) pick(e, i + 1) else { openRun = e; detail = null; loadDetail(e) } })
             }
         }
     }
@@ -201,43 +294,88 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean) {
     ) {
         lastOpen?.let { run ->
             BenchmarkDetailOverlay(
-                entry = run, rank = entries.indexOfFirst { it.id == run.id } + 1,
+                entry = run, rank = onPlatform.indexOfFirst { it.id == run.id } + 1,
                 detail = detail?.takeIf { it.id == run.id }, isLoading = detailLoading, error = detailError,
-                onDismiss = { openRun = null }, onRetry = { loadDetail(run) }
+                onDismiss = { openRun = null }, onRetry = { loadDetail(run) },
+                onCompare = { val rank = onPlatform.indexOfFirst { it.id == run.id } + 1; openRun = null; picking = true; picked = listOf(PickedRun(run, rank)) },
+                onShare = {
+                    val card = RunCard.leaderboardBenchmark(run, detail?.takeIf { it.id == run.id })
+                    coroutineScope.launch { ShareSheet.shareCard(context, card, "thermohammer-run-${run.id}.png") }
+                },
+                onPresent = { presentCard = RunCard.leaderboardBenchmark(run, detail?.takeIf { it.id == run.id }) }
             )
+        }
+    }
+    presentCard?.let { PresentDialog(it) { presentCard = null } }
+    AnimatedVisibility(
+        visible = comparePair != null,
+        enter = fadeIn(tween(240)) + slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 },
+        exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 18 }
+    ) {
+        lastCompare?.let { (pa, pb) ->
+            BenchmarkCompareOverlay(pa.entry, pa.rank, pb.entry, pb.rank, isNetworkConnected, onDismiss = { stopComparing() })
         }
     }
     }
 }
 
+/** The board's switch into picking two runs to compare. */
 @Composable
-private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: Boolean, onClick: () -> Unit) {
+private fun ComparePill(on: Boolean, onClick: () -> Unit) {
+    Text(if (on) "✕ CANCEL" else "⇄ COMPARE",
+        style = TextStyle(color = if (on) Forge.bg else Forge.phaseMeasured, fontSize = 9.sp, fontFamily = InstrumentMono,
+            fontWeight = FontWeight.Black, letterSpacing = 0.5.sp),
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(if (on) Forge.phaseMeasured else Forge.phaseMeasured.copy(alpha = 0.1f))
+            .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp))
+}
+
+/** While picking: an empty ring, or the A / B the run was picked as. */
+@Composable
+private fun PickMark(slot: Int) {
+    val color = when (slot) { 0 -> CompareA; 1 -> CompareB; else -> null }
+    Box(
+        Modifier.padding(start = 8.dp).size(22.dp).clip(CircleShape)
+            .then(if (color != null) Modifier.background(color) else Modifier.border(1.5.dp, Forge.ink0.copy(alpha = 0.3f), CircleShape)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (color != null) Text(if (slot == 0) "A" else "B",
+            style = TextStyle(color = Forge.bg, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+    }
+}
+
+@Composable
+private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: Boolean, pick: Int? = null, onClick: () -> Unit) {
+    val pickColor = when (pick) { 0 -> CompareA; 1 -> CompareB; else -> null }
     val name = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) entry.deviceModel
         else "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.surface)
-            .border(1.dp, if (mine) Forge.phaseMeasured.copy(alpha = 0.6f) else Forge.ink0.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+            .border(if (pickColor != null) 1.5.dp else 1.dp,
+                pickColor ?: if (mine) Forge.phaseMeasured.copy(alpha = 0.6f) else Forge.ink0.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("#$rank", style = TextStyle(color = if (rank <= 3) Ramp.at(1f - (rank - 1) * 0.2f) else Forge.ink2,
                 fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black), modifier = Modifier.width(38.dp))
+            // the phone and its score share the line; the long list of section scores sits below it, so it can never push the name out
             Column(Modifier.weight(1f)) {
                 Text(name, style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono,
-                    fontWeight = FontWeight.Bold), maxLines = 1)
+                    fontWeight = FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(listOfNotNull(entry.gpuName, osLabel(entry.os, entry.osVersion)).joinToString(" · "),
-                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono), maxLines = 1)
+                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 8.sp, fontFamily = InstrumentMono),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("%,d".format(entry.totalScore), style = TextStyle(color = Forge.ink0, fontSize = 15.sp, fontFamily = InstrumentMono,
-                    fontWeight = FontWeight.Black))
-                Text("CPU %,d · MEM %,d · GPU %,d · UX %,d · AI %,d · LLM %,d · %s".format(entry.cpuScore, entry.memScore, entry.score,
-                        entry.uxScore, entry.aiScore, entry.llmScore, if (entry.rayTracing) "RT %.0f FPS".format(entry.test3Fps) else "NO RT"),
-                    style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 7.sp, fontFamily = InstrumentMono), maxLines = 1)
-            }
-            Text("›", color = Forge.ink0.copy(alpha = 0.3f), fontSize = 18.sp, modifier = Modifier.padding(start = 8.dp))
+            Text("%,d".format(entry.totalScore), style = TextStyle(color = Forge.ink0, fontSize = 15.sp, fontFamily = InstrumentMono,
+                fontWeight = FontWeight.Black), modifier = Modifier.padding(start = 8.dp))
+            if (pick != null) PickMark(pick) else Text("›", color = Forge.ink0.copy(alpha = 0.3f), fontSize = 18.sp, modifier = Modifier.padding(start = 8.dp))
         }
+        Spacer(Modifier.height(6.dp))
+        Text("CPU\u00A0%,d · MEM\u00A0%,d · GPU\u00A0%,d · UX\u00A0%,d · AI\u00A0%,d · LLM\u00A0%,d · %s".format(entry.cpuScore, entry.memScore, entry.score,
+                entry.uxScore, entry.aiScore, entry.llmScore, if (entry.rayTracing) "RT\u00A0%.0f\u00A0FPS".format(entry.test3Fps) else "NO\u00A0RT"),
+            style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 7.sp, fontFamily = InstrumentMono),
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Forge.ink0.copy(alpha = 0.06f))) {
             Box(Modifier.fillMaxWidth(fraction.coerceIn(0.02f, 1f)).fillMaxHeight().clip(RoundedCornerShape(2.dp))
@@ -247,7 +385,7 @@ private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: 
 }
 
 @Composable
-private fun StressBoard(isNetworkConnected: Boolean) {
+private fun StressBoard(isNetworkConnected: Boolean, platform: Int) {
     val context = LocalContext.current
     val store = remember { PendingResultStore(context) }
     var pendingList by remember { mutableStateOf(store.getAllResults()) }
@@ -257,6 +395,7 @@ private fun StressBoard(isNetworkConnected: Boolean) {
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var searchText by remember { mutableStateOf("") }
     var selectedEntry by remember { mutableStateOf<HammerDto?>(null) }
+    var presentCard by remember { mutableStateOf<RunCard?>(null) }     // PRESENT: full screen, its own window
     var detailedStamps by remember { mutableStateOf<List<DeviceHammerStamp>>(emptyList()) }
     var stampsLoading by remember { mutableStateOf(false) }
     var stampsError by remember { mutableStateOf<String?>(null) }
@@ -264,11 +403,10 @@ private fun StressBoard(isNetworkConnected: Boolean) {
     // Client-side Filters
     var showOnlyMyDevice by remember { mutableStateOf(false) }
     var showOnlyMyOSVersion by remember { mutableStateOf(false) }
-    var selectedPlatformFilter by remember { mutableStateOf<Int?>(null) } // null = All, 1 = iOS, 2 = Android
     var selectedDurationFilter by remember { mutableStateOf<Int?>(null) } // null = All, 0 = 5m, 1 = 15m, 2 = 30m
 
     // Current device attributes for filtering
-    val myDeviceModel = android.os.Build.MODEL
+    val myName = rememberMyBoardName(isNetworkConnected)
     val myOSVersion = android.os.Build.VERSION.RELEASE
 
     // Upload status for pending runs
@@ -319,12 +457,13 @@ private fun StressBoard(isNetworkConnected: Boolean) {
         pendingList = store.getAllResults()
     }
 
-    val ranked: List<RankedEntry> = remember(entries) {
-        entries.sortedByDescending { it.stabilityPercentage }.mapIndexed { i, e -> RankedEntry(e, i + 1, e.stabilityPercentage) }
+    val ranked: List<RankedEntry> = remember(entries, platform) {
+        entries.filter { platform == 0 || it.os == platform }
+            .sortedByDescending { it.stabilityPercentage }.mapIndexed { i, e -> RankedEntry(e, i + 1, e.stabilityPercentage) }
     }
     val filtered = remember(
-        ranked, searchText, showOnlyMyDevice, showOnlyMyOSVersion, 
-        selectedPlatformFilter, selectedDurationFilter
+        ranked, searchText, showOnlyMyDevice, showOnlyMyOSVersion,
+        selectedDurationFilter, myName
     ) {
         ranked.filter { r ->
             val matchesSearch = if (searchText.isEmpty()) true
@@ -333,16 +472,10 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                  r.entry.osVersion.contains(searchText, ignoreCase = true)
             
             val matchesDevice = if (!showOnlyMyDevice) true
-            else r.entry.deviceModel.equals(myDeviceModel, ignoreCase = true)
+            else isMyPhone(r.entry.deviceModel, myName)
             
             val matchesOS = if (!showOnlyMyOSVersion) true
             else r.entry.osVersion.contains(myOSVersion, ignoreCase = true)
-            
-            val matchesPlatform = when (selectedPlatformFilter) {
-                1 -> r.entry.os == 1
-                2 -> r.entry.os == 2
-                else -> true
-            }
             
             val matchesDuration = when (selectedDurationFilter) {
                 0 -> r.entry.type == 0
@@ -351,7 +484,7 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                 else -> true
             }
             
-            matchesSearch && matchesDevice && matchesOS && matchesPlatform && matchesDuration
+            matchesSearch && matchesDevice && matchesOS && matchesDuration
         }
     }
 
@@ -432,7 +565,9 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                                             gpuSustainedRatio = pending.gpuSustainedRatio.toDouble().takeIf { it > 0 },
                                             gpuName = pending.gpuName.ifEmpty { null }
                                         )
-                                        ApiClient.api.submitScore(payload)
+                                        val runId = ApiClient.api.submitHammer(payload)
+                                        // the saved run (same id) learns its leaderboard id: SITE/stress/{id}/
+                                        if (runId != null) RunHistoryStore(context).setServerId(pending.id, runId)
                                         store.deleteResult(pending.id)
                                         pendingList = store.getAllResults()
                                         uploadingId = null
@@ -479,8 +614,6 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             CustomFilterChip(selected = showOnlyMyDevice, label = "📱 My Model") { showOnlyMyDevice = !showOnlyMyDevice }
                             CustomFilterChip(selected = showOnlyMyOSVersion, label = "⚙ My OS") { showOnlyMyOSVersion = !showOnlyMyOSVersion }
-                            CustomFilterChip(selected = selectedPlatformFilter == 1, label = "🍎 iOS") { selectedPlatformFilter = if (selectedPlatformFilter == 1) null else 1 }
-                            CustomFilterChip(selected = selectedPlatformFilter == 2, label = "🤖 Android") { selectedPlatformFilter = if (selectedPlatformFilter == 2) null else 2 }
                             CustomFilterChip(selected = selectedDurationFilter == 0, label = "⏱ 5 Min") { selectedDurationFilter = if (selectedDurationFilter == 0) null else 0 }
                             CustomFilterChip(selected = selectedDurationFilter == 1, label = "⏱ 15 Min") { selectedDurationFilter = if (selectedDurationFilter == 1) null else 1 }
                             CustomFilterChip(selected = selectedDurationFilter == 2, label = "⏱ 30 Min") { selectedDurationFilter = if (selectedDurationFilter == 2) null else 2 }
@@ -508,7 +641,7 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                 } else if (filtered.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-                            Text("No leaderboard entries match filters.", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = InstrumentMono))
+                            Text(if (ranked.isEmpty() && platform != 0) "No ${platformName(platform)} runs yet." else "No leaderboard entries match filters.", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = InstrumentMono))
                         }
                     }
                 } else {
@@ -603,6 +736,17 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                     isLoading = stampsLoading,
                     error = stampsError,
                     onDismiss = { selectedEntry = null },
+                    onShare = {
+                        val card = RunCard.leaderboardStress(entry, detailedStamps)
+                        coroutineScope.launch { ShareSheet.shareCard(context, card, "thermohammer-stress-${entry.id}.png") }
+                    },
+                    onPresent = { presentCard = RunCard.leaderboardStress(entry, detailedStamps) },
+                    onExportCsv = {
+                        val stamps = detailedStamps
+                        val name = CsvExport.fileName("stress", deviceDisplayName(entry.deviceManufacturer, entry.deviceModel),
+                            ShareLinks.serverMillis(entry.createdAt) ?: System.currentTimeMillis())
+                        coroutineScope.launch { ShareSheet.shareFile(context, CsvExport.leaderboardStress(stamps), name) }
+                    },
                     onRetry = {
                         stampsLoading = true; stampsError = null
                         coroutineScope.launch {
@@ -617,6 +761,8 @@ private fun StressBoard(isNetworkConnected: Boolean) {
                 )
             }
         }
+
+        presentCard?.let { PresentDialog(it) { presentCard = null } }
 
         // Auto Comparison Overlay — same retained-content fix for exit
         var lastCompareRuns by remember { mutableStateOf<List<PendingTestResult>>(emptyList()) }
@@ -678,7 +824,7 @@ private fun PendingResultRow(
                     Text(threadText, style = TextStyle(color = threadColor, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                 }
                 Spacer(Modifier.height(2.dp))
-                Text("${pending.deviceManufacturer} ${pending.deviceModel}", style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                Text(deviceDisplayName(pending.deviceManufacturer, pending.deviceModel), style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -820,7 +966,10 @@ internal fun BenchmarkDetailOverlay(
     isLoading: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onCompare: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
+    onPresent: (() -> Unit)? = null
 ) {
     val name = if (entry.deviceModel.startsWith(entry.deviceManufacturer, ignoreCase = true)) entry.deviceModel
         else "${entry.deviceManufacturer} ${entry.deviceModel}".trim()
@@ -844,6 +993,12 @@ internal fun BenchmarkDetailOverlay(
                     Text(listOfNotNull(osLabel(entry.os, entry.osVersion), detail?.osBuild, detail?.appVersion?.let { "app $it" },
                         detail?.createdAt?.take(10), if (entry.runs > 1) "best of ${entry.runs} runs" else null).joinToString(" • "),
                         style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono))
+                }
+                if (onCompare != null) {
+                    Text("⇄ COMPARE", style = TextStyle(color = Forge.phaseMeasured, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black),
+                        modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(8.dp)).background(Forge.phaseMeasured.copy(alpha = 0.1f))
+                            .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable(onClick = onCompare)
+                            .padding(horizontal = 10.dp, vertical = 7.dp))
                 }
                 Box(
                     Modifier.size(32.dp).clip(CircleShape).background(Forge.ink0.copy(alpha = 0.08f)).clickable(onClick = onDismiss),
@@ -883,6 +1038,7 @@ internal fun BenchmarkDetailOverlay(
                         }
                         if (rank > 0) Text("#$rank", style = TextStyle(color = Ramp.at(1f), fontSize = 20.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                     }
+                    RunPills(onShare = onShare, onPresent = onPresent)
                     Text("TAP A SECTION FOR ITS NUMBERS", style = TextStyle(color = Forge.ink0.copy(alpha = 0.3f), fontSize = 8.sp, fontFamily = InstrumentMono),
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp))
                     for (section in detail.sections) {
@@ -929,7 +1085,10 @@ private fun DetailOverlay(
     isLoading: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onShare: (() -> Unit)? = null,
+    onPresent: (() -> Unit)? = null,
+    onExportCsv: (() -> Unit)? = null
 ) {
     Box(Modifier.fillMaxSize().background(Forge.bg.copy(alpha = 0.85f)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
         Column(
@@ -998,6 +1157,10 @@ private fun DetailOverlay(
                             SummaryRow("MIN SCORE (IPS)", "%,d".format(minScore.toLong()))
                             SummaryRow("SAMPLES RECORDED", stamps.size.toString())
                         }
+                        if (stamps.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            RunPills(onShare = onShare, onPresent = onPresent, onExportCsv = onExportCsv)
+                        }
                         Spacer(Modifier.height(16.dp))
                         Text("PERFORMANCE CURVE", style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                         Spacer(Modifier.height(8.dp))
@@ -1005,6 +1168,24 @@ private fun DetailOverlay(
                     }
                 }
             }
+        }
+    }
+}
+
+/** SHARE · PRESENT · EXPORT CSV for a leaderboard run — the ones given. */
+@Composable
+private fun RunPills(onShare: (() -> Unit)? = null, onPresent: (() -> Unit)? = null, onExportCsv: (() -> Unit)? = null) {
+    val actions = listOfNotNull(onShare?.let { "↗ SHARE" to it }, onPresent?.let { "▣ PRESENT" to it },
+        onExportCsv?.let { "⤓ EXPORT CSV" to it })
+    if (actions.isEmpty()) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for ((label, action) in actions) {
+            Text(label, textAlign = TextAlign.Center, maxLines = 1,
+                style = TextStyle(color = Forge.phaseMeasured, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp),
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Forge.phaseMeasured.copy(alpha = 0.1f))
+                    .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).clickable(onClick = action)
+                    .padding(vertical = 9.dp))
         }
     }
 }

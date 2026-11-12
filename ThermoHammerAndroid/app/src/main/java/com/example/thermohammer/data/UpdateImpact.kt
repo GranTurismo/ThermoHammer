@@ -20,7 +20,9 @@ data class RunRecord(
     val capacity: Double,               // deliveredCapacity — the leaderboard metric
     val onsetSec: Int? = null,          // null = never throttled
     val validityFlags: Int = 0,
-    val confidence: Int = 0
+    val confidence: Int = 0,
+    val serverId: Int? = null,          // the leaderboard's id once submitted (X-Run-Id): SITE/stress/{id}/
+    val curve: List<Double>? = null     // throughput as % of baseline, ≤ 120 even steps (StressCurve) — share/present later
 ) {
     val osKey: String get() = UpdateImpact.osKey(osVersion, osBuild)
 }

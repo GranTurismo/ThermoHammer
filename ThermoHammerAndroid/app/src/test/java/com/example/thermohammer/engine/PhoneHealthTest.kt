@@ -17,8 +17,9 @@ class PhoneHealthTest {
         return BenchmarkResult(tests, gpuScore = BenchmarkScore.overall(tests), gpuName = "Adreno", validityFlags = flags)
     }
 
-    private fun stats(runs: Int, median: Int, parts: Map<String, Int>, byOs: List<OsVersionStatsDto> = emptyList()) =
-        ModelStatsDto("Honor 600 Pro", runs, ScoreSpreadDto(median, median * 9 / 10, median * 11 / 10, median * 12 / 10),
+    private fun stats(runs: Int, median: Int, parts: Map<String, Int>, byOs: List<OsVersionStatsDto> = emptyList(),
+                      name: String = "Honor 600 Pro") =
+        ModelStatsDto(name, runs, ScoreSpreadDto(median, median * 9 / 10, median * 11 / 10, median * 12 / 10),
             emptyMap(), parts, byOs)
 
     private fun record(id: String, score: Int, os: String, flags: Int = 0) = BenchmarkRecord(id = id, timestamp = 0L,
@@ -48,11 +49,21 @@ class PhoneHealthTest {
     @Test
     fun `too few runs or no connection compare with the phone's own runs only`() {
         val run = gpuRun(6000, 6000)
-        val few = PhoneHealth.assess(run, "Pixel 9", stats(2, 4000, emptyMap()), emptyList(), null, "16")
+        val few = PhoneHealth.assess(run, "Pixel 9", stats(2, 4000, emptyMap(), name = "Pixel 9"), emptyList(), null, "16")
         assertEquals(PhoneHealth.Verdict.UNKNOWN, few.verdict)
         assertEquals("Not enough verified runs of Pixel 9 yet (2 of 3)", few.headline)
         val offline = PhoneHealth.assess(run, "Pixel 9", null, emptyList(), null, "16")
         assertEquals("Connect to compare with other Pixel 9 units", offline.headline)
+    }
+
+    @Test
+    fun `the headline names the phone the way the server does, and the phone's own name when offline`() {
+        val run = gpuRun(6000, 6000)
+        // the phone only knows its code; the server answers with the name on the box
+        val few = PhoneHealth.assess(run, "HONOR VKP-NX9", stats(2, 4000, emptyMap()), emptyList(), null, "16")
+        assertEquals("Not enough verified runs of Honor 600 Pro yet (2 of 3)", few.headline)
+        val offline = PhoneHealth.assess(run, "HONOR VKP-NX9", null, emptyList(), null, "16")
+        assertEquals("Connect to compare with other HONOR VKP-NX9 units", offline.headline)
     }
 
     @Test

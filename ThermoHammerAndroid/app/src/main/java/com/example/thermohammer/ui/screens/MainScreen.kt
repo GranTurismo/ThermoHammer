@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.thermohammer.engine.Attribution
 import com.example.thermohammer.engine.RunKind
 import com.example.thermohammer.engine.RunPhase
+import com.example.thermohammer.engine.SpeedCheck
 import com.example.thermohammer.engine.StressEngine
 import com.example.thermohammer.engine.StressEngineFactory
 import com.example.thermohammer.engine.StressMode
@@ -32,10 +33,19 @@ import com.example.thermohammer.engine.StressThreadingType
 import com.example.thermohammer.engine.TestDuration
 import com.example.thermohammer.data.BenchmarkHistoryStore
 import com.example.thermohammer.data.BenchmarkRecord
+import com.example.thermohammer.data.BenchmarkUpdateImpact
 import com.example.thermohammer.data.RunHistoryStore
 import com.example.thermohammer.network.BenchmarkUpload
+import com.example.thermohammer.data.CsvExport
+import com.example.thermohammer.data.HealthMemoStore
+import com.example.thermohammer.data.MyDeviceName
+import com.example.thermohammer.data.isComplete
 import com.example.thermohammer.data.RunRecord
+import com.example.thermohammer.data.StressCurve
+import com.example.thermohammer.ui.share.RunCard
+import com.example.thermohammer.ui.share.ShareSheet
 import com.example.thermohammer.data.UpdateImpact
+import com.example.thermohammer.network.submitHammer
 import com.example.thermohammer.ui.components.UpdateImpactCard
 import com.example.thermohammer.network.toWire
 import com.example.thermohammer.ui.components.CoreStatusView
@@ -164,8 +174,12 @@ private fun DiagnosticsScreenWrapper(
     var submitSuccess by remember { mutableStateOf<String?>(null) }
     var submitError by remember { mutableStateOf<String?>(null) }
     var currentPendingResultId by remember { mutableStateOf<String?>(null) }
+    var stressServerId by remember { mutableStateOf<Int?>(null) }   // the verdict's run on the leaderboard (X-Run-Id)
     var showConnectionRequest by remember { mutableStateOf(false) }
     var showComparison by remember { mutableStateOf(false) }
+    var showSpeedCheck by remember { mutableStateOf(false) }          // FIND MY LOST SPEED
+    var presentCard by remember { mutableStateOf<RunCard?>(null) }    // PRESENT: full screen, its own window
+    var showCertificate by remember { mutableStateOf(false) }         // the result's VERIFIED HEALTH CERTIFICATE
 
     // ── GPU benchmark: result card, local history, submission ──
     var showBenchResult by remember { mutableStateOf(false) }
@@ -198,7 +212,8 @@ private fun DiagnosticsScreenWrapper(
         coroutineScope.launch {
             try {
                 val res = BenchmarkUpload.submit(context, record, engine.getSocModel())
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.markSubmitted(record.id) }
+                // the server's id: the run's share link and certificate (SITE/run/{id}/, SITE/cert/{id}/)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.markSubmitted(record.id, res.id) }
                 benchRecords = benchStore.current()
                 benchSubmitMsg = "SUBMITTED · RANK #${res.rank}"
                 if (!showBenchResult) Toast.makeText(context, "Benchmark submitted — rank #${res.rank}", Toast.LENGTH_SHORT).show()
@@ -209,6 +224,22 @@ private fun DiagnosticsScreenWrapper(
             benchSubmitting = false
         }
     }
+    // ── Share / present: the finished run on screen as a card (ui/share) ──
+    var stressRunAt by remember { mutableLongStateOf(0L) }                 // when the verdict's run ended
+    fun benchRecordOnScreen(): BenchmarkRecord? = benchRecords.firstOrNull { it.id == benchRecordId }
+    fun benchCard(result: com.example.thermohammer.engine.BenchmarkResult): RunCard.Benchmark {
+        val rec = benchRecordOnScreen()
+        return RunCard.ownBenchmark(result, MyDeviceName.get(context), engine.getAndroidVersion(),
+            engine.getSocModel().ifBlank { null }, rec?.timestamp ?: System.currentTimeMillis(), rec?.serverId)
+    }
+    fun stressCard(): RunCard.Stress? {
+        val card = state.scorecard ?: return null
+        return RunCard.ownStress(MyDeviceName.get(context), engine.getAndroidVersion(), engine.getSocModel().ifBlank { null },
+            stressRunAt.takeIf { it > 0 } ?: System.currentTimeMillis(), stressServerId, card.isVerified,
+            card.deliveredCapacity.toDouble(), durationTypeOf(state.testDuration), state.stressMode.value,
+            state.testThreadingType.value, state.recordedStamps, card.baselineIps, card.throttleOnsetSec)
+    }
+
     var historyTick by remember { mutableIntStateOf(0) }
     var updateInsight by remember { mutableStateOf<UpdateImpact.Insight?>(null) }
     LaunchedEffect(historyTick) {
@@ -220,6 +251,16 @@ private fun DiagnosticsScreenWrapper(
                 osBuild = engine.getOsBuild().ifBlank { null },
                 securityPatch = engine.getSecurityPatch().ifBlank { null }
             )?.takeUnless { historyStore.isDismissed(it) }
+        }
+    }
+
+    // ── Update impact, benchmark side: this phone's benchmark runs across an OS update ──
+    var benchUpdate by remember { mutableStateOf<BenchmarkUpdateImpact.Insight?>(null) }
+    var benchUpdateTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(benchRecords, benchUpdateTick) {
+        benchUpdate = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            BenchmarkUpdateImpact.insight(benchRecords, BenchmarkRecord.thisDeviceModel(), engine.getAndroidVersion(),
+                engine.getOsBuild().ifBlank { null })?.takeUnless { benchStore.isDismissed(it.dismissKey) }
         }
     }
 
@@ -242,10 +283,12 @@ private fun DiagnosticsScreenWrapper(
     // ── Back stack: overlays → run-guard → double-tap exit ─────────────────────
     val anyOverlay = showPreTest || showSummary || showConnectionRequest || showComparison ||
             showBackgroundAborted || showManualCancelled || showServerInit || showServerError ||
-            showBenchResult || benchErrorMsg != null
+            showBenchResult || benchErrorMsg != null || showSpeedCheck || showCertificate
 
     BackHandler(enabled = anyOverlay) {
         when {
+            showSpeedCheck -> showSpeedCheck = false          // on top of everything; closing stops a check
+            showCertificate -> showCertificate = false
             showBenchResult -> { showBenchResult = false; engine.resetTestResult() }
             benchErrorMsg != null -> { benchErrorMsg = null; engine.resetTestResult() }
             showSummary -> { showSummary = false; engine.resetTestResult() }
@@ -318,7 +361,7 @@ private fun DiagnosticsScreenWrapper(
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.add(record) }
                     benchRecords = benchStore.current()
                     benchRecordId = record.id
-                    benchSubmitting = false; benchSubmitMsg = null; benchSubmitErr = null
+                    benchSubmitting = false; benchSubmitMsg = null; benchSubmitErr = null; showCertificate = false
                     showBenchResult = true
                 }
                 state.benchError != null -> benchErrorMsg = state.benchError
@@ -328,7 +371,8 @@ private fun DiagnosticsScreenWrapper(
             return@LaunchedEffect
         }
         if (!state.isRunning && state.elapsedSeconds > 0) {
-            isSubmitting = false; submitSuccess = null; submitError = null
+            isSubmitting = false; submitSuccess = null; submitError = null; stressServerId = null
+            stressRunAt = System.currentTimeMillis()
             if (state.wasCompleted) {
                 // Automatically save run to pending results in background thread!
                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -404,7 +448,9 @@ private fun DiagnosticsScreenWrapper(
                                 capacity = card.deliveredCapacity.toDouble(),
                                 onsetSec = card.throttleOnsetSec,
                                 validityFlags = card.validityFlags,
-                                confidence = card.confidence
+                                confidence = card.confidence,
+                                curve = StressCurve.downsample(StressCurve.percentOf(stamps.map { it.ipsTotal }, card.baselineIps))
+                                    .ifEmpty { null }
                             ))
                             historyTick++
                         }
@@ -538,11 +584,36 @@ private fun DiagnosticsScreenWrapper(
                 }
             }
             AnimatedVisibility(
+                visible = benchUpdate != null && !state.isRunning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
+                benchUpdate?.let { insight ->
+                    com.example.thermohammer.ui.components.BenchmarkUpdateCard(
+                        insight = insight,
+                        onRunBenchmark = {
+                            // the normal benchmark flow: pick it, then the pre-flight checks
+                            onKindChange(RunKind.BENCHMARK)
+                            showPreTest = true
+                            preflightReport = null
+                        },
+                        onDismiss = { benchStore.dismiss(insight.dismissKey); benchUpdateTick++ }
+                    )
+                }
+            }
+            AnimatedVisibility(
                 visible = pendingCount > 0 && !state.isRunning,
                 enter = fadeIn(tween(300)) + expandVertically(tween(300)),
                 exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
             ) {
                 PendingRunsBanner(pendingCount, onNavigateToLeaderboard)
+            }
+            AnimatedVisibility(
+                visible = !state.isRunning,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
+                LostSpeedCard { showSpeedCheck = true }
             }
             AnimatedVisibility(
                 visible = !state.isRunning,
@@ -696,10 +767,15 @@ private fun DiagnosticsScreenWrapper(
                                 gpuSustainedRatio = card?.gpuSustainedRatio?.toDouble(),
                                 gpuName = card?.gpuName?.ifEmpty { null }
                             )
-                            com.example.thermohammer.network.ApiClient.api.submitScore(payload)
+                            val runId = com.example.thermohammer.network.ApiClient.api.submitHammer(payload)
+                            stressServerId = runId
 
                             currentPendingResultId?.let { pid ->
-                                com.example.thermohammer.data.PendingResultStore(context).deleteResult(pid)
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    com.example.thermohammer.data.PendingResultStore(context).deleteResult(pid)
+                                    // the server's id: the run's share link (SITE/stress/{id}/)
+                                    if (runId != null) historyStore.setServerId(pid, runId)
+                                }
                             }
                             isSubmitting = false; submitSuccess = "SUBMITTED TO LEADERBOARD!"
                         } catch (e: Exception) {
@@ -710,7 +786,24 @@ private fun DiagnosticsScreenWrapper(
                 onSavePending = {
                     submitSuccess = "SAVED TO PENDING RESULTS!"
                 },
-                onDismiss = { showSummary = false; engine.resetTestResult() }
+                onDismiss = { showSummary = false; engine.resetTestResult() },
+                onShare = {
+                    stressCard()?.let { c ->
+                        coroutineScope.launch { ShareSheet.shareCard(context, c, "thermohammer-stress-${stressServerId ?: stressRunAt}.png") }
+                    }
+                },
+                lostSpeedWhileCool = card != null &&
+                    SpeedCheck.lostSpeedWhileCool(card.deliveredCapacity.toDouble(), card.throttleOnsetSec, stamps),
+                onFindLostSpeed = { showSpeedCheck = true },
+                onPresent = { presentCard = stressCard() },
+                onExportCsv = {
+                    val baseline = card?.baselineIps ?: state.baselineIps
+                    val at = stressRunAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+                    coroutineScope.launch {
+                        val csv = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { CsvExport.stress(stamps, baseline) }
+                        ShareSheet.shareFile(context, csv, CsvExport.fileName("stress", MyDeviceName.get(context), at))
+                    }
+                }
             )
         }
         AnimatedVisibility(showBenchResult, enter = overlayEnter, exit = overlayExit) {
@@ -741,7 +834,24 @@ private fun DiagnosticsScreenWrapper(
                         cm.setPrimaryClip(android.content.ClipData.newPlainText("ThermoHammer benchmark report", text))
                         Toast.makeText(context, "Report copied — paste it anywhere", Toast.LENGTH_SHORT).show()
                     },
-                    onDismiss = { showBenchResult = false; engine.resetTestResult() }
+                    onDismiss = { showBenchResult = false; engine.resetTestResult() },
+                    onShare = {
+                        val c = benchCard(result)
+                        val rec = benchRecordOnScreen()
+                        coroutineScope.launch {
+                            ShareSheet.shareCard(context, c, "thermohammer-run-${rec?.serverId ?: rec?.timestamp ?: System.currentTimeMillis()}.png")
+                        }
+                    },
+                    onFindLostSpeed = { showSpeedCheck = true },
+                    onPresent = { presentCard = benchCard(result) },
+                    onCertificate = if (result.isVerified && result.isComplete) ({ showCertificate = true }) else null,
+                    onExportCsv = {
+                        val at = benchRecordOnScreen()?.timestamp ?: System.currentTimeMillis()
+                        coroutineScope.launch {
+                            val csv = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { CsvExport.benchmark(result) }
+                            ShareSheet.shareFile(context, csv, CsvExport.fileName("benchmark", MyDeviceName.get(context), at))
+                        }
+                    }
                 )
             }
         }
@@ -783,6 +893,45 @@ private fun DiagnosticsScreenWrapper(
             onRunOffline = { showServerError = false; engine.clearSession(); engine.startTest(selectedDuration, selectedThreadingType, selectedMode) }
         )
         }
+
+        AnimatedVisibility(showCertificate && showBenchResult, enter = overlayEnter, exit = overlayExit) {
+            state.benchResult?.let { result ->
+                val rec = benchRecordOnScreen()
+                val health = remember(rec?.id) {
+                    HealthMemoStore.load(context)?.takeIf { it.recordId != null && it.recordId == rec?.id && it.percent != null }
+                        ?.let { "${it.percent}% of the median ${it.model} (${it.runs} runs)" }
+                }
+                val device = MyDeviceName.get(context)
+                com.example.thermohammer.ui.overlays.HealthCertificateOverlay(
+                    device = device,
+                    osVersion = rec?.osVersion ?: engine.getAndroidVersion(),
+                    date = com.example.thermohammer.data.ShareLinks.date(rec?.timestamp ?: System.currentTimeMillis()),
+                    total = result.total,
+                    healthLine = health,
+                    serverId = rec?.serverId,
+                    isNetworkConnected = isNetworkConnected,
+                    isSubmitting = benchSubmitting,
+                    submitError = benchSubmitErr,
+                    onSubmit = {
+                        submitBenchmark(rec ?: BenchmarkRecord.of(result, benchRecordId ?: java.util.UUID.randomUUID().toString(),
+                            System.currentTimeMillis()))
+                    },
+                    onShareLink = { url -> ShareSheet.shareText(context, com.example.thermohammer.data.ShareLinks.certificateText(device, url)) },
+                    onDismiss = { showCertificate = false }
+                )
+            }
+        }
+
+        // ── Find my lost speed — above the result screens it can be opened from ──
+        AnimatedVisibility(showSpeedCheck, enter = overlayEnter, exit = overlayExit) {
+            val health = remember(showSpeedCheck, benchRecords) {
+                HealthMemoStore.noteFor(HealthMemoStore.load(context), benchRecords.lastOrNull()?.id)
+            }
+            com.example.thermohammer.ui.overlays.SpeedCheckOverlay(busy = state.isRunning, health = health,
+                onClose = { showSpeedCheck = false })
+        }
+
+        presentCard?.let { com.example.thermohammer.ui.overlays.PresentDialog(it) { presentCard = null } }
 
         // ── GPU stage — full-screen live render while a GPU mode is active ──
         AnimatedVisibility(
@@ -913,11 +1062,46 @@ fun BottomTabBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
     }
 }
 
+/** The duration type every store and the server use: 0 = 5 min, 1 = 15 min, 2 = 30 min. */
+private fun durationTypeOf(d: TestDuration): Int = when (d) {
+    TestDuration.MINUTES_5 -> 0; TestDuration.MINUTES_15 -> 1; TestDuration.MINUTES_30 -> 2
+}
+
 private fun checkNetwork(context: Context): Boolean {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     val network = cm.activeNetwork ?: return false
     val caps = cm.getNetworkCapabilities(network) ?: return false
     return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}
+
+/** Home: the way into FIND MY LOST SPEED, always there when nothing is running. */
+@Composable
+private fun LostSpeedCard(onClick: () -> Unit) {
+    val accent = Forge.phaseMeasured
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Forge.surface)
+            .border(1.dp, accent.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(accent.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("⚡", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("FIND MY LOST SPEED", style = ThermoType.data(10f, Forge.ink0, FontWeight.Bold))
+            Spacer(Modifier.height(2.dp))
+            Text("30-second check of what's slowing your phone down", style = ThermoType.annotation(8f, Forge.ink1))
+        }
+        Text("→", color = Forge.ink2, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable

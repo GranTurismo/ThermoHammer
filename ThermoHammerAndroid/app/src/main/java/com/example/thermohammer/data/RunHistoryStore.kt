@@ -29,12 +29,21 @@ class RunHistoryStore(context: Context) {
     }
 
     @Synchronized
-    fun add(run: RunRecord) {
+    fun add(run: RunRecord) = write(UpdateImpact.appendCapped(all(), run))
+
+    /** The leaderboard's id for a submitted run (POST /hammer's X-Run-Id), so it can be linked to later. */
+    @Synchronized
+    fun setServerId(id: String, serverId: Int) {
+        val all = all()
+        if (all.any { it.id == id }) write(all.map { if (it.id == id) it.copy(serverId = serverId) else it })
+    }
+
+    @Synchronized
+    private fun write(records: List<RunRecord>) {
         try {
-            val updated = UpdateImpact.appendCapped(all(), run)
             // Write-then-rename so a crash mid-write cannot leave half a file behind.
             val tmp = File(file.parentFile, "run_history.json.tmp")
-            tmp.writeText(gson.toJson(updated))
+            tmp.writeText(gson.toJson(records))
             if (!tmp.renameTo(file)) {
                 file.writeText(tmp.readText())
                 tmp.delete()

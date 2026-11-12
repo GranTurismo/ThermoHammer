@@ -23,6 +23,7 @@ import com.example.thermohammer.engine.*
 import com.example.thermohammer.network.ApiClient
 import com.example.thermohammer.network.HammerPayload
 import com.example.thermohammer.network.ThermoHasher
+import com.example.thermohammer.network.submitHammer
 import com.example.thermohammer.network.toWire
 import com.example.thermohammer.ui.components.*
 import com.example.thermohammer.ui.overlays.*
@@ -155,7 +156,7 @@ fun DiagnosticsScreen(
                                 sessionId = state.sessionId!!,
                                 hash = hash
                             )
-                            ApiClient.api.submitScore(payload)
+                            ApiClient.api.submitHammer(payload)
                             isSubmitting = false
                             submitSuccess = "SUBMITTED TO LEADERBOARD!"
                         } catch (e: Exception) {

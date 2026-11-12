@@ -113,8 +113,14 @@ data class BenchmarkRecord(
     val validityFlags: Int,
     val submitted: Boolean = false,
     val osVersion: String? = null,        // what it ran on — Phone Health spots a slowdown after an update
-    val osBuild: String? = null
+    val osBuild: String? = null,
+    val serverId: Int? = null,            // the leaderboard's id once submitted: SITE/run/{id}/ and SITE/cert/{id}/
+    val deviceModel: String? = null       // "HONOR VKP-NX9"; null in runs saved before 2.1 (made on this phone)
 ) {
+    /** Every section scored — what the certificate and the update comparison count as a complete run. */
+    val isComplete: Boolean
+        get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0 && llmScore > 0
+
     companion object {
         fun of(result: BenchmarkResult, id: String, timestamp: Long): BenchmarkRecord {
             fun of(t: BenchmarkTest) = result.tests.first { it.test == t }
@@ -163,10 +169,22 @@ data class BenchmarkRecord(
                 test2Fps = t2.avgFps, test2LowFps = t2.lowFps, test2Points = t2.points,
                 test3Fps = t3.avgFps, test3LowFps = t3.lowFps, test3Points = t3.points, rayTracing = t3.supported,
                 gpuName = result.gpuName, validityFlags = result.validityFlags,
-                osVersion = android.os.Build.VERSION.RELEASE, osBuild = android.os.Build.ID.ifBlank { null })
+                osVersion = android.os.Build.VERSION.RELEASE, osBuild = android.os.Build.ID.ifBlank { null },
+                deviceModel = thisDeviceModel())
+        }
+
+        /** The name every upload sends (StressEngine.getDeviceModel): the manufacturer, then Build.MODEL. */
+        fun thisDeviceModel(): String {
+            val maker = android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercaseChar() }
+            val model = android.os.Build.MODEL
+            return if (model.startsWith(maker, ignoreCase = true)) model else "$maker $model"
         }
     }
 }
+
+/** Every section of a finished run scored (see [BenchmarkRecord.isComplete]). */
+val BenchmarkResult.isComplete: Boolean
+    get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0 && llmScore > 0
 
 /**
  * On-device benchmark history: the latest runs, so the home card can show this phone's best and
@@ -174,6 +192,7 @@ data class BenchmarkRecord(
  */
 class BenchmarkHistoryStore(context: Context) {
     private val file = File(context.filesDir, "benchmark_history.json")
+    private val prefs = context.getSharedPreferences("update_impact_benchmark", Context.MODE_PRIVATE)
     private val gson = Gson()
 
     @Synchronized
@@ -196,7 +215,19 @@ class BenchmarkHistoryStore(context: Context) {
 
     fun add(record: BenchmarkRecord) = write((all() + record).takeLast(MAX_RECORDS))
 
-    fun markSubmitted(id: String) = write(all().map { if (it.id == id) it.copy(submitted = true) else it })
+    /** [serverId]: the id POST /benchmark answered with — kept for the share link and the certificate. */
+    fun markSubmitted(id: String, serverId: Int? = null) =
+        write(all().map { if (it.id == id) it.copy(submitted = true, serverId = serverId ?: it.serverId) else it })
+
+    // ── "Did the update slow my phone?" — the benchmark card's dismissals, one per OS transition ──
+    fun isDismissed(key: String): Boolean = prefs.getStringSet(KEY_DISMISSED, emptySet())?.contains(key) == true
+
+    fun dismiss(key: String) {
+        // getStringSet's result must not be mutated in place — copy first.
+        val next = (prefs.getStringSet(KEY_DISMISSED, emptySet()) ?: emptySet()).toMutableSet()
+        next.add(key)
+        prefs.edit().putStringSet(KEY_DISMISSED, next.toList().takeLast(50).toSet()).apply()
+    }
 
     @Synchronized
     private fun write(records: List<BenchmarkRecord>) {
@@ -216,5 +247,6 @@ class BenchmarkHistoryStore(context: Context) {
     private companion object {
         const val MAX_RECORDS = 30
         const val TAG = "BenchmarkHistory"
+        const val KEY_DISMISSED = "dismissed"
     }
 }

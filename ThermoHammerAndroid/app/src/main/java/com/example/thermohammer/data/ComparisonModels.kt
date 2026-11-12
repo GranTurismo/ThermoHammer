@@ -74,8 +74,8 @@ object ComparisonEngine {
             else -> ComparisonWinner.EQUAL
         }
 
-        val nameA = "${runA.deviceManufacturer} ${runA.deviceModel}"
-        val nameB = "${runB.deviceManufacturer} ${runB.deviceModel}"
+        val nameA = deviceDisplayName(runA.deviceManufacturer, runA.deviceModel)
+        val nameB = deviceDisplayName(runB.deviceManufacturer, runB.deviceModel)
 
         val summary = buildString {
             if (winner == ComparisonWinner.RUN_A) {

@@ -123,6 +123,21 @@ fun SecondaryButton(text: String, onClick: () -> Unit) {
     }
 }
 
+/** SHARE · PRESENT · EXPORT CSV under a finished run — only the ones given, two to a row. */
+@Composable
+fun RunActions(onShare: (() -> Unit)? = null, onPresent: (() -> Unit)? = null, onExportCsv: (() -> Unit)? = null) {
+    val actions = listOfNotNull(onShare?.let { "SHARE" to it }, onPresent?.let { "PRESENT" to it },
+        onExportCsv?.let { "EXPORT CSV" to it })
+    if (actions.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (pair in actions.chunked(2)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((label, action) in pair) Box(Modifier.weight(1f)) { SecondaryButton(label, action) }
+            }
+        }
+    }
+}
+
 @Composable
 fun SummaryRow(label: String, value: String, valueColor: Color = Forge.ink0) {
     Row(
@@ -380,7 +395,12 @@ fun SummaryOverlay(
     gpuName: String = "",
     onSubmit: () -> Unit,
     onSavePending: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onShare: (() -> Unit)? = null,
+    lostSpeedWhileCool: Boolean = false,
+    onFindLostSpeed: (() -> Unit)? = null,
+    onPresent: (() -> Unit)? = null,
+    onExportCsv: (() -> Unit)? = null
 ) {
     val reduced = rememberReducedMotion()
     // Reveal cascade: numeral → seal → rows
@@ -405,247 +425,273 @@ fun SummaryOverlay(
 
     OverlayContainer(onDismiss = onDismiss) {
         OverlayCard(width = 340) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                MonoTitle("THE READING", size = 12f, color = Forge.ink1)
-                Spacer(Modifier.height(4.dp))
-                Text("diagnostic verdict — schema v2", style = ThermoType.annotation(7.5f))
-            }
-            Spacer(Modifier.height(18.dp))
+            // scrolls: the actions under the verdict don't fit a small screen
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    MonoTitle("THE READING", size = 12f, color = Forge.ink1)
+                    Spacer(Modifier.height(4.dp))
+                    Text("diagnostic verdict — schema v2", style = ThermoType.annotation(7.5f))
+                }
+                Spacer(Modifier.height(18.dp))
 
-            // ── Hero numeral ────────────────────────────────────────────────
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                TickerText(
-                    value = if (stage >= 1) heroValue else 0f,
-                    format = { "%.1f%%".format(it) },
-                    color = heroColor, size = 52f,
-                    fontFamily = DisplayFont, weight = FontWeight.Medium
-                )
-                Text(
-                    if (deliveredCapacity != null) "DELIVERED CAPACITY" else "FINAL STABILITY",
-                    style = ThermoType.label(8f)
-                )
-            }
+                // ── Hero numeral ────────────────────────────────────────────────
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    TickerText(
+                        value = if (stage >= 1) heroValue else 0f,
+                        format = { "%.1f%%".format(it) },
+                        color = heroColor, size = 52f,
+                        fontFamily = DisplayFont, weight = FontWeight.Medium
+                    )
+                    Text(
+                        if (deliveredCapacity != null) "DELIVERED CAPACITY" else "FINAL STABILITY",
+                        style = ThermoType.label(8f)
+                    )
+                }
 
-            Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(14.dp))
 
-            // ── The Seal ────────────────────────────────────────────────────
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isVerified) {
-                    // VERIFIED — ring stamp, teal, stamped-in rotation
-                    Box(
-                        modifier = Modifier
-                            .scale(sealScale)
-                            .rotate(-8f)
-                            .clip(RoundedCornerShape(50))
-                            .border(2.5.dp, Forge.phaseMeasured.copy(alpha = sealAlpha), RoundedCornerShape(50))
-                            .padding(horizontal = 18.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            "⌖ VERIFIED",
-                            style = TextStyle(
-                                color = Forge.phaseMeasured.copy(alpha = sealAlpha),
-                                fontSize = 13.sp, fontFamily = InstrumentMono,
-                                fontWeight = FontWeight.Black, letterSpacing = 3.sp
-                            )
-                        )
-                    }
-                } else {
-                    // FLAGGED — rectangular warning stamp
-                    Box(
-                        modifier = Modifier
-                            .scale(sealScale)
-                            .rotate(-3f)
-                            .border(2.dp, Ramp.at(0.5f).copy(alpha = sealAlpha), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // ── The Seal ────────────────────────────────────────────────────
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isVerified) {
+                        // VERIFIED — ring stamp, teal, stamped-in rotation
+                        Box(
+                            modifier = Modifier
+                                .scale(sealScale)
+                                .rotate(-8f)
+                                .clip(RoundedCornerShape(50))
+                                .border(2.5.dp, Forge.phaseMeasured.copy(alpha = sealAlpha), RoundedCornerShape(50))
+                                .padding(horizontal = 18.dp, vertical = 8.dp)
+                        ) {
                             Text(
-                                "⚠ FLAGGED",
+                                "⌖ VERIFIED",
                                 style = TextStyle(
-                                    color = Ramp.at(0.5f).copy(alpha = sealAlpha),
-                                    fontSize = 12.sp, fontFamily = InstrumentMono,
-                                    fontWeight = FontWeight.Black, letterSpacing = 2.sp
+                                    color = Forge.phaseMeasured.copy(alpha = sealAlpha),
+                                    fontSize = 13.sp, fontFamily = InstrumentMono,
+                                    fontWeight = FontWeight.Black, letterSpacing = 3.sp
                                 )
                             )
-                            if (flagNames.isNotEmpty()) {
+                        }
+                    } else {
+                        // FLAGGED — rectangular warning stamp
+                        Box(
+                            modifier = Modifier
+                                .scale(sealScale)
+                                .rotate(-3f)
+                                .border(2.dp, Ramp.at(0.5f).copy(alpha = sealAlpha), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    flagNames.joinToString(" · "),
-                                    style = ThermoType.annotation(7f, Ramp.at(0.5f).copy(alpha = sealAlpha * 0.8f))
+                                    "⚠ FLAGGED",
+                                    style = TextStyle(
+                                        color = Ramp.at(0.5f).copy(alpha = sealAlpha),
+                                        fontSize = 12.sp, fontFamily = InstrumentMono,
+                                        fontWeight = FontWeight.Black, letterSpacing = 2.sp
+                                    )
                                 )
+                                if (flagNames.isNotEmpty()) {
+                                    Text(
+                                        flagNames.joinToString(" · "),
+                                        style = ThermoType.annotation(7f, Ramp.at(0.5f).copy(alpha = sealAlpha * 0.8f))
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if (stage >= 3) {
+                if (stage >= 3) {
+                    Spacer(Modifier.height(16.dp))
+                    OverlayDivider()
+                    Spacer(Modifier.height(12.dp))
+
+                    val mins = duration / 60; val secs = duration % 60
+                    SummaryRow("TEST TIME", "%02d:%02d".format(mins, secs))
+                    sustainedRatio?.let {
+                        SummaryRow("SUSTAINED RATIO", "%.1f%%".format(it), Ramp.forCapacity(it))
+                    }
+                    if (minStability >= 0f) {
+                        SummaryRow("MIN SUSTAINED", "%.0f%%".format(minStability), Ramp.forCapacity(minStability))
+                    } else {
+                        SummaryRow("MIN SUSTAINED", "NO THROTTLE", Forge.phaseMeasured)
+                    }
+                    if (gpuBaselineFps > 0) {
+                        OverlayDivider()
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "GPU CHANNEL — ${gpuName.ifEmpty { "GLES3" }}",
+                            style = ThermoType.label(8f, Forge.phaseCalibration)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        SummaryRow("BASELINE FPS", "%.1f".format(gpuBaselineFps))
+                        gpuDeliveredCapacity?.let {
+                            SummaryRow("GPU DELIVERED", "%.1f%%".format(it), Ramp.forCapacity(it))
+                        }
+                        gpuSustainedRatio?.let {
+                            SummaryRow("GPU SUSTAINED", "%.1f%%".format(it), Ramp.forCapacity(it))
+                        }
+                    }
+                    throttleOnsetSec?.let {
+                        SummaryRow("THROTTLE ONSET", "${it}s", if (it < 60) Ramp.at(0.85f) else Ramp.at(0.5f))
+                    }
+                    SummaryRow("WORST THERMAL", thermalStateName(worstThermal), thermalStateColor(worstThermal))
+                    confidence?.let { conf ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("CONFIDENCE", style = ThermoType.label(10f))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                // 5-segment gauge ▮▮▮▮▯
+                                repeat(5) { i ->
+                                    Box(
+                                        Modifier
+                                            .size(width = 10.dp, height = 4.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(
+                                                if (i < conf / 20) Ramp.at(1f - conf / 130f) else Forge.ink2.copy(alpha = 0.3f)
+                                            )
+                                    )
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                Text("$conf", style = ThermoType.data(11f, Forge.ink0, FontWeight.Black))
+                            }
+                        }
+                    }
+
+                    val tempDiff = finalBatteryTemp - initialBatteryTemp
+                    val tempDiffStr = if (initialBatteryTemp > 0f && finalBatteryTemp > 0f) {
+                        "%+.1f°C (%.1f → %.1f)".format(tempDiff, initialBatteryTemp, finalBatteryTemp)
+                    } else "--"
+                    SummaryRow("BATTERY TEMP", tempDiffStr, Ramp.forTemp(finalBatteryTemp.coerceAtLeast(initialBatteryTemp)))
+
+                    val levelDrop = initialBatteryLevel - finalBatteryLevel
+                    val dropStr = if (initialBatteryLevel > 0 && finalBatteryLevel > 0) {
+                        when {
+                            levelDrop > 0 -> "-%d%% (%d%% → %d%%)".format(levelDrop, initialBatteryLevel, finalBatteryLevel)
+                            levelDrop < 0 -> "+%d%% (%d%% → %d%%)".format(-levelDrop, initialBatteryLevel, finalBatteryLevel)
+                            else -> "0%% (%d%% → %d%%)".format(initialBatteryLevel, finalBatteryLevel)
+                        }
+                    } else "--"
+                    SummaryRow("BATTERY DRAIN", dropStr, Forge.ink0)
+                }
+
                 Spacer(Modifier.height(16.dp))
                 OverlayDivider()
                 Spacer(Modifier.height(12.dp))
 
-                val mins = duration / 60; val secs = duration % 60
-                SummaryRow("TEST TIME", "%02d:%02d".format(mins, secs))
-                sustainedRatio?.let {
-                    SummaryRow("SUSTAINED RATIO", "%.1f%%".format(it), Ramp.forCapacity(it))
-                }
-                if (minStability >= 0f) {
-                    SummaryRow("MIN SUSTAINED", "%.0f%%".format(minStability), Ramp.forCapacity(minStability))
-                } else {
-                    SummaryRow("MIN SUSTAINED", "NO THROTTLE", Forge.phaseMeasured)
-                }
-                if (gpuBaselineFps > 0) {
-                    OverlayDivider()
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "GPU CHANNEL — ${gpuName.ifEmpty { "GLES3" }}",
-                        style = ThermoType.label(8f, Forge.phaseCalibration)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    SummaryRow("BASELINE FPS", "%.1f".format(gpuBaselineFps))
-                    gpuDeliveredCapacity?.let {
-                        SummaryRow("GPU DELIVERED", "%.1f%%".format(it), Ramp.forCapacity(it))
+                // ── Leaderboard & pending ────────────────────────────────────────
+                if (!com.example.thermohammer.engine.ValidityFlag.submittable(validityFlags)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text("⌖ NOT VERIFIED", color = Ramp.at(0.5f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Only verified runs go to the leaderboard. This one is kept on your phone for your own comparisons.",
+                            style = TextStyle(color = Forge.ink1, fontSize = 10.sp, textAlign = TextAlign.Center),
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
                     }
-                    gpuSustainedRatio?.let {
-                        SummaryRow("GPU SUSTAINED", "%.1f%%".format(it), Ramp.forCapacity(it))
-                    }
-                }
-                throttleOnsetSec?.let {
-                    SummaryRow("THROTTLE ONSET", "${it}s", if (it < 60) Ramp.at(0.85f) else Ramp.at(0.5f))
-                }
-                SummaryRow("WORST THERMAL", thermalStateName(worstThermal), thermalStateColor(worstThermal))
-                confidence?.let { conf ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("CONFIDENCE", style = ThermoType.label(10f))
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            // 5-segment gauge ▮▮▮▮▯
-                            repeat(5) { i ->
-                                Box(
-                                    Modifier
-                                        .size(width = 10.dp, height = 4.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(
-                                            if (i < conf / 20) Ramp.at(1f - conf / 130f) else Forge.ink2.copy(alpha = 0.3f)
-                                        )
-                                )
+                } else if (hasSession) {
+                    if (isNetworkConnected) {
+                        when {
+                            submitSuccess != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                                Text("✓ ", color = Forge.phaseMeasured, fontWeight = FontWeight.Black)
+                                MonoLabel(submitSuccess, size = 11f, alpha = 1f)
                             }
-                            Spacer(Modifier.width(4.dp))
-                            Text("$conf", style = ThermoType.data(11f, Forge.ink0, FontWeight.Black))
+                            submitError != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                Text("✗ SUBMISSION FAILED", color = Ramp.at(0.85f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
+                                Spacer(Modifier.height(4.dp))
+                                Text(submitError, style = TextStyle(color = Forge.ink1.copy(alpha = 0.6f), fontSize = 9.sp, textAlign = TextAlign.Center))
+                            }
+                            isSubmitting -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(16.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                MonoLabel("SUBMITTING SCORE...", size = 11f, alpha = 1f)
+                            }
+                            else -> Button(
+                                onClick = onSubmit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Forge.phasePreFlight)
+                            ) {
+                                Text("⌖ SUBMIT TO LEADERBOARD", style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                            }
                         }
-                    }
-                }
-
-                val tempDiff = finalBatteryTemp - initialBatteryTemp
-                val tempDiffStr = if (initialBatteryTemp > 0f && finalBatteryTemp > 0f) {
-                    "%+.1f°C (%.1f → %.1f)".format(tempDiff, initialBatteryTemp, finalBatteryTemp)
-                } else "--"
-                SummaryRow("BATTERY TEMP", tempDiffStr, Ramp.forTemp(finalBatteryTemp.coerceAtLeast(initialBatteryTemp)))
-
-                val levelDrop = initialBatteryLevel - finalBatteryLevel
-                val dropStr = if (initialBatteryLevel > 0 && finalBatteryLevel > 0) {
-                    when {
-                        levelDrop > 0 -> "-%d%% (%d%% → %d%%)".format(levelDrop, initialBatteryLevel, finalBatteryLevel)
-                        levelDrop < 0 -> "+%d%% (%d%% → %d%%)".format(-levelDrop, initialBatteryLevel, finalBatteryLevel)
-                        else -> "0%% (%d%% → %d%%)".format(initialBatteryLevel, finalBatteryLevel)
-                    }
-                } else "--"
-                SummaryRow("BATTERY DRAIN", dropStr, Forge.ink0)
-            }
-
-            Spacer(Modifier.height(16.dp))
-            OverlayDivider()
-            Spacer(Modifier.height(12.dp))
-
-            // ── Leaderboard & pending ────────────────────────────────────────
-            if (!com.example.thermohammer.engine.ValidityFlag.submittable(validityFlags)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("⌖ NOT VERIFIED", color = Ramp.at(0.5f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Only verified runs go to the leaderboard. This one is kept on your phone for your own comparisons.",
-                        style = TextStyle(color = Forge.ink1, fontSize = 10.sp, textAlign = TextAlign.Center),
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                }
-            } else if (hasSession) {
-                if (isNetworkConnected) {
-                    when {
-                        submitSuccess != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                            Text("✓ ", color = Forge.phaseMeasured, fontWeight = FontWeight.Black)
-                            MonoLabel(submitSuccess, size = 11f, alpha = 1f)
-                        }
-                        submitError != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                            Text("✗ SUBMISSION FAILED", color = Ramp.at(0.85f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
-                            Spacer(Modifier.height(4.dp))
-                            Text(submitError, style = TextStyle(color = Forge.ink1.copy(alpha = 0.6f), fontSize = 9.sp, textAlign = TextAlign.Center))
-                        }
-                        isSubmitting -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = Forge.phasePreFlight, strokeWidth = 2.dp)
-                            Spacer(Modifier.width(8.dp))
-                            MonoLabel("SUBMITTING SCORE...", size = 11f, alpha = 1f)
-                        }
-                        else -> Button(
-                            onClick = onSubmit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Forge.phasePreFlight)
-                        ) {
-                            Text("⌖ SUBMIT TO LEADERBOARD", style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                            Text("⌖ CONNECTION LOST", color = Ramp.at(0.5f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Enable Wi-Fi or cellular to submit. Or save this result to pending history.",
+                                style = TextStyle(color = Forge.ink1, fontSize = 10.sp, textAlign = TextAlign.Center),
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.weight(1f)) {
+                                    Button(
+                                        onClick = onSavePending,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Forge.ink0.copy(alpha = 0.1f))
+                                    ) {
+                                        Text("SAVE PENDING", style = TextStyle(color = Forge.ink0, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                                Box(Modifier.weight(1f)) {
+                                    Button(
+                                        onClick = onSubmit,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Forge.phasePreFlight)
+                                    ) {
+                                        Text("RETRY SUBMIT", style = TextStyle(color = Forge.ink0, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        Text("⌖ CONNECTION LOST", color = Ramp.at(0.5f), fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black)
+                        Text("⌖ OFFLINE RUN", color = Forge.ink1.copy(alpha = 0.6f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Enable Wi-Fi or cellular to submit. Or save this result to pending history.",
-                            style = TextStyle(color = Forge.ink1, fontSize = 10.sp, textAlign = TextAlign.Center),
-                            modifier = Modifier.padding(horizontal = 8.dp)
+                            "Run offline — cannot be submitted to the leaderboard.",
+                            style = TextStyle(color = Forge.ink2, fontSize = 9.sp, textAlign = TextAlign.Center)
                         )
-                        Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(Modifier.weight(1f)) {
-                                Button(
-                                    onClick = onSavePending,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Forge.ink0.copy(alpha = 0.1f))
-                                ) {
-                                    Text("SAVE PENDING", style = TextStyle(color = Forge.ink0, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
-                                }
-                            }
-                            Box(Modifier.weight(1f)) {
-                                Button(
-                                    onClick = onSubmit,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Forge.phasePreFlight)
-                                ) {
-                                    Text("RETRY SUBMIT", style = TextStyle(color = Forge.ink0, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
-                                }
-                            }
-                        }
                     }
                 }
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("⌖ OFFLINE RUN", color = Forge.ink1.copy(alpha = 0.6f), fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Run offline — cannot be submitted to the leaderboard.",
-                        style = TextStyle(color = Forge.ink2, fontSize = 9.sp, textAlign = TextAlign.Center)
-                    )
+                Spacer(Modifier.height(12.dp))
+                OverlayDivider()
+                Spacer(Modifier.height(16.dp))
+                // it lost speed before it got hot: a power setting, which the 30-second check can find
+                if (lostSpeedWhileCool && onFindLostSpeed != null) {
+                    LostSpeedBanner(onFindLostSpeed)
+                    Spacer(Modifier.height(12.dp))
                 }
+                RunActions(onShare = onShare, onPresent = onPresent, onExportCsv = onExportCsv)
+                Spacer(Modifier.height(8.dp))
+                PrimaryButton("DISMISS REPORT", onDismiss)
             }
-            Spacer(Modifier.height(12.dp))
-            OverlayDivider()
-            Spacer(Modifier.height(16.dp))
-            PrimaryButton("DISMISS REPORT", onDismiss)
         }
+    }
+}
+
+@Composable
+private fun LostSpeedBanner(onFindLostSpeed: () -> Unit) {
+    val accent = Ramp.at(0.5f)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(accent.copy(alpha = 0.08f))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(12.dp)).padding(12.dp)
+    ) {
+        Text("It slowed down while cool — likely a power setting.", style = ThermoType.data(10f, Forge.ink0, FontWeight.Bold))
+        Spacer(Modifier.height(10.dp))
+        Text("FIND MY LOST SPEED", textAlign = TextAlign.Center, style = ThermoType.title(9f, accent),
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.12f))
+                .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp)).clickable(onClick = onFindLostSpeed)
+                .padding(vertical = 11.dp))
     }
 }
 

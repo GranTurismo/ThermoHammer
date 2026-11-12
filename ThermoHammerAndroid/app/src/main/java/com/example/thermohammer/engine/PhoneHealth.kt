@@ -96,6 +96,8 @@ object PhoneHealth {
     fun assess(result: BenchmarkResult, model: String, stats: ModelStatsDto?, history: List<BenchmarkRecord>,
                current: BenchmarkRecord?, osVersion: String): Report {
         val findings = ArrayList<Finding>()
+        // the server answers with the name on the box ("HONOR 600 Pro"); the phone itself only knows its code ("HONOR VKP-NX9")
+        val name = stats?.deviceModel?.takeIf { it.isNotBlank() } ?: model
         val total = result.total
         val reasons = flagReasons(result.validityFlags)
         if (reasons.isNotEmpty()) findings += Finding("Not a verified run: ${reasons.joinToString(", ")} — it doesn't reach the " +
@@ -116,10 +118,10 @@ object PhoneHealth {
                 else -> Verdict.MUCH_SLOWER
             }
             headline = when (verdict) {
-                Verdict.FASTER -> "Faster than most $model units"
-                Verdict.ON_PAR -> "As fast as a $model should be"
-                Verdict.SLOWER -> "A little slower than other $model units"
-                else -> "Slower than a $model should be"
+                Verdict.FASTER -> "Faster than most $name units"
+                Verdict.ON_PAR -> "As fast as a $name should be"
+                Verdict.SLOWER -> "A little slower than other $name units"
+                else -> "Slower than a $name should be"
             }
             // the parts that fall short, by cause, worst first
             val mine = parts(result)
@@ -147,8 +149,8 @@ object PhoneHealth {
                         (kotlin.math.abs(d) * 100).roundToInt(), if (d > 0) "higher" else "lower", o.runs, osVersion), 0)
                 }
         } else {
-            headline = if (stats == null) "Connect to compare with other $model units"
-                else "Not enough verified runs of $model yet (${stats.runs} of $MIN_RUNS)"
+            headline = if (stats == null) "Connect to compare with other $name units"
+                else "Not enough verified runs of $name yet (${stats.runs} of $MIN_RUNS)"
         }
 
         // this phone's own earlier runs

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.example.thermohammer.data.ComparisonEngine
 import com.example.thermohammer.data.PendingResultStore
 import com.example.thermohammer.data.PendingTestResult
+import com.example.thermohammer.data.deviceDisplayName
 import com.example.thermohammer.engine.StabilityPoint
 import com.example.thermohammer.engine.StampV2
 import com.example.thermohammer.network.ApiClient
@@ -435,7 +436,7 @@ private fun RunSpinnerDropdown(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = currentRun?.let { "${it.deviceManufacturer} ${it.deviceModel}" } ?: "Select Device",
+                        text = currentRun?.let { deviceDisplayName(it.deviceManufacturer, it.deviceModel) } ?: "Select Device",
                         style = TextStyle(color = Forge.ink0, fontSize = 11.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Bold),
                         maxLines = 1
                     )
@@ -461,7 +462,7 @@ private fun RunSpinnerDropdown(
                         text = {
                             Column {
                                 Text(
-                                    if (isOnline) "🌐 ${item.deviceManufacturer} ${item.deviceModel}" else "📱 ${item.deviceManufacturer} ${item.deviceModel}",
+                                    if (isOnline) "🌐 ${deviceDisplayName(item.deviceManufacturer, item.deviceModel)}" else "📱 ${deviceDisplayName(item.deviceManufacturer, item.deviceModel)}",
                                     style = TextStyle(
                                         color = if (idx == selectedIndex) accentColor else Forge.ink0,
                                         fontSize = 11.sp,

@@ -17,4 +17,19 @@ internal object QrNative {
     /** Scans frame [index] on the calling thread: whether it read back its own text; where it was found goes to [found]. */
     @JvmStatic external fun scan(handle: Long, index: Int, found: FloatArray?): Boolean
     @JvmStatic external fun destroy(handle: Long)
+
+    /** [text] as a QR code (ECC M): its modules row by row into [out] (1 dark, 0 light, no quiet zone); the side, 0 on failure. */
+    @JvmStatic external fun encode(text: String, out: ByteArray): Int
+
+    /** [text]'s QR modules and their side — null if it can't be encoded. The largest code (version 40) is 177 × 177. */
+    fun qr(text: String): QrModules? {
+        val out = ByteArray(177 * 177)
+        val side = encode(text, out)
+        return if (side > 0) QrModules(side, out.copyOf(side * side)) else null
+    }
+}
+
+/** A QR code: [side] × [side] modules, row by row, 1 = dark. */
+class QrModules(val side: Int, val modules: ByteArray) {
+    fun dark(x: Int, y: Int): Boolean = modules[y * side + x].toInt() != 0
 }

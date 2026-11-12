@@ -53,7 +53,12 @@ fun BenchmarkResultOverlay(
     submitError: String?,
     onSubmit: () -> Unit,
     onCopyReport: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onShare: (() -> Unit)? = null,
+    onFindLostSpeed: (() -> Unit)? = null,
+    onPresent: (() -> Unit)? = null,
+    onExportCsv: (() -> Unit)? = null,
+    onCertificate: (() -> Unit)? = null      // a verified, complete run: its certificate for selling the phone
 ) {
     Box(
         Modifier.fillMaxSize().background(Forge.bg.copy(alpha = 0.88f)).clickable(enabled = false) {},
@@ -86,7 +91,7 @@ fun BenchmarkResultOverlay(
                     Text(result.gpuName, style = ThermoType.annotation(9f, Forge.ink2), textAlign = TextAlign.Center)
                 }
                 Spacer(Modifier.height(16.dp))
-                HealthCard(result, deviceName, history, recordId, osVersion, isNetworkConnected)
+                HealthCard(result, deviceName, history, recordId, osVersion, isNetworkConnected, onFindLostSpeed)
                 Spacer(Modifier.height(10.dp))
                 result.cpu?.let { cpu ->
                     for (t in com.example.thermohammer.engine.cpu.CpuTest.entries) {
@@ -175,6 +180,12 @@ fun BenchmarkResultOverlay(
                 Spacer(Modifier.height(8.dp))
                 SecondaryButton("COPY REPORT", onCopyReport)
                 Spacer(Modifier.height(8.dp))
+                RunActions(onShare = onShare, onPresent = onPresent, onExportCsv = onExportCsv)
+                Spacer(Modifier.height(8.dp))
+                if (onCertificate != null) {
+                    PrimaryButton("HEALTH CERTIFICATE", onCertificate, accent = Forge.phaseMeasured)
+                    Spacer(Modifier.height(8.dp))
+                }
                 SecondaryButton("CLOSE", onDismiss)
             }
         }
@@ -559,7 +570,7 @@ private fun VerifiedPill(result: BenchmarkResult) {
  */
 @Composable
 private fun HealthCard(result: BenchmarkResult, model: String, history: List<com.example.thermohammer.data.BenchmarkRecord>,
-                       recordId: String?, osVersion: String, online: Boolean) {
+                       recordId: String?, osVersion: String, online: Boolean, onFindLostSpeed: (() -> Unit)? = null) {
     // null: still asking; then the model's statistics, or a failure
     val answer by androidx.compose.runtime.produceState<Result<com.example.thermohammer.network.ModelStatsDto>?>(null, model, online) {
         if (online) value = runCatching { com.example.thermohammer.network.ApiClient.api.fetchModelStats(model, 2) }
@@ -568,6 +579,14 @@ private fun HealthCard(result: BenchmarkResult, model: String, history: List<com
     val loading = online && answer == null
     val report = androidx.compose.runtime.remember(stats, history) {
         PhoneHealth.assess(result, model, stats, history, history.firstOrNull { it.id == recordId }, osVersion)
+    }
+    // kept for the lost-speed check's note and the certificate, which don't ask the server again
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(report, stats) {
+        if (stats == null) return@LaunchedEffect
+        com.example.thermohammer.data.MyDeviceName.remember(context, stats.deviceModel)
+        if (report.percent != null) com.example.thermohammer.data.HealthMemoStore.save(context, com.example.thermohammer.data.HealthMemo(
+            recordId, report.verdict.name, report.percent, report.runs, stats.deviceModel.ifBlank { model }, System.currentTimeMillis()))
     }
     val accent = when (report.verdict) {
         PhoneHealth.Verdict.FASTER, PhoneHealth.Verdict.ON_PAR -> Forge.phaseMeasured
@@ -610,6 +629,14 @@ private fun HealthCard(result: BenchmarkResult, model: String, history: List<com
                     when (f.severity) { 2 -> Ramp.at(0.85f); 1 -> Ramp.at(0.5f); else -> Forge.ink2 }))
                 Text(f.text, style = ThermoType.annotation(9f, if (f.severity > 0) Forge.ink0 else Forge.ink1))
             }
+        }
+        // slower than it should be: a 30-second check of what is holding it back
+        if (onFindLostSpeed != null && (report.verdict == PhoneHealth.Verdict.SLOWER || report.verdict == PhoneHealth.Verdict.MUCH_SLOWER)) {
+            Spacer(Modifier.height(10.dp))
+            Text("FIND MY LOST SPEED", textAlign = TextAlign.Center, style = ThermoType.title(9f, accent),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.10f))
+                    .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp)).clickable(onClick = onFindLostSpeed)
+                    .padding(vertical = 11.dp))
         }
     }
 }

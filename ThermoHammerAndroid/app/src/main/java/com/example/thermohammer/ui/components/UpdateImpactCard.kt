@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.thermohammer.data.BenchmarkUpdateImpact
 import com.example.thermohammer.data.RunRecord
 import com.example.thermohammer.data.UpdateImpact
 import com.example.thermohammer.data.UpdateImpact.Insight
@@ -159,6 +160,175 @@ private fun ResultCard(
             Spacer(Modifier.height(10.dp))
             ActionButton("RUN AGAIN TO CONFIRM", tint) { onRetest(r.before.latest) }
         }
+    }
+}
+
+// ── Benchmark: the same card for benchmark runs ──────────────────────────────
+
+/**
+ * "Did the update slow my phone?" for the benchmark: PROMPT (updated, no benchmark since — run it) or RESULT (median
+ * totals before → after, per-section changes). Same shell and wording rules as the stress card above.
+ */
+@Composable
+fun BenchmarkUpdateCard(
+    insight: BenchmarkUpdateImpact.Insight,
+    onRunBenchmark: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    when (insight) {
+        is BenchmarkUpdateImpact.Insight.Prompt -> BenchmarkPromptCard(insight, onRunBenchmark, onDismiss, modifier)
+        is BenchmarkUpdateImpact.Insight.Result -> BenchmarkResultCard(insight, onRunBenchmark, onDismiss, modifier)
+    }
+}
+
+@Composable
+private fun BenchmarkPromptCard(
+    p: BenchmarkUpdateImpact.Insight.Prompt,
+    onRunBenchmark: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier
+) {
+    val accent = Forge.phasePreFlight
+    CardShell(accent, modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            StatusLED(accent)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("UPDATE DETECTED", style = ThermoType.title(10f, accent))
+                Text("BENCHMARK", style = ThermoType.label(7f))
+            }
+            Text(
+                "NOT NOW",
+                style = ThermoType.label(7.5f, Forge.ink2),
+                modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onDismiss)
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            OsColumn("WAS", osName(p.before.version), p.before.build.orEmpty(), Modifier.weight(1f))
+            Text("→", style = ThermoType.data(16f, Forge.ink2))
+            OsColumn("NOW", osName(p.now.version), p.now.build.orEmpty(), Modifier.weight(1f), alignEnd = true)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Text("Your last benchmark: %,d · %s".format(p.last.score, dateLabel(p.last.timestamp)), style = ThermoType.data(9.5f, Forge.ink0))
+        Spacer(Modifier.height(4.dp))
+        Text(BenchmarkUpdateImpact.promptText(p), style = ThermoType.annotation(8f, Forge.ink1))
+        Spacer(Modifier.height(12.dp))
+        ActionButton("RUN BENCHMARK", accent, onRunBenchmark)
+    }
+}
+
+@Composable
+private fun BenchmarkResultCard(
+    r: BenchmarkUpdateImpact.Insight.Result,
+    onRunBenchmark: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier
+) {
+    val tint = when (r.verdict) {
+        BenchmarkUpdateImpact.Verdict.SLOWER -> Ramp.at(0.68f)
+        BenchmarkUpdateImpact.Verdict.FASTER -> Forge.phaseMeasured
+        BenchmarkUpdateImpact.Verdict.NO_CLEAR_CHANGE -> Forge.ink1
+    }
+    CardShell(tint, modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("UPDATE IMPACT · BENCHMARK", style = ThermoType.title(10f), modifier = Modifier.weight(1f))
+            Text(
+                "✕",
+                style = ThermoType.data(11f, Forge.ink2),
+                modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onDismiss)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            BenchSideColumn("BEFORE", r.before, Modifier.weight(1f))
+            Text("→", style = ThermoType.data(16f, Forge.ink2))
+            BenchSideColumn("AFTER", r.after, Modifier.weight(1f), alignEnd = true)
+        }
+        Spacer(Modifier.height(14.dp))
+
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
+            Text(signedPct(r.delta), style = ThermoType.hero(30f).copy(color = tint))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                when (r.verdict) {
+                    BenchmarkUpdateImpact.Verdict.SLOWER -> "SLOWER"
+                    BenchmarkUpdateImpact.Verdict.FASTER -> "FASTER"
+                    BenchmarkUpdateImpact.Verdict.NO_CLEAR_CHANGE -> "NO CLEAR CHANGE"
+                },
+                style = ThermoType.label(8.5f, tint),
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            BenchmarkUpdateImpact.resultText(r)
+                ?: "Within %.0f%% — normal run-to-run variation. Nothing here shows the update changed your phone."
+                    .format(BenchmarkUpdateImpact.NO_CHANGE_WITHIN * 100),
+            style = ThermoType.annotation(8f, Forge.ink1)
+        )
+        if (r.sections.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            for (s in r.sections) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text(s.name, style = ThermoType.data(9f, com.example.thermohammer.ui.share.sectionColor(s.name), FontWeight.Black),
+                        modifier = Modifier.width(40.dp))
+                    Text("%,.0f → %,.0f".format(s.before, s.after), style = ThermoType.data(9f, Forge.ink1), modifier = Modifier.weight(1f))
+                    Text(signedPct(s.delta), style = ThermoType.data(9f,
+                        when {
+                            kotlin.math.abs(s.delta) < BenchmarkUpdateImpact.NO_CHANGE_WITHIN -> Forge.ink2
+                            s.delta < 0 -> Ramp.at(0.68f)
+                            else -> Forge.phaseMeasured
+                        }, FontWeight.Bold))
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Same phone, verified complete runs only. This shows what changed after the update — " +
+                "not what caused it. Room temperature, case and battery level still matter.",
+            style = ThermoType.annotation(7f, Forge.ink2)
+        )
+        if (r.weak) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Based on ${runs(r.before.runs.size)} before and ${runs(r.after.runs.size)} after — run again to confirm.",
+                style = ThermoType.annotation(8f, Ramp.at(0.5f))
+            )
+            Spacer(Modifier.height(10.dp))
+            ActionButton("RUN BENCHMARK", tint, onRunBenchmark)
+        }
+    }
+}
+
+@Composable
+private fun BenchSideColumn(tag: String, side: BenchmarkUpdateImpact.Side, modifier: Modifier, alignEnd: Boolean = false) {
+    Column(modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
+        Text(tag, style = ThermoType.label(7f))
+        Spacer(Modifier.height(2.dp))
+        Text("%,.0f".format(side.median), style = ThermoType.data(20f, Forge.ink0, FontWeight.Bold))
+        Text(osName(side.os.version), style = ThermoType.data(9f, Forge.ink0, FontWeight.Bold))
+        side.os.build?.let { Text(it, style = ThermoType.annotation(6.5f, Forge.ink1)) }
+        Text(
+            if (side.runs.size == 1) "1 run" else "median of ${side.runs.size} runs",
+            style = ThermoType.annotation(6.5f, Forge.ink2)
+        )
+    }
+}
+
+/** "+4.2%" / "−4.2%" with a proper minus; a change under 0.05 % reads 0.0%. */
+private fun signedPct(delta: Double): String {
+    val pct = delta * 100
+    return when {
+        pct > 0.05 -> "+%.1f%%".format(pct)
+        pct < -0.05 -> "−%.1f%%".format(-pct)
+        else -> "0.0%"
     }
 }
 
