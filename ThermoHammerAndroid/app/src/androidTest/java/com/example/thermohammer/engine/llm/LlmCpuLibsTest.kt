@@ -47,7 +47,8 @@ class LlmCpuLibsTest {
         val forced = InstrumentationRegistry.getArguments().getString("forceI8mm") == "true"
         assumeTrue("this CPU doesn't report i8mm", forced || CpuFeatures.supportsI8mm(hw[0], hw[1]))
         assertTrue("libbenchllm_i8mm.so must load here: ${LlmNativeI8mm.loadError}", LlmNativeI8mm.loaded)
-        val r = LlmProbe.run(listOf(DotprodLib, I8mmLib), threads = 4, batchThreads = 4, isActive = { true })
+        // no time limit here: this checks the answers, and a slow emulator would otherwise (rightly) skip the second build
+        val r = LlmProbe.run(listOf(DotprodLib, I8mmLib), threads = 4, batchThreads = 4, isActive = { true }, budgetS = Double.MAX_VALUE)
         val status = Bundle().apply {
             putString("forced", if (forced && !CpuFeatures.supportsI8mm(hw[0], hw[1])) "yes: the kernel reports no i8mm" else "no")
             putString("probe", LlmProbe.lines(r).joinToString("\n"))

@@ -55,7 +55,18 @@ class AiTuningTest {
         }
         val d = AiSettings.DEFAULT
         assertEquals(GpuBackend.AUTOMATIC, d.gpuBackend); assertEquals(GpuStorage.DEFAULT, d.gpuStorage)
+        assertEquals(GpuPrecision.DEFAULT, d.gpuPrecision)
         assertFalse(d.srcQuantized); assertNull(d.cpuThreads); assertFalse(d.gpuTakesRest)
+    }
+
+    @Test
+    fun `each GPU setting changes exactly one thing`() {
+        val changed = AiSettings.gpu().drop(1).map { s ->
+            listOf(s.gpuBackend != GpuBackend.AUTOMATIC, s.gpuStorage != GpuStorage.DEFAULT, s.gpuPrecision != GpuPrecision.DEFAULT,
+                s.srcQuantized, s.cpuThreads != null, s.gpuTakesRest).count { it }
+        }
+        assertEquals(List(changed.size) { 1 }, changed)
+        assertTrue(AiSettings.gpu().any { it.gpuPrecision == GpuPrecision.FP16 })
     }
 
     @Test

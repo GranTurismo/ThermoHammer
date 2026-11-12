@@ -27,12 +27,16 @@ enum class GpuBackend(val label: String) { AUTOMATIC("automatic"), OPENCL("OpenC
 
 enum class GpuStorage(val label: String) { DEFAULT("default"), BUFFER("buffers"), TEXTURE_2D("2D textures") }
 
+/** LiteRT's own choice, or FP16 asked for: nothing in 2.3.0's sources says which of FP16 and FP32 its default is on a Mali. */
+enum class GpuPrecision(val label: String) { DEFAULT("default"), FP16("FP16") }
+
 /** One way to run the models on an accelerator. The default is what the app has always done (and what Qualcomm phones still get). */
 data class AiSetting(
     val id: String,
     val label: String,
     val gpuBackend: GpuBackend = GpuBackend.AUTOMATIC,
     val gpuStorage: GpuStorage = GpuStorage.DEFAULT,
+    val gpuPrecision: GpuPrecision = GpuPrecision.DEFAULT,
     /** GPU: fully-connected and convolution inputs quantized to 8 bits so the GPU's integer dot product runs them (LiteRT: needs constant-tensor sharing). */
     val srcQuantized: Boolean = false,
     /** NPU: threads for the ops the NPU's compiler doesn't take — LiteRT's own default is one. */
@@ -64,6 +68,7 @@ object AiSettings {
         AiSetting("opengl", "OpenGL ES backend", gpuBackend = GpuBackend.OPENGL),
         AiSetting("buffers", "buffer storage", gpuStorage = GpuStorage.BUFFER),
         AiSetting("textures", "2D texture storage", gpuStorage = GpuStorage.TEXTURE_2D),
+        AiSetting("fp16", "FP16 precision", gpuPrecision = GpuPrecision.FP16),
         AiSetting("int8-input", "8-bit input quantization", srcQuantized = true))
 
     /** Tried on MediaTek NeuroPilot: LiteRT 2.3.0's Kotlin API has no MediaTek options, so only what runs beside the NPU can change. */

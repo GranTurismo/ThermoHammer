@@ -231,7 +231,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         private const val KEY_AI_PROBE_RUNNING = "ai_probe_running"   // "install:ACCEL:setting" while a tuned AI run is in flight
         private const val KEY_AI_PROBE_CRASHED = "ai_probe_crashed"   // {"install:ACCEL:setting"} that took the app down
         private const val AI_PROBE_SECONDS = 0.8                      // a tuning probe measures each setting this long
-        private const val AI_TUNE_BUDGET_NS = 75_000_000_000L         // and stops trying settings after this long per accelerator
+        private const val AI_TUNE_BUDGET_NS = 60_000_000_000L         // and stops trying settings after this long per accelerator
         private val AI_DELEGATION_LOG = Regex("Partitioned subgraph|Unlegalized op")   // what LiteRT logs of a model's NPU compile
         private val AI_GPU_BACKEND_LOG = Regex("OpenCL not supported on this platform")  // and when its GPU delegate falls back to OpenGL
         private const val KEY_LLM_RUNNING = "llm_running"        // "install:accel" while an LLM run is in flight
@@ -1211,7 +1211,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         // llama.cpp's OpenCL kernels are written for Adreno: elsewhere OpenCL is only asked what it is, never run on
         val opencl = if (LlmNative.loaded && !gpuName.contains("adreno", ignoreCase = true))
             runCatching { LlmNative.openClReport().lines() }.getOrDefault(listOf("OpenCL · the probe failed")) else emptyList()
-        return ran.copy(skipped = decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap(),
+        return ran.copy(skipped = ran.skipped + (decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap()),
             cpuFeatures = hw?.let { CpuFeatures.line(it[0], it[1]) }, vulkan = vulkan, opencl = opencl)
     }
 

@@ -88,10 +88,12 @@ data class LlmProbeResult(
 )
 
 object LlmProbe {
-    const val WARMUP_TOKENS = 16          // the first prompt builds the compute graph: it sizes nothing
-    const val SIZING_TOKENS = 32          // the second one sizes the probe's prompt
-    const val REPLY = 16
-    const val TARGET_PREFILL_S = 2.5      // a prompt this long per build: the whole probe stays near 20 s for two
+    const val WARMUP_TOKENS = 8           // the first prompt builds the compute graph: it sizes nothing
+    const val SIZING_TOKENS = 16          // the second one sizes the probe's prompt
+    const val REPLY = 12
+    const val TARGET_PREFILL_S = 2.0      // a prompt this long per build; with its model build and reply about 7 s each on a flagship
+    /** The probe's own limit: a build isn't started if it would likely end past this (the first build's time is the guess). */
+    const val BUDGET_S = 20.0
     const val MIN_PROMPT = 32
     const val MAX_PROMPT = 512            // BC_LLM_PROMPT
     /** Logits at least this correlated with the first build's, as the GPU's have to be with the CPU's. */
@@ -121,17 +123,25 @@ object LlmProbe {
      * and its logits are what the others' are compared with. A library that fails is a row with its reason; a stopped
      * run (`isActive` false) returns what it has. `onStep(label, fraction)` keeps the stage moving; `around(lib, true)`
      * is told just before a library builds its model and `around(lib, false)` just after it is freed, so the caller
-     * can keep a crash marker for exactly the library that is running.
+     * can keep a crash marker for exactly the library that is running. A library that wouldn't finish inside
+     * `budgetS` (judged by how long the first took) isn't started: the probe adds to the run no more than that.
      */
     internal fun run(libs: List<LlmCpuLib>, threads: Int, batchThreads: Int, isActive: () -> Boolean,
                      nanoTime: () -> Long = System::nanoTime, around: (LlmCpuLib, Boolean) -> Unit = { _, _ -> },
-                     onStep: (String, Float) -> Unit = { _, _ -> }): LlmProbeResult {
+                     budgetS: Double = BUDGET_S, onStep: (String, Float) -> Unit = { _, _ -> }): LlmProbeResult {
         val started = nanoTime()
         val runs = ArrayList<LlmProbeRun>()
+        val skipped = LinkedHashMap<String, String>()
         var prompt = 0
         var reference: FloatArray? = null
+        var firstS = 0.0
         for ((i, lib) in libs.withIndex()) {
             if (!isActive()) break
+            val elapsed = (nanoTime() - started) / 1e9
+            if (i > 0 && elapsed + firstS > budgetS) {
+                skipped[lib.variant] = "out of time: %.0f s in, and the first build took %.0f s of %.0f".format(elapsed, firstS, budgetS)
+                continue
+            }
             val label = "${lib.variant.uppercase()} KERNELS · NOT SCORED"
             onStep("$label · BUILDING THE MODEL", i / libs.size.toFloat())
             val error = arrayOfNulls<String>(1)
@@ -175,9 +185,10 @@ object LlmProbe {
                 done.set(true)
                 lib.destroy(h)
                 around(lib, false)
+                if (i == 0) firstS = (nanoTime() - started) / 1e9
             }
         }
-        return LlmProbeResult(runs, prompt, REPLY, threads, batchThreads, (nanoTime() - started) / 1e9)
+        return LlmProbeResult(runs, prompt, REPLY, threads, batchThreads, (nanoTime() - started) / 1e9, skipped)
     }
 
     /** Whether the i8mm build is tried, and if not why not. */
