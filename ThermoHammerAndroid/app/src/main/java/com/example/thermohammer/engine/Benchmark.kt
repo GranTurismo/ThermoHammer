@@ -1,6 +1,8 @@
 package com.example.thermohammer.engine
 
 import com.example.thermohammer.engine.cpu.CpuTest
+import com.example.thermohammer.engine.ai.AiDelegation
+import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.cpu.CpuTestRun
 import com.example.thermohammer.engine.ux.QrResult
 import kotlin.math.exp
@@ -458,7 +460,12 @@ data class AiResult(
     val npuProblem: String? = null,   // why it didn't
     val npuFiles: String? = null,     // the Hexagon DSP images on the phone, e.g. "V79 skel" (reported)
     val npuLog: String? = null,       // QNN / LiteRT's own error lines when a model failed on the NPU (reported)
-    val npuBurst: Boolean = true      // false: BURST failed, the NPU ran at QNN's default clocks (reported)
+    val npuBurst: Boolean = true,     // false: BURST failed, the NPU ran at QNN's default clocks (reported)
+    // what the tuning probe tried on a GPU that isn't an Adreno and on a MediaTek NPU, and which ops that NPU left to
+    // the CPU: reported only. The scores count the rates of the setting the probe chose; nothing else of this is scored
+    // or sent to the server.
+    val tuning: List<AiTuning> = emptyList(),
+    val delegation: List<AiDelegation> = emptyList()
 ) {
     fun ips(t: AiTest, a: AiAccel): Double = runs.firstOrNull { it.test == t && it.accel == a }?.ips ?: 0.0
     fun points(t: AiTest, a: AiAccel): Int = AiScore.points(t, a, ips(t, a))

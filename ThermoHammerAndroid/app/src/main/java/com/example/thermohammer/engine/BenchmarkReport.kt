@@ -1,5 +1,6 @@
 package com.example.thermohammer.engine
 
+import com.example.thermohammer.engine.ai.AiTuner
 import com.example.thermohammer.engine.cpu.CpuTest
 
 /** Plain-text report of a benchmark run — every raw number, for sharing or pasting into a bug report. */
@@ -83,6 +84,8 @@ object BenchmarkReport {
                         if (run != null && run.ips > 0) "%s %.2f/s".format(a.label, run.ips) else "${a.label} 0 (${run?.error ?: "not run"})"
                     }))
                 }
+                for (t in ai.tuning) AiTuner.lines(t).forEach { appendLine(it) }
+                AiTuner.delegationLines(ai.delegation).forEach { appendLine(it) }
             }
             r.llm?.let { llm ->
                 appendLine("LLM · %,d pts = prefill %,d (%.2f tok/s) · decode %,d (%.2f tok/s) · %.2f GB free, largest model %dB%s".format(

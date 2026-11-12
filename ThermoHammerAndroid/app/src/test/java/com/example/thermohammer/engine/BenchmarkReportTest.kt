@@ -1,5 +1,10 @@
 package com.example.thermohammer.engine
 
+import com.example.thermohammer.engine.ai.AiDelegation
+import com.example.thermohammer.engine.ai.AiProbeResult
+import com.example.thermohammer.engine.ai.AiSettings
+import com.example.thermohammer.engine.ai.AiTuning
+import com.example.thermohammer.engine.ai.AiTuningRow
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.example.thermohammer.engine.cpu.CpuTestRun
 import com.example.thermohammer.engine.ux.QrResult
@@ -52,6 +57,23 @@ class BenchmarkReportTest {
                 "MEM 1 RAM", "read 48.20, write 39.50, copy 24.75 GB/s · latency 151.30 ns",
                 "seq read 2890, seq write 1950 MB/s · random read 58000, random write 47000 IOPS · 512 MB file, cached I/O",
                 "MEM 3 DATABASE", "insert 805, update 790 tx/s · query 5100/s", "AI 1 IMAGE CLASSIFICATION · CPU 845.04/s, GPU 0 (Failed to compile model)")) {
+            assertTrue("report lacks '$needle':\n$text", text.contains(needle))
+        }
+    }
+
+    @Test
+    fun `report lists what the AI tuning tried and what the NPU left to the CPU`() {
+        val models = AiSettings.GPU_MODELS
+        val rows = AiSettings.gpu().take(2).mapIndexed { i, setting ->
+            AiTuningRow(setting, models.associateWith { AiProbeResult(100.0 + 30 * i, 0.99, 0.05, 0.02) })
+        }
+        val ai = AiResult(listOf(AiRun(AiTest.CLASSIFY, AiAccel.GPU, 130.0)), npuRuntime = "MediaTek NeuroPilot",
+            tuning = listOf(AiTuning(AiAccel.GPU, "Mali-G1-Ultra MC12", models, rows, rows[1].setting, "CPU", 31.4, "OpenCL")),
+            delegation = listOf(AiDelegation(AiTest.DETECT, 309, 317, 3, listOf("ARG_MAX", "EXP"))))
+        val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "Mali-G1-Ultra MC12", 0, ai = ai), "vivo X300 Pro", "16", "MT6993", "2.1", "2026-11-12 10:00")
+        for (needle in listOf("AI tuning · GPU · Mali-G1-Ultra MC12 · scored with OpenCL backend · compared with the CPU's outputs · 31.4 s · default ran on OpenCL",
+                "  default · classify 100.00/s", "  OpenCL backend · classify 130.00/s ×1.30", "· used",
+                "AI 2 OBJECT DETECTION · NPU took 309 of 317 ops in 3 partitions · not on the NPU: ARG_MAX, EXP")) {
             assertTrue("report lacks '$needle':\n$text", text.contains(needle))
         }
     }

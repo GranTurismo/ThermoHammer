@@ -46,6 +46,7 @@ class AiBench(private val context: Context) {
     companion object {
         private const val WARMUP_RUNS = 3
         private const val CPU_THREADS = 4
+        private const val COPY_TRIALS = 3         // a tuning probe averages this many copies in and out
     }
 
     private val libDir = context.applicationInfo.nativeLibraryDir
@@ -124,8 +125,12 @@ class AiBench(private val context: Context) {
         return null
     }
 
-    /** Inferences per second of `test` on `accel`, and the outputs of its last inference. */
-    class Measured(val ips: Double, val outputs: List<ByteArray>)
+    /**
+     * Inferences per second of `test` on `accel`, and the outputs of its last inference. A tuning probe also times
+     * the copy of the input into the model's buffer and of the outputs back out (ms; -1 when not measured): the timed
+     * loop does neither, so this is what a caller that did would add per inference.
+     */
+    class Measured(val ips: Double, val outputs: List<ByteArray>, val writeMs: Double = -1.0, val readMs: Double = -1.0)
 
     /** The Hexagon DSP images QNN can load here, e.g. "V79 skel" — what the npu/ Play modules installed. */
     fun npuFiles(): String {
@@ -139,11 +144,7 @@ class AiBench(private val context: Context) {
      * model failed (LiteRT itself only says "Failed to invoke the compiled model"). An app may read its own log.
      */
     fun npuLog(sinceMs: Long): String? = runCatching {
-        val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(sinceMs))
-        val p = ProcessBuilder("logcat", "-d", "-v", "tag", "-T", since, "--pid=${android.os.Process.myPid()}")
-            .redirectErrorStream(true).start()
-        val lines = p.inputStream.bufferedReader().readLines()
-        p.waitFor()
+        val lines = logcat(sinceMs)
         // "avc: denied" is the system refusing the app a file or device (e.g. the DSP's /dev/fastrpc-*)
         val npu = Regex("(?i)qnn|htp|litert|dispatch|fastrpc|adsprpc|rpcmem|dsp|tflite|npu|avc: +denied")
         // the other vendors' plugins complain on every phone that isn't theirs: those lines would only crowd out the cause
@@ -158,20 +159,40 @@ class AiBench(private val context: Context) {
     }.getOrNull()
 
     /**
+     * LiteRT's own lines (any level) since [sinceMs] that match [pattern] — what it says when a model compiles:
+     * the GPU delegate's API choice, and which ops a vendor's NPU compiler took (the Kotlin API reports neither).
+     */
+    fun litertLines(sinceMs: Long, pattern: Regex): List<String> =
+        runCatching { logcat(sinceMs).filter { pattern.containsMatchIn(it) } }.getOrDefault(emptyList())
+
+    /** This app's own log since [sinceMs] (an app may read its own). */
+    private fun logcat(sinceMs: Long): List<String> {
+        val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(sinceMs))
+        val p = ProcessBuilder("logcat", "-d", "-v", "tag", "-T", since, "--pid=${android.os.Process.myPid()}")
+            .redirectErrorStream(true).start()
+        val lines = p.inputStream.bufferedReader().readLines()
+        p.waitFor()
+        return lines
+    }
+
+    /**
      * `burst`: the NPU at its highest clock (QNN's BURST mode); false leaves QNN's default performance mode.
      * An NPU run that fails through the narrowed dispatch folder is tried once more through the plain library folder
      * (what the app used before the narrowing); that folder is kept only if it works, so a model that fails for
      * another reason can't switch the narrowing off for the models after it.
+     * `setting`: a tuning probe's way of running the model on a GPU that isn't an Adreno or on a MediaTek NPU
+     * (null or the default: exactly what the app has always done, which is what every other phone gets).
      */
     fun run(test: AiTest, accel: AiAccel, input: ByteArray, seconds: Double,
-            isActive: () -> Boolean, burst: Boolean = true, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
+            isActive: () -> Boolean, burst: Boolean = true, setting: AiSetting? = null,
+            onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
         try {
-            return runOnce(test, accel, input, seconds, isActive, burst, onProgress)
+            return runOnce(test, accel, input, seconds, isActive, burst, setting, onProgress)
         } catch (e: Exception) {
             if (accel != AiAccel.NPU || plain || narrowedDir == libDir || !isActive()) throw e
             plain = true
             try {
-                return runOnce(test, accel, input, seconds, isActive, burst, onProgress)
+                return runOnce(test, accel, input, seconds, isActive, burst, setting, onProgress)
             } catch (_: Exception) {
                 plain = false
                 throw e
@@ -179,16 +200,40 @@ class AiBench(private val context: Context) {
         }
     }
 
+    /** LiteRT's GPU options for a probe's setting; what it doesn't change stays null, i.e. LiteRT's own default. */
+    private fun gpuOptions(s: AiSetting) = CompiledModel.GpuOptions(
+        // LiteRT: the 8-bit input quantization of FC and convolution ops needs constant tensors shared
+        constantTensorSharing = if (s.srcQuantized) true else null,
+        allowSrcQuantizedFcConvOps = if (s.srcQuantized) true else null,
+        bufferStorageType = when (s.gpuStorage) {
+            GpuStorage.DEFAULT -> null
+            GpuStorage.BUFFER -> CompiledModel.GpuOptions.BufferStorageType.BUFFER
+            GpuStorage.TEXTURE_2D -> CompiledModel.GpuOptions.BufferStorageType.TEXTURE_2D
+        },
+        backend = when (s.gpuBackend) {
+            GpuBackend.AUTOMATIC -> null
+            GpuBackend.OPENCL -> CompiledModel.GpuOptions.Backend.OPENCL
+            GpuBackend.OPENGL -> CompiledModel.GpuOptions.Backend.OPENGL
+        })
+
     private fun runOnce(test: AiTest, accel: AiAccel, input: ByteArray, seconds: Double,
-            isActive: () -> Boolean, burst: Boolean, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
-        val options = CompiledModel.Options(when (accel) {
+            isActive: () -> Boolean, burst: Boolean, setting: AiSetting?, onProgress: (fraction: Float, ips: Double) -> Unit): Measured {
+        val tuned = setting?.takeUnless { it.isDefault }
+        // an NPU's leftover ops go to the GPU before the CPU only when asked (LiteRT applies NPU, then GPU, then CPU)
+        val options = if (accel == AiAccel.NPU && tuned?.gpuTakesRest == true)
+            CompiledModel.Options(Accelerator.NPU, Accelerator.GPU, Accelerator.CPU)
+        else CompiledModel.Options(when (accel) {
             AiAccel.CPU -> Accelerator.CPU; AiAccel.GPU -> Accelerator.GPU; AiAccel.NPU -> Accelerator.NPU
         })
         when (accel) {
             AiAccel.CPU -> options.cpuOptions = CompiledModel.CpuOptions(CPU_THREADS, null, null)
-            AiAccel.NPU -> if (burst) options.qualcommOptions = CompiledModel.QualcommOptions(
-                htpPerformanceMode = CompiledModel.QualcommOptions.HtpPerformanceMode.BURST)
-            AiAccel.GPU -> {}
+            AiAccel.NPU -> {
+                if (burst) options.qualcommOptions = CompiledModel.QualcommOptions(
+                    htpPerformanceMode = CompiledModel.QualcommOptions.HtpPerformanceMode.BURST)
+                // LiteRT runs what the NPU leaves on one XNNPACK thread unless told otherwise
+                tuned?.cpuThreads?.let { options.cpuOptions = CompiledModel.CpuOptions(it, null, null) }
+            }
+            AiAccel.GPU -> tuned?.let { options.gpuOptions = gpuOptions(it) }
         }
         val e = env
         val compiled = if (e != null) CompiledModel.create(context.assets, test.asset, options, e)
@@ -213,7 +258,15 @@ class AiBench(private val context: Context) {
                     }
                 }
                 val ips = n * 1e9 / (System.nanoTime() - t0)
-                return Measured(ips, outputs.map { it.readInt8() })
+                if (setting == null) return Measured(ips, outputs.map { it.readInt8() })
+                // a tuning probe also times what copying in and out would cost per inference (the loop above doesn't)
+                val w0 = System.nanoTime()
+                repeat(COPY_TRIALS) { inputs[0].writeInt8(input) }
+                val writeMs = (System.nanoTime() - w0) / (COPY_TRIALS * 1e6)
+                val r0 = System.nanoTime()
+                var last = outputs.map { it.readInt8() }
+                repeat(COPY_TRIALS - 1) { last = outputs.map { it.readInt8() } }
+                return Measured(ips, last, writeMs, (System.nanoTime() - r0) / (COPY_TRIALS * 1e6))
             } finally {
                 inputs.forEach { it.close() }
                 outputs.forEach { it.close() }
