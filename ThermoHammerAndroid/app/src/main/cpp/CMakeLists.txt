@@ -67,6 +67,11 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
 endif()
 target_link_libraries(benchcore z dl)
 
+# Thread placement for the AI CPU test (engine/CpuAffinity.kt): a few system calls, every ABI.
+add_library(thaffinity SHARED affinity_jni.cpp)
+target_compile_options(thaffinity PRIVATE -Os -fno-exceptions -fno-rtti -Wall)
+target_link_options(thaffinity PRIVATE -Wl,--gc-sections)
+
 # The LLM test: llama.cpp (BenchCore/third_party/llama.cpp, b11700) running BenchCore/llm — its CPU backend with
 # the Arm dot-product kernels, its OpenCL backend for Adreno GPUs (the kernels' sources embedded, the phone's
 # OpenCL driver opened at run time by cl_loader.c) and its Vulkan backend for the other GPUs. Its own library
