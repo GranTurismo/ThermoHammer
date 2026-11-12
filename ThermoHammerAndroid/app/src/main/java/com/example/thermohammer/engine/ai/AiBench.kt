@@ -202,11 +202,11 @@ class AiBench(private val context: Context) {
 
     /** LiteRT's GPU options for a probe's setting; what it doesn't change stays null, i.e. LiteRT's own default. */
     private fun gpuOptions(s: AiSetting) = CompiledModel.GpuOptions(
-        // LiteRT: the 8-bit input quantization of FC and convolution ops needs constant tensors shared
         precision = when (s.gpuPrecision) {
             GpuPrecision.DEFAULT -> null
             GpuPrecision.FP16 -> CompiledModel.GpuOptions.Precision.FP16
         },
+        // LiteRT: the 8-bit input quantization of FC and convolution ops needs constant tensors shared
         constantTensorSharing = if (s.srcQuantized) true else null,
         allowSrcQuantizedFcConvOps = if (s.srcQuantized) true else null,
         bufferStorageType = when (s.gpuStorage) {
