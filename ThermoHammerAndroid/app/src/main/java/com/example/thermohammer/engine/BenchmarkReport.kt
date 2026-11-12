@@ -97,8 +97,10 @@ object BenchmarkReport {
                     val temp = run?.startTempC?.let { " · started at %.0f °C".format(it) } ?: ""
                     appendLine(if (run != null && run.decode > 0)
                         "LLM %s · prefill %.2f tok/s · decode %.2f tok/s%s%s".format(a.label, run.prefill, run.decode,
-                            if (a == LlmAccel.GPU) " · ${llm.gpuName ?: "?"}" else " · ${run.threads} threads (prompt ${run.batchThreads})", temp)
+                            if (a == LlmAccel.GPU) " · ${llm.gpuName ?: "?"}"
+                            else " · ${run.threads} threads (prompt ${run.batchThreads}) · ${run.kernels} kernels", temp)
                     else "LLM ${a.label} · 0 (${run?.error ?: "not run"})$temp")
+                    run?.tune?.let { t -> t.lines().forEach { appendLine(it) } }
                 }
                 llm.probe?.let { p -> LlmProbe.lines(p).forEach { appendLine(it) } }
             }

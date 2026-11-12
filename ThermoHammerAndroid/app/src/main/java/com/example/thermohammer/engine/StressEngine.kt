@@ -25,11 +25,13 @@ import com.example.thermohammer.engine.llm.CpuFeatures
 import com.example.thermohammer.engine.llm.DotprodLib
 import com.example.thermohammer.engine.llm.I8mmLib
 import com.example.thermohammer.engine.llm.LlmCpuLib
+import com.example.thermohammer.engine.llm.LlmGpuProbe
 import com.example.thermohammer.engine.llm.LlmNative
 import com.example.thermohammer.engine.llm.LlmNativeI8mm
 import com.example.thermohammer.engine.llm.LlmPhase
 import com.example.thermohammer.engine.llm.LlmProbe
 import com.example.thermohammer.engine.llm.LlmProbeResult
+import com.example.thermohammer.engine.llm.VulkanGpuLib
 import com.example.thermohammer.engine.ux.QrBench
 import com.example.thermohammer.engine.ux.QrFrames
 import com.example.thermohammer.engine.ux.QrResult
@@ -1156,8 +1158,15 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val crashed = llmCrashedAccels()
         val gpuProblem = bench.gpuProblem()
+        val gpuApi = bench.gpuApi()          // the scored GPU backend, before anything asks for another one
         val runs = ArrayList<LlmRun>()
         var threads = 4
+        // The CPU's fast cores, from what the kernel says (CpuTopology): the CPU test pins its threads to them where that
+        // measures faster. Unknown on a phone whose cpufreq files can't be read: then nothing is pinned, as before.
+        val topology = CpuTopologyReader.read()
+        val pinCores = if (topology.canPin) topology.big else emptyList()
+        var kernelProbe = LlmProbeResult()
+        var kernels: LlmCpuLib = DotprodLib
         for (accel in LlmAccel.entries) {
             if (!_state.value.isRunning) return@withContext null
             val skip = when {
@@ -1166,18 +1175,37 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 else -> null
             }
             if (skip != null) { runs += LlmRun(accel, 0.0, 0.0, error = skip); continue }
+            if (accel == LlmAccel.CPU) {
+                // which CPU kernel build is faster here, measured before the CPU test: it runs in the winner
+                val (probe, lib) = chooseLlmKernels(pinCores, topology) ?: return@withContext null
+                kernelProbe = probe
+                kernels = lib
+            }
             _state.update { it.copy(llmAccel = accel, llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0) }
             val startTemp = StressProbes.cpuAdjacentTemp(StressProbes.readThermalZones())
-            benchPrefs.edit().putString(KEY_LLM_RUNNING, "$installStamp:${accel.name}").commit()
-            val run: LlmRun? = try {
-                bench.run(accel, threads, { _state.value.isRunning }) { p ->
-                    _state.update { it.copy(llmPhase = p.phase, llmProgress = p.fraction, llmRate = p.rate, llmDetail = p.detail,
-                        llmReply = p.reply, llmPrompts = p.prompts) }
+            // the i8mm build leaves the probe's marker, not the CPU's: a crash there costs that build its place next time,
+            // never the CPU's score
+            fun runIn(lib: LlmCpuLib): LlmRun? {
+                val i8 = accel == LlmAccel.CPU && lib !== DotprodLib
+                if (i8) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
+                else benchPrefs.edit().putString(KEY_LLM_RUNNING, "$installStamp:${accel.name}").commit()
+                return try {
+                    bench.run(accel, threads, { _state.value.isRunning }, lib, pinCores) { p ->
+                        _state.update { it.copy(llmPhase = p.phase, llmProgress = p.fraction, llmRate = p.rate, llmDetail = p.detail,
+                            llmReply = p.reply, llmPrompts = p.prompts) }
+                    }
+                } catch (e: Exception) {
+                    LlmRun(accel, 0.0, 0.0, error = e.message ?: e.javaClass.simpleName, kernels = lib.variant)
+                } finally {
+                    benchPrefs.edit().remove(KEY_LLM_RUNNING).remove(KEY_LLM_PROBE_RUNNING).commit()
                 }
-            } catch (e: Exception) {
-                LlmRun(accel, 0.0, 0.0, error = e.message ?: e.javaClass.simpleName)
-            } finally {
-                benchPrefs.edit().remove(KEY_LLM_RUNNING).commit()
+            }
+            var run = runIn(if (accel == LlmAccel.CPU) kernels else DotprodLib)
+            // an i8mm run that failed (without taking the app down) costs nothing: the CPU test runs again as it always did
+            if (run != null && accel == LlmAccel.CPU && kernels !== DotprodLib && run.error != null && _state.value.isRunning) {
+                kernelProbe = kernelProbe.copy(chosen = "dotprod", why = "the i8mm CPU test failed (${run.error}), so the dot-product build ran it")
+                kernels = DotprodLib
+                run = runIn(DotprodLib)
             }
             if (run == null) return@withContext null
             if (run.threads > 0) threads = run.threads
@@ -1186,44 +1214,81 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val gpuRan = runs.any { it.accel == LlmAccel.GPU && it.decode > 0 }
         val gpuName = bench.gpuName()
         // after the scored runs, so what it does to the CPU's clocks and temperature can't touch them
-        val probe = runLlmProbe(runs.firstOrNull { it.accel == LlmAccel.CPU && it.decode > 0 }, gpuName) ?: return@withContext null
+        val probe = finishLlmProbe(kernelProbe, topology, gpuName, gpuApi, runs.firstOrNull { it.accel == LlmAccel.GPU && it.decode > 0 })
+            ?: return@withContext null
         LlmResult(runs, gpuName.takeIf { gpuRan && it.isNotEmpty() }, freeGb, largest, probe = probe)
     }
 
     /**
-     * The CPU kernel builds side by side (dot product, and i8mm where the CPU has it), short and NOT scored, then what
-     * the phone's CPU, Vulkan and OpenCL drivers report. All of it goes to the report only. Null if the run was stopped.
+     * Which CPU kernel build the CPU test runs in. Where the CPU reports i8mm, the dot-product build and the i8mm one
+     * each get the same short test (the same threads, pinned the same way: LlmProbe.run), and the i8mm one is chosen
+     * only if it is clearly faster there and answers the prompt the same way (LlmProbe.choose); every other phone, or
+     * a probe that can't decide, keeps the dot-product build the test always used — and spends no time here at all.
+     * This adds about two model builds and short runs (14 s on a flagship, never past LlmProbe.BUDGET_S) to a phone
+     * with i8mm. Null if the run was stopped.
      */
-    private fun runLlmProbe(cpuRun: LlmRun?, gpuName: String): LlmProbeResult? {
+    private fun chooseLlmKernels(pinCores: List<Int>, topology: CpuTopology): Pair<LlmProbeResult, LlmCpuLib>? {
         val hw = LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }
         val decision = LlmProbe.i8mmDecision(hw?.get(0), hw?.get(1), "LLM:i8mm" in llmCrashedProbes()) { LlmNativeI8mm.loadError }
-        val libs = if (LlmNative.loaded) listOf<LlmCpuLib>(DotprodLib) + listOfNotNull(I8mmLib.takeIf { decision.use }) else emptyList()
-        val threads = cpuRun?.threads?.takeIf { it > 0 } ?: min(4, Runtime.getRuntime().availableProcessors())
-        val batchThreads = cpuRun?.batchThreads?.takeIf { it > 0 } ?: threads
-        // with only the dot-product build there is nothing to compare it with (and it just ran as the CPU test): a phone
-        // without i8mm spends no time here at all
-        val ran = if (libs.size < 2) LlmProbeResult() else {
-            _state.update { it.copy(llmAccel = LlmAccel.CPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
-                llmDetail = "CPU KERNELS · NOT SCORED · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
-            LlmProbe.run(libs, threads, batchThreads, { _state.value.isRunning },
-                around = { lib, start ->
-                    // only the i8mm build is the probe's own risk (the dot-product one just ran as the CPU test): its marker
-                    // turns a crash into a dropped probe next time, never into a lost CPU score
-                    if (lib.variant == "i8mm") {
-                        if (start) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
-                        else benchPrefs.edit().remove(KEY_LLM_PROBE_RUNNING).commit()
-                    }
-                }) { label, fraction ->
-                _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
-            }
+        val base = LlmProbeResult(skipped = decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap(),
+            cpuFeatures = hw?.let { CpuFeatures.line(it[0], it[1]) }, topology = topology.line())
+        if (!decision.use || !LlmNative.loaded) return base to DotprodLib
+        val threads = if (pinCores.isNotEmpty()) pinCores.size else min(4, Runtime.getRuntime().availableProcessors())
+        _state.update { it.copy(llmAccel = LlmAccel.CPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
+            llmDetail = "CPU KERNELS · CHECKING WHICH IS FASTER · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
+        val ran = LlmProbe.run(listOf(DotprodLib, I8mmLib), threads, threads, { _state.value.isRunning },
+            around = { lib, start ->
+                // each build leaves the marker it would leave as the CPU test: the dot-product build's crash is the CPU's
+                // (it is the test), the i8mm build's only drops that build next time
+                val (key, value) = if (lib.variant == "i8mm") KEY_LLM_PROBE_RUNNING to "$installStamp:LLM:i8mm"
+                    else KEY_LLM_RUNNING to "$installStamp:${LlmAccel.CPU.name}"
+                if (start) benchPrefs.edit().putString(key, value).commit() else benchPrefs.edit().remove(key).commit()
+            }, cores = pinCores) { label, fraction ->
+            _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
         }
+        if (!_state.value.isRunning) return null
+        val choice = LlmProbe.choose(ran.runs)
+        val lib: LlmCpuLib = if (choice.variant == "i8mm") I8mmLib else DotprodLib
+        return ran.copy(skipped = ran.skipped + base.skipped, cpuFeatures = base.cpuFeatures, topology = base.topology,
+            chosen = choice.variant, why = choice.why) to lib
+    }
+
+    /**
+     * What is left of the probe after the scored runs, all of it report only: the phone's CPU, Vulkan and OpenCL
+     * drivers' answers, what llama.cpp's backends said about the GPU they chose, the Vulkan shader families the library
+     * was built with — and, on an Adreno (whose scored backend is OpenCL), a short run of the Vulkan backend for the
+     * comparison between vendors. `scoredGpu` is the scored GPU run, to set it against. Null if the run was stopped.
+     */
+    private fun finishLlmProbe(base: LlmProbeResult, topology: CpuTopology, gpuName: String, gpuApi: String, scoredGpu: LlmRun?): LlmProbeResult? {
         if (!_state.value.isRunning) return null
         val vulkan = if (LlmNative.loaded) runCatching { LlmNative.vulkanReport(gpuName).lines() }.getOrDefault(listOf("Vulkan · the probe failed")) else emptyList()
         // llama.cpp's OpenCL kernels are written for Adreno: elsewhere OpenCL is only asked what it is, never run on
         val opencl = if (LlmNative.loaded && !gpuName.contains("adreno", ignoreCase = true))
             runCatching { LlmNative.openClReport().lines() }.getOrDefault(listOf("OpenCL · the probe failed")) else emptyList()
-        return ran.copy(skipped = ran.skipped + (decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap()),
-            cpuFeatures = hw?.let { CpuFeatures.line(it[0], it[1]) }, vulkan = vulkan, opencl = opencl)
+
+        var gpu: LlmGpuProbe? = null
+        var gpuSkipped: String? = null
+        val adreno = gpuName.contains("adreno", ignoreCase = true)
+        if (LlmNative.loaded) {
+            val decision = LlmProbe.vulkanOnAdrenoDecision(gpuName, gpuApi, adreno && VulkanGpuLib.available(), "LLM:vulkan" in llmCrashedProbes(), scoredGpu != null)
+            if (decision.use && scoredGpu != null) {
+                _state.update { it.copy(llmAccel = LlmAccel.GPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
+                    llmDetail = "GPU · VULKAN · REPORT ONLY · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
+                gpu = LlmProbe.runGpu(VulkanGpuLib, Triple(gpuApi, scoredGpu.prefill, scoredGpu.decode), { _state.value.isRunning },
+                    around = { start ->
+                        if (start) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:vulkan").commit()
+                        else benchPrefs.edit().remove(KEY_LLM_PROBE_RUNNING).commit()
+                    }) { label, fraction -> _state.update { it.copy(llmProgress = fraction, llmDetail = label) } }
+                if (!_state.value.isRunning) return null
+            } else if (adreno) gpuSkipped = decision.why        // on any other GPU the scored backend is Vulkan already
+        }
+        // read last: every backend has had its say by now (the Vulkan one prints its device line when it first starts)
+        val backendLog = if (LlmNative.loaded) runCatching { LlmNative.backendLog().lines().filter { it.isNotBlank() } }.getOrDefault(emptyList()) else emptyList()
+        val build = if (LlmNative.loaded) runCatching { LlmNative.vulkanBuildFeatures().trim() }.getOrNull() else null
+        // a CPU test that never started (it crashed the app before) has no kernel probe: the phone's features still go in
+        val features = base.cpuFeatures ?: LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }?.let { CpuFeatures.line(it[0], it[1]) }
+        return base.copy(vulkan = vulkan, opencl = opencl, gpu = gpu, gpuSkipped = if (gpu == null) gpuSkipped else null,
+            vulkanBuild = build, backendLog = backendLog, cpuFeatures = features, topology = base.topology ?: topology.line())
     }
 
     /** UI attaches/detaches the stage SurfaceView — forwarded to the GL thread. */

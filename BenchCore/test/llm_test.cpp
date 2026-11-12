@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <string>
 #include <vector>
 
 #include "bench_llm.h"
@@ -28,6 +29,26 @@ static void run(int gpu) {
     if (!gpu) {
         check(bc_llm_tune_threads(llm, &tg, &pp) == 1, "threads tuned");
         std::printf("        decode %d threads, prefill %d threads\n", tg, pp);
+        // Pinning exists on Linux and Android only: here (Mac, iOS) naming cores accepts none, and the pinned search
+        // is the unpinned one with no second pass — what the apps that never ask for pinning run, unchanged
+        const int cores[4] = {0, 1, 2, 3};
+#if defined(__linux__)
+        check(bc_llm_set_cores(llm, cores, 4, 0, 0) == 4, "the cores are accepted where pinning exists");
+#else
+        check(bc_llm_set_cores(llm, cores, 4, 0, 0) == 0, "no core is accepted where pinning doesn't exist");
+#endif
+        bc_llm_pin_report rep;
+        int tp = 0, bp = 0;
+        check(bc_llm_tune_threads_pinned(llm, cores, 4, &tp, &bp, &rep, nullptr, nullptr) == 1, "the pinned search runs");
+        std::printf("        pinned search: decode %d threads (pinned %d), prefill %d threads (pinned %d), %d trials, %.1f s\n",
+                    tp, rep.decode_pinned, bp, rep.prompt_pinned, rep.n_trials, rep.seconds);
+        check(rep.n_trials > 0 && tp >= 1 && bp >= 1, "its trials are reported");
+#if !defined(__linux__)
+        check(rep.pinnable == 0 && !rep.decode_pinned && !rep.prompt_pinned && rep.main_core == -1, "nothing is pinned here");
+#endif
+        bc_llm_set_cores(llm, nullptr, 0, 0, 0);
+        tg = tp;
+        pp = bp;
     }
     double s = bc_llm_prefill(llm, BC_LLM_PROMPT);              // warm-up
     check(s > 0, "prefill runs");
@@ -85,6 +106,13 @@ int main(int argc, char** argv) {
     check(bc_llm_largest_model(8e9) == 8 && bc_llm_largest_model(3e9) == 3 && bc_llm_largest_model(0.5e9) == 0, "largest model");
     const bool cpu = argc < 2 || std::strcmp(argv[1], "gpu") != 0;
     const bool gpu = argc < 2 || std::strcmp(argv[1], "cpu") != 0;
+    // naming a backend that isn't there leaves no GPU; naming none brings the usual choice back
+    const std::string usual = bc_llm_gpu_name();
+    bc_llm_set_gpu_api("NoSuchBackend");
+    check(*bc_llm_gpu_name() == 0, "a GPU backend that doesn't exist leaves no GPU");
+    bc_llm_set_gpu_api("");
+    check(usual == bc_llm_gpu_name(), "naming none restores the usual GPU");
+    check(bc_llm_backend_log() != nullptr, "the backends' own device lines can be read");
     if (cpu) run(0);
     if (gpu && *bc_llm_gpu_name()) run(1);
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

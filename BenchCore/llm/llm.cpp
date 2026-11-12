@@ -10,6 +10,8 @@
 //   The CPU runs ggml's Arm kernels (the weights repacked for the dot-product instructions every phone has), the
 //   GPU llama.cpp's Metal (iPhone), OpenCL (Adreno) or Vulkan (other Android GPUs) backend with every layer on it.
 //   A GPU's answer to the prompt has to agree with the CPU's: a driver that computes wrong numbers fast doesn't count.
+//   On Linux and Android the CPU's threads can be pinned to named cores (bc_llm_set_cores): only when a caller asks, and
+//   the Android app asks only after measuring that it helps. iOS and Windows never call it, so they run as before.
 #include "bench_llm.h"
 
 #include <algorithm>
@@ -27,6 +29,11 @@
 
 #ifdef __ANDROID__
 #include <android/log.h>
+#endif
+#if defined(__linux__)
+#include <sched.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #endif
 
 #include "ggml-backend.h"
@@ -48,8 +55,24 @@ constexpr double MIN_AGREEMENT = 0.9;   // correlation with the CPU's logits a G
 
 std::mutex g_log_mutex;
 std::string g_log_error;                 // llama.cpp's last error line, for the reason a step failed
+std::vector<std::string> g_backend_log;  // what the GPU backends say about the device they chose (see keep_backend_line)
+
+/**
+ * The GPU backends write their decisions at debug level — Vulkan's "ggml_vulkan: 0 = <device> | uma | fp16 | warp size |
+ * shared memory | int dot | matrix cores" line and its "No suitable matrix core mode" warning, OpenCL's device line —
+ * and nothing else would ever show them. Kept (a few dozen short lines) for the report: bc_llm_backend_log.
+ */
+void keep_backend_line(const char* text) {
+    if (std::strncmp(text, "ggml_vulkan:", 12) != 0 && std::strncmp(text, "ggml_opencl:", 12) != 0) return;
+    std::string line(text);
+    while (!line.empty() && (line.back() == '\n' || line.back() == ' ')) line.pop_back();
+    if (line.size() > 400) line.resize(400);
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    if (g_backend_log.size() < 40) g_backend_log.push_back(line);
+}
 
 void on_log(ggml_log_level level, const char* text, void*) {
+    if (text) keep_backend_line(text);
 #ifdef __ANDROID__
     if (text && (level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR))   // the whole story, in logcat
         __android_log_print(level == GGML_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR : ANDROID_LOG_WARN, "llama", "%s", text);
@@ -73,9 +96,12 @@ void init_once() {
     });
 }
 
+std::string g_gpu_api;                   // "" = the choice below; a backend's name makes it the one used (bc_llm_set_gpu_api)
+
 /**
  * The GPU to run on: OpenCL's when it has one (it takes only Adreno GPUs, which its kernels are written for —
- * Vulkan lists the Adreno too), otherwise the first: Vulkan's on other Android GPUs, Metal's on iOS.
+ * Vulkan lists the Adreno too), otherwise the first: Vulkan's on other Android GPUs, Metal's on iOS. A caller can
+ * name the backend instead (bc_llm_set_gpu_api): the Android app does for its report-only run of Vulkan on an Adreno.
  */
 ggml_backend_dev_t gpu_device() {
     ggml_backend_dev_t first = nullptr;
@@ -83,7 +109,12 @@ ggml_backend_dev_t gpu_device() {
         ggml_backend_dev_t dev = ggml_backend_dev_get(i);
         const auto type = ggml_backend_dev_type(dev);
         if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU) continue;
-        if (std::strcmp(ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev)), "OpenCL") == 0) return dev;
+        const char* reg = ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev));
+        if (!g_gpu_api.empty()) {
+            if (g_gpu_api == reg) return dev;
+            continue;
+        }
+        if (std::strcmp(reg, "OpenCL") == 0) return dev;
         if (!first) first = dev;
     }
     return first;
@@ -262,6 +293,18 @@ struct bc_llm {
     ggml_threadpool* batch_pool = nullptr;
     std::vector<ggml_threadpool*> retired;   // replaced pools: ggml pauses the old one when it switches, so they
                                              // live until the next graph has run
+    // Pinning (bc_llm_set_cores; Linux and Android only). `cores` are the cores the CPU threads may use, fastest first.
+    // A pinned pool of n threads puts one thread on each of the first n cores (ggml's cpumask with strict_cpu).
+    std::vector<int> cores;
+    bool pin_decode = false, pin_prompt = false;             // what the next pools are made with
+    bool pool_pinned_decode = false, pool_pinned_prompt = false;   // what the current pools were made with
+#if defined(__linux__)
+    // ggml also pins the thread that makes a pool (worker 0: the one that then calls llama_decode) and nothing ever
+    // un-pins it, so every thread we may have changed keeps its own original mask here, to put back
+    std::vector<std::pair<long, cpu_set_t>> touched;
+    long main_tid = 0;                                       // where the calling thread was last put (0: unknown)
+    int main_core = -1;                                      // -1: on its original mask
+#endif
 
     bool fail(const char* what, int code = 0) {
         const std::string why = last_log_error();
@@ -353,8 +396,94 @@ bc_llm* bc_llm_create(int gpu, int threads, uint64_t seed, char* err, int err_si
     return llm;
 }
 
-static ggml_threadpool* new_pool(int threads) {
+#if defined(__linux__)
+static long this_tid() { return long(syscall(__NR_gettid)); }
+
+/** The first time a thread is about to be pinned (by us or by ggml for the pool it makes): keeps its own mask. */
+static void remember_affinity(bc_llm* llm) {
+    const long tid = this_tid();
+    for (const auto& t : llm->touched) if (t.first == tid) return;
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof set, &set) == 0) llm->touched.emplace_back(tid, set);
+}
+
+static void restore_this_thread(bc_llm* llm) {
+    const long tid = this_tid();
+    for (auto& t : llm->touched)
+        if (t.first == tid) { sched_setaffinity(0, sizeof t.second, &t.second); break; }
+    llm->main_tid = 0;
+}
+
+static void restore_all_threads(bc_llm* llm) {
+    // a thread that has ended just answers ESRCH
+    for (auto& t : llm->touched) sched_setaffinity(pid_t(t.first), sizeof t.second, &t.second);
+    llm->touched.clear();
+    llm->main_tid = 0;
+}
+
+/** The core the pool of n threads gives worker 0, the one that calls llama_decode: ggml hands strict masks out in core-number order, the caller last. */
+static int main_core(const bc_llm* llm, int n) {
+    int best = -1;
+    for (int i = 0; i < n && i < int(llm->cores.size()); i++) best = std::max(best, llm->cores[size_t(i)]);
+    return best;
+}
+
+/**
+ * ggml pins the calling thread (worker 0) once, when it makes a pool — and the decode and prompt pools are made one
+ * after the other on the same thread, so the second one's mask is what is left. Before each run the thread is put where
+ * the pool it is about to use wants it (or back on its own mask when that pool isn't pinned).
+ */
+static void apply_main(bc_llm* llm, bool decode) {
+    if (llm->cores.empty()) return;                              // never asked to pin: the thread is left alone
+    const bool pinned = decode ? llm->pool_pinned_decode : llm->pool_pinned_prompt;
+    const int want = pinned ? main_core(llm, decode ? llm->threads : llm->batch_threads) : -1;
+    const long tid = this_tid();
+    if (llm->main_tid == tid && llm->main_core == want) return;
+    if (want >= 0) {
+        remember_affinity(llm);
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CPU_SET(want, &set);
+        sched_setaffinity(0, sizeof set, &set);
+    } else restore_this_thread(llm);
+    llm->main_tid = tid;
+    llm->main_core = want;
+}
+
+/** The core the calling thread is on alone right now, or -1 when its mask isn't a single core. */
+static int single_core_of_this_thread() {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof set, &set) != 0 || CPU_COUNT(&set) != 1) return -1;
+    for (int i = 0; i < CPU_SETSIZE; i++) if (CPU_ISSET(i, &set)) return i;
+    return -1;
+}
+#else
+static void apply_main(bc_llm*, bool) {}
+static void remember_affinity(bc_llm*) {}
+static void restore_this_thread(bc_llm*) {}
+static void restore_all_threads(bc_llm*) {}
+static int single_core_of_this_thread() { return -1; }
+#endif
+
+/**
+ * A pool of `threads`: pinned, it has one thread on each of the first cores of llm->cores (ggml's cpumask and
+ * strict_cpu), never more threads than cores; unpinned, ggml's defaults. A pool's workers start with the mask of the
+ * thread that makes it, so an unpinned pool is made only after that thread has its own mask back.
+ */
+static ggml_threadpool* new_pool(bc_llm* llm, int threads, bool pin) {
     ggml_threadpool_params p = ggml_threadpool_params_default(threads);
+#if defined(__linux__)
+    if (pin && !llm->cores.empty()) {
+        remember_affinity(llm);
+        p.n_threads = std::min(threads, int(llm->cores.size()));
+        for (int i = 0; i < p.n_threads; i++) p.cpumask[llm->cores[size_t(i)]] = true;
+        p.strict_cpu = true;
+    } else restore_this_thread(llm);
+#else
+    (void) llm; (void) pin;
+#endif
     return ggml_threadpool_new(&p);
 }
 
@@ -366,15 +495,41 @@ static void free_retired(bc_llm* llm) {
 void bc_llm_set_threads(bc_llm* llm, int threads, int batch_threads) {
     threads = std::max(1, threads);
     batch_threads = std::max(1, batch_threads);
-    if (threads == llm->threads && batch_threads == llm->batch_threads && llm->pool) return;
+    const bool pin_d = llm->pin_decode && !llm->cores.empty(), pin_p = llm->pin_prompt && !llm->cores.empty();
+    if (threads == llm->threads && batch_threads == llm->batch_threads && llm->pool &&
+        pin_d == llm->pool_pinned_decode && pin_p == llm->pool_pinned_prompt) return;
     if (llm->pool) llm->retired.push_back(llm->pool);
     if (llm->batch_pool && llm->batch_pool != llm->pool) llm->retired.push_back(llm->batch_pool);
     llm->threads = threads;
     llm->batch_threads = batch_threads;
-    llm->pool = new_pool(threads);
-    llm->batch_pool = batch_threads == threads ? llm->pool : new_pool(batch_threads);
+    llm->pool_pinned_decode = pin_d;
+    llm->pool_pinned_prompt = pin_p;
+    llm->pool = new_pool(llm, threads, pin_d);
+    llm->batch_pool = (batch_threads == threads && pin_d == pin_p) ? llm->pool : new_pool(llm, batch_threads, pin_p);
+#if defined(__linux__)
+    llm->main_tid = 0;                                           // making the pools moved the calling thread: apply_main puts it right
+#endif
     llama_set_n_threads(llm->ctx, threads, batch_threads);
     if (llm->pool && llm->batch_pool) llama_attach_threadpool(llm->ctx, llm->pool, llm->batch_pool);
+}
+
+int bc_llm_set_cores(bc_llm* llm, const int* cores, int n, int pin_decode, int pin_prompt) {
+    llm->cores.clear();
+    llm->pin_decode = llm->pin_prompt = false;
+#if defined(__linux__)
+    for (int i = 0; cores && i < n; i++) {
+        const int c = cores[i];
+        if (c < 0 || c >= GGML_MAX_N_THREADS || c >= CPU_SETSIZE) continue;
+        if (std::find(llm->cores.begin(), llm->cores.end(), c) == llm->cores.end()) llm->cores.push_back(c);
+    }
+    llm->pin_decode = pin_decode != 0 && !llm->cores.empty();
+    llm->pin_prompt = pin_prompt != 0 && !llm->cores.empty();
+    if (llm->cores.empty()) restore_this_thread(llm);
+#else
+    (void) cores; (void) n; (void) pin_decode; (void) pin_prompt;
+#endif
+    if (llm->ctx && llm->threads > 0) bc_llm_set_threads(llm, llm->threads, llm->batch_threads);
+    return int(llm->cores.size());
 }
 
 int bc_llm_tune_threads(bc_llm* llm, int* threads, int* batch_threads) {
@@ -420,8 +575,124 @@ int bc_llm_tune_threads_progress(bc_llm* llm, int* threads, int* batch_threads, 
     return 1;
 }
 
+static constexpr int DECODE_TRIAL_TOKENS = 6, PROMPT_TRIAL_TOKENS = 64;
+static constexpr double PIN_MIN_GAIN = 1.05;    // pinned must be at least this much faster than the best unpinned count to be used
+static constexpr double PIN_PASS_MAX_S = 15.0;  // a phone whose unpinned pass of a phase took longer than this doesn't get a second pass
+
+/** One decode trial: the thread count is already set. False when a token failed. */
+static bool decode_trial(bc_llm* llm, double* seconds) {
+    bc_llm_reset(llm);
+    for (int i = 0; i < 2; i++) if (bc_llm_next(llm, nullptr) < 0) return false;   // warms the decode path
+    double s = 0;
+    for (int i = 0; i < DECODE_TRIAL_TOKENS; i++) {
+        const double t = bc_llm_next(llm, nullptr);
+        if (t < 0) return false;
+        s += t;
+    }
+    *seconds = s;
+    return true;
+}
+
+struct Pass {
+    int threads = 0;                        // the count that was fastest
+    double seconds = 1e30;                  // and its time
+    double elapsed = 0;                     // what the whole pass took
+    bool ok = true;
+};
+
+int bc_llm_tune_threads_pinned(bc_llm* llm, const int* cores, int n_cores, int* threads, int* batch_threads,
+                               bc_llm_pin_report* report, bc_llm_tune_progress_pinned progress, void* user) {
+    // The same search as bc_llm_tune_threads, twice per phase: as it was (the most threads first, on whatever cores
+    // the system gives) and pinned (one thread on each of the fastest cores, never more threads than cores). The pinned
+    // result is used only where it beats the unpinned best by PIN_MIN_GAIN: pinning can also hurt, when the system
+    // wants one of those cores for itself.
+    const auto started = std::chrono::steady_clock::now();
+    bc_llm_pin_report local;
+    bc_llm_pin_report* rep = report ? report : &local;
+    std::memset(rep, 0, sizeof *rep);
+    rep->main_core = -1;
+    const int hw = int(std::max(1u, std::thread::hardware_concurrency()));
+    const int pinnable = bc_llm_set_cores(llm, cores, n_cores, 0, 0);
+    rep->pinnable = pinnable;
+    if (progress) progress(user, 0, 0, hw, 0, hw);              // trial 0: the first run, which sets up buffers and kernels
+    if (bc_llm_prefill(llm, 32) < 0) return 0;
+
+    const auto record = [&](int phase, bool pinned, int n, int tokens, double s) {
+        if (rep->n_trials >= BC_LLM_MAX_TRIALS) return;
+        rep->trials[rep->n_trials++] = {phase, pinned ? 1 : 0, n, tokens, s};
+    };
+    const auto run_pass = [&](int phase, bool pinned, int first, int fixed_decode) -> Pass {
+        Pass pass;
+        const auto t0 = std::chrono::steady_clock::now();
+        int worse = 0, trial = 0;
+        for (int n = first; n >= 1 && worse < 2; n--) {
+            if (progress) progress(user, phase, pinned ? 1 : 0, n, ++trial, first);
+            double s = 0;
+            if (phase == 0) {
+                llm->pin_decode = pinned;
+                llm->pin_prompt = false;
+                bc_llm_set_threads(llm, n, hw);
+                if (!decode_trial(llm, &s)) { pass.ok = false; return pass; }
+            } else {
+                llm->pin_decode = fixed_decode != 0 && pinnable > 0;   // what the decode phase settled on
+                llm->pin_prompt = pinned;
+                bc_llm_set_threads(llm, rep->decode_threads, n);
+                s = bc_llm_prefill(llm, PROMPT_TRIAL_TOKENS);
+                if (s < 0) { pass.ok = false; return pass; }
+            }
+            record(phase, pinned, n, phase == 0 ? DECODE_TRIAL_TOKENS : PROMPT_TRIAL_TOKENS, s);
+            if (s < pass.seconds) { pass.seconds = s; pass.threads = n; worse = 0; } else worse++;
+        }
+        pass.elapsed = seconds_since(t0);
+        return pass;
+    };
+
+    // decode
+    Pass plain = run_pass(0, false, hw, 0);
+    if (!plain.ok) return 0;
+    int tg = plain.threads;
+    bool pin_d = false;
+    if (pinnable >= 1) {
+        if (plain.elapsed > PIN_PASS_MAX_S) rep->decode_skipped = 1;
+        else {
+            Pass pinned = run_pass(0, true, pinnable, 0);
+            if (!pinned.ok) return 0;
+            if (pinned.seconds * PIN_MIN_GAIN <= plain.seconds) { pin_d = true; tg = pinned.threads; }
+        }
+    }
+    rep->decode_pinned = pin_d ? 1 : 0;
+    rep->decode_threads = tg;
+
+    // prompt
+    plain = run_pass(1, false, hw, pin_d ? 1 : 0);
+    if (!plain.ok) return 0;
+    int pp = plain.threads;
+    bool pin_p = false;
+    if (pinnable >= 1) {
+        if (plain.elapsed > PIN_PASS_MAX_S) rep->prompt_skipped = 1;
+        else {
+            Pass pinned = run_pass(1, true, pinnable, pin_d ? 1 : 0);
+            if (!pinned.ok) return 0;
+            if (pinned.seconds * PIN_MIN_GAIN <= plain.seconds) { pin_p = true; pp = pinned.threads; }
+        }
+    }
+    rep->prompt_pinned = pin_p ? 1 : 0;
+    rep->prompt_threads = pp;
+
+    llm->pin_decode = pin_d;
+    llm->pin_prompt = pin_p;
+    bc_llm_set_threads(llm, tg, pp);
+    apply_main(llm, true);
+    rep->main_core = single_core_of_this_thread();
+    rep->seconds = seconds_since(started);
+    if (threads) *threads = tg;
+    if (batch_threads) *batch_threads = pp;
+    return 1;
+}
+
 double bc_llm_prefill(bc_llm* llm, int tokens) {
     tokens = std::max(1, std::min(int(BC_LLM_PROMPT), tokens));
+    apply_main(llm, false);
     llama_memory_clear(llama_get_memory(llm->ctx), true);
     const auto t0 = std::chrono::steady_clock::now();
     const int32_t r = llama_decode(llm->ctx, llama_batch_get_one(llm->prompt.data(), tokens));
@@ -461,6 +732,7 @@ void bc_llm_reset(bc_llm* llm) {
 
 double bc_llm_next(bc_llm* llm, int* token) {
     llama_token in = llm->next;
+    apply_main(llm, true);
     const auto t0 = std::chrono::steady_clock::now();
     const int32_t r = llama_decode(llm->ctx, llama_batch_get_one(&in, 1));
     free_retired(llm);
@@ -512,12 +784,30 @@ int bc_llm_last_sample(const bc_llm* llm, float* out, int cap) {
     return n;
 }
 
+void bc_llm_set_reference(uint64_t seed, int tokens, const float* sample, int n) {
+    if (!sample || n <= 0) return;
+    std::lock_guard<std::mutex> lock(g_ref_mutex);
+    g_ref[std::make_pair(seed, tokens)] = std::vector<float>(sample, sample + n);
+}
+
+const char* bc_llm_backend_log(void) {
+    init_once();
+    static std::string text;
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    text.clear();
+    for (const auto& l : g_backend_log) text += l + "\n";
+    return text.c_str();
+}
+
+void bc_llm_set_gpu_api(const char* api) { g_gpu_api = api ? api : ""; }
+
 void bc_llm_destroy(bc_llm* llm) {
     if (!llm) return;
     if (llm->ctx) llama_free(llm->ctx);
     if (llm->pool) llm->retired.push_back(llm->pool);
     if (llm->batch_pool && llm->batch_pool != llm->pool) llm->retired.push_back(llm->batch_pool);
     free_retired(llm);
+    restore_all_threads(llm);                  // nothing this test pinned stays pinned: the app's threads are reused
     if (llm->model) llama_model_free(llm->model);
     delete llm;
 }

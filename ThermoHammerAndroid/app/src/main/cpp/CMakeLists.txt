@@ -110,6 +110,18 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(VK_HPP ${VK_GEN_DIR}/ggml-vulkan-shaders.hpp)
     set(VK_GEN ${VK_GEN_DIR}/vulkan-shaders-gen)
     file(MAKE_DIRECTORY ${VK_GEN_DIR})
+    # The glslc that compiles llama.cpp's shaders is the NDK's, and every NDK (27 to 30) carries shaderc 2022.3, which
+    # doesn't know GL_KHR_cooperative_matrix or GL_EXT_integer_dot_product: with it the backend is built WITHOUT its
+    # cooperative-matrix and its int8 (integer dot product) matrix kernels, on every phone, whatever its driver offers —
+    # the feature tests below find that out, and the app's report prints it ("Vulkan shaders built with"). A newer glslc
+    # (the Vulkan SDK's, Homebrew's shaderc) can be named with the THERMOHAMMER_VK_GLSLC environment variable. Unset it
+    # changes nothing. Set, the backend picks those kernels by itself wherever the driver reports them, so a build
+    # with it is a different test of the GPU and has to be measured on the phones first (not done in stage 2).
+    set(VK_GLSLC ${GLSLC})
+    if(DEFINED ENV{THERMOHAMMER_VK_GLSLC} AND NOT "$ENV{THERMOHAMMER_VK_GLSLC}" STREQUAL "")
+        set(VK_GLSLC $ENV{THERMOHAMMER_VK_GLSLC})
+        message(STATUS "llama.cpp's Vulkan shaders: glslc ${VK_GLSLC}")
+    endif()
     # the shader extensions this glslc compiles: the backend and its generator build only the variants it can
     set(VK_FEATURES)
     foreach(F coopmat:GL_KHR_cooperative_matrix:GGML_VULKAN_COOPMAT_GLSLC_SUPPORT
@@ -123,7 +135,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
         list(GET F 0 TEST)
         list(GET F 1 EXT)
         list(GET F 2 DEF)
-        execute_process(COMMAND ${GLSLC} -o - -fshader-stage=compute --target-env=vulkan1.3
+        execute_process(COMMAND ${VK_GLSLC} -o - -fshader-stage=compute --target-env=vulkan1.3
             ${GGML_VK}/vulkan-shaders/feature-tests/${TEST}.comp OUTPUT_QUIET ERROR_VARIABLE GLSLC_ERR)
         if(NOT GLSLC_ERR MATCHES "extension not supported: ${EXT}")
             list(APPEND VK_FEATURES ${DEF})
@@ -156,7 +168,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
         get_filename_component(N ${S} NAME)
         add_custom_command(OUTPUT ${VK_GEN_DIR}/${N}.cpp
             DEPFILE ${VK_GEN_DIR}/${N}.cpp.d
-            COMMAND ${VK_GEN} --glslc ${GLSLC} --source ${S} --output-dir ${VK_GEN_DIR}/spv --target-hpp ${VK_HPP}
+            COMMAND ${VK_GEN} --glslc ${VK_GLSLC} --source ${S} --output-dir ${VK_GEN_DIR}/spv --target-hpp ${VK_HPP}
                 --target-cpp ${VK_GEN_DIR}/${N}.cpp
             DEPENDS ${S} ${VK_GEN_SRC} ${VK_HPP} vulkan-shaders-gen)
         list(APPEND VK_SHADER_SRC ${VK_GEN_DIR}/${N}.cpp)

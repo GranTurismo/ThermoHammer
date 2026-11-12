@@ -8,6 +8,8 @@ import com.example.thermohammer.engine.ai.AiTuningRow
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.example.thermohammer.engine.llm.LlmProbeResult
 import com.example.thermohammer.engine.llm.LlmProbeRun
+import com.example.thermohammer.engine.llm.LlmTrial
+import com.example.thermohammer.engine.llm.LlmTuneReport
 import com.example.thermohammer.engine.cpu.CpuTestRun
 import com.example.thermohammer.engine.ux.QrResult
 import org.junit.Assert.assertEquals
@@ -65,20 +67,38 @@ class BenchmarkReportTest {
     }
 
     @Test
-    fun `report carries the LLM probe, the CPU's features and the GPU drivers' answers without touching the score`() {
+    fun `report carries the LLM probe, the CPU's features and the GPU drivers' answers, and the score is the rates alone`() {
         val probe = LlmProbeResult(
             runs = listOf(LlmProbeRun("dotprod", "libbenchllm.so", 45.1, 21.0, 3.2), LlmProbeRun("i8mm", "libbenchllm_i8mm.so", 80.2, 21.5, 3.1, 0.9998)),
             promptTokens = 112, replyTokens = 16, threads = 6, batchThreads = 8, seconds = 17.4,
-            cpuFeatures = "CPU features · asimddp yes · i8mm yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"), opencl = listOf("OpenCL · 1 platform"))
-        val llm = LlmResult(listOf(LlmRun(LlmAccel.CPU, 44.9, 21.0, threads = 6, batchThreads = 8), LlmRun(LlmAccel.GPU, 23.1, 21.2)),
+            cpuFeatures = "CPU features · asimddp yes · i8mm yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"), opencl = listOf("OpenCL · 1 platform"),
+            chosen = "i8mm", why = "×1.33 over the dot-product build (prompt ×1.78, reply ×1.02)")
+        val llm = LlmResult(listOf(LlmRun(LlmAccel.CPU, 44.9, 21.0, threads = 6, batchThreads = 8, kernels = "i8mm"), LlmRun(LlmAccel.GPU, 23.1, 21.2)),
             gpuName = "Mali-G1-Ultra MC12", freeGb = 9.1, largestModel = 8)
         val withProbe = llm.copy(probe = probe)
-        assertEquals("the probe is not part of the score", llm.score, withProbe.score)
+        assertEquals("the probe's text is not part of the score", llm.score, withProbe.score)
         assertEquals(llm.prefill, withProbe.prefill, 0.0)
         val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "Mali-G1-Ultra MC12", 0, llm = withProbe), "vivo X300 Pro", "16", "MT6993", "2.1", "2026-11-12 10:00")
-        for (needle in listOf("LLM probe · NOT SCORED · 17.4 s · CPU kernels, a 112-token prompt on 8 threads and a 16-token reply on 6",
-                "CPU i8mm · libbenchllm_i8mm.so · prefill 80.20 tok/s (×1.78)", "answers agree 0.9998",
+        for (needle in listOf("LLM probe · 17.4 s · CPU kernels, a 112-token prompt on 8 threads and a 16-token reply on 6, unpinned · the CPU test ran in the i8mm build: ×1.33 over the dot-product build",
+                "LLM CPU · prefill 44.90 tok/s · decode 21.00 tok/s · 6 threads (prompt 8) · i8mm kernels",
+                "CPU i8mm · libbenchllm_i8mm.so · prefill 80.20 tok/s (×1.78)", "answers agree 0.9998", "USED FOR THE SCORE",
                 "CPU features · asimddp yes · i8mm yes", "Vulkan · loader 1.3.0 · 1 device", "OpenCL · 1 platform")) {
+            assertTrue("report lacks '$needle':\n$text", text.contains(needle))
+        }
+    }
+
+    @Test
+    fun `report lists the CPU's thread search with every trial and what pinning did`() {
+        val tune = LlmTuneReport(listOf(7, 4, 5, 6), 4, decodePinned = true, promptPinned = false, decodeSkipped = false, promptSkipped = false,
+            decodeThreads = 4, promptThreads = 8, mainCore = 7, seconds = 15.0,
+            trials = listOf(LlmTrial(true, false, 8, 6, 0.6), LlmTrial(true, true, 4, 6, 0.4), LlmTrial(false, false, 8, 64, 1.0), LlmTrial(false, true, 4, 64, 1.1)),
+            singleCoreThreads = mapOf(11 to 4, 12 to 5, 13 to 6))
+        val llm = LlmResult(listOf(LlmRun(LlmAccel.CPU, 44.9, 21.0, threads = 4, batchThreads = 8, tune = tune)), gpuName = null, freeGb = 9.1, largestModel = 8)
+        val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "?", 0, llm = llm), "d", "16", "s", "2.1", "t")
+        for (needle in listOf("LLM CPU threads · tuned in 15.0 s · pinning tried on cores 7,4,5,6 (4 usable, fastest first)",
+                "  decode tok/s · unpinned: 8 thr 10.00 · pinned: 4 thr 15.00 · used: pinned, 4 threads (×1.50 of the best unpinned)",
+                "  prompt tok/s · unpinned: 8 thr 64.00 · pinned: 4 thr 58.18 · used: unpinned, 8 threads",
+                "  pinning check · the calling thread sat alone on cpu7 · 3 threads of the process (the pools' workers and the caller) were each limited to one core (4,5,6)")) {
             assertTrue("report lacks '$needle':\n$text", text.contains(needle))
         }
     }

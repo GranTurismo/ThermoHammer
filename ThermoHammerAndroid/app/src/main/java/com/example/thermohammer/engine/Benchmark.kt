@@ -5,6 +5,7 @@ import com.example.thermohammer.engine.ai.AiDelegation
 import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.cpu.CpuTestRun
 import com.example.thermohammer.engine.llm.LlmProbeResult
+import com.example.thermohammer.engine.llm.LlmTuneReport
 import com.example.thermohammer.engine.ux.QrResult
 import kotlin.math.exp
 import kotlin.math.ln
@@ -507,7 +508,9 @@ enum class LlmAccel(val label: String, val seconds: Int) { CPU("CPU", 20), GPU("
 /** One accelerator: tokens per second reading the 512-token prompt and writing the reply (0 = it couldn't run, `error` says why). */
 data class LlmRun(val accel: LlmAccel, val prefill: Double, val decode: Double, val threads: Int = 0, val error: String? = null,
                   val startTempC: Float? = null,    // CPU-adjacent temperature when it began (reported)
-                  val batchThreads: Int = 0)        // CPU threads reading the prompt (`threads` = writing the reply)
+                  val batchThreads: Int = 0,        // CPU threads reading the prompt (`threads` = writing the reply)
+                  val kernels: String = "dotprod",  // the CPU kernel build it ran in (reported; the rates are what is scored)
+                  val tune: LlmTuneReport? = null)  // what the CPU's thread search tried, pinned and not (reported)
 
 data class LlmResult(
     val runs: List<LlmRun>,
@@ -515,8 +518,8 @@ data class LlmResult(
     val freeGb: Double,               // memory the app could still take when the test began (reported)
     val largestModel: Int,            // the largest common 4-bit model that fits in it, billions of parameters (reported)
     val error: String? = null,        // why the test couldn't run at all (too little RAM, a 32-bit build, …)
-    // the short probe of the CPU kernel builds and what this phone's CPU and GPU drivers offer: reported only, never
-    // part of `runs` — the score is the dot-product library's, as it always was
+    // the short probe of the CPU kernel builds and what this phone's CPU and GPU drivers offer. The CPU run in `runs` ran
+    // in the kernel build the probe chose (the i8mm one only where it measured clearly faster); the rest is reported only
     val probe: LlmProbeResult? = null
 ) {
     fun run(a: LlmAccel): LlmRun? = runs.firstOrNull { it.accel == a }

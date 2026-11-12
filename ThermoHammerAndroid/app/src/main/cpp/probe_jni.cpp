@@ -387,3 +387,32 @@ PROBE_JNI(jstring, vulkanReport)(JNIEnv* env, jclass, jstring llamaGpu) {
 
 /** What the phone's OpenCL driver says about itself (questions only, no kernels), as text lines. */
 PROBE_JNI(jstring, openClReport)(JNIEnv* env, jclass) { return to_java(env, opencl_report()); }
+
+/**
+ * Which of llama.cpp's Vulkan shader families this library was BUILT with. That is fixed when the shaders are compiled
+ * (CMakeLists.txt asks glslc whether it knows each GLSL extension): a family that glslc couldn't compile isn't in the
+ * library at all, and the backend can't use it however well the phone's driver supports it. What the driver offers
+ * is a run-time question, answered by vulkanReport and by the backend's own device line.
+ */
+PROBE_JNI(jstring, vulkanBuildFeatures)(JNIEnv* env, jclass) {
+    const auto yn = [](bool b) { return b ? "yes" : "no"; };
+#ifdef GGML_VULKAN_COOPMAT_GLSLC_SUPPORT
+    const bool coopmat = true;
+#else
+    const bool coopmat = false;
+#endif
+#ifdef GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT
+    const bool int_dot = true;
+#else
+    const bool int_dot = false;
+#endif
+#ifdef GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT
+    const bool bf16 = true;
+#else
+    const bool bf16 = false;
+#endif
+    Text t;
+    t.line("Vulkan shaders built with: cooperative matrix %s · integer dot product (the int8 matrix kernels) %s · bf16 %s",
+           yn(coopmat), yn(int_dot), yn(bf16));
+    return to_java(env, t.s);
+}

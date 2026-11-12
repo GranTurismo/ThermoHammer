@@ -5,6 +5,7 @@
 #include <jni.h>
 #include <sys/auxv.h>
 
+#include <string>
 #include <vector>
 
 #include "bench_llm.h"
@@ -93,6 +94,79 @@ LLM_JNI(jintArray, tuneThreads)(JNIEnv* env, jclass, jlong h, jobject listener) 
 
 LLM_JNI(void, setThreads)(JNIEnv*, jclass, jlong h, jint threads, jint batchThreads) {
     bc_llm_set_threads(llm(h), threads, batchThreads);
+}
+
+/** The cores the CPU threads may use, fastest first, and which pools are pinned to them; returns how many were usable. */
+LLM_JNI(jint, setCores)(JNIEnv* env, jclass, jlong h, jintArray cores, jboolean pinDecode, jboolean pinPrompt) {
+    const jsize n = cores ? env->GetArrayLength(cores) : 0;
+    std::vector<jint> list(static_cast<size_t>(n), 0);
+    if (n > 0) env->GetIntArrayRegion(cores, 0, n, list.data());
+    return bc_llm_set_cores(llm(h), list.data(), n, pinDecode ? 1 : 0, pinPrompt ? 1 : 0);
+}
+
+/** What the tuning callback of the pinned search needs to reach LlmPinTuneListener.onTrial. */
+static void on_pinned_trial(void* user, int phase, int pinned, int threads, int trial, int cores) {
+    auto* c = static_cast<TuneCall*>(user);
+    c->env->CallVoidMethod(c->listener, c->onTrial, phase, pinned, threads, trial, cores);
+    if (c->env->ExceptionCheck()) c->env->ExceptionClear();
+}
+
+/**
+ * The thread search over `cores` (bc_llm_tune_threads_pinned) as numbers, or null when a trial failed:
+ * [pinnable, decodePinned, promptPinned, decodeSkipped, promptSkipped, decodeThreads, promptThreads, mainCore,
+ * seconds, trials, then per trial: phase, pinned, threads, tokens, seconds] — decoded by LlmTuneReport.
+ */
+LLM_JNI(jdoubleArray, tuneThreadsPinned)(JNIEnv* env, jclass, jlong h, jintArray cores, jobject listener) {
+    const jsize n = cores ? env->GetArrayLength(cores) : 0;
+    std::vector<jint> list(static_cast<size_t>(n), 0);
+    if (n > 0) env->GetIntArrayRegion(cores, 0, n, list.data());
+    TuneCall call{env, listener, nullptr};
+    if (listener) {
+        jclass cls = env->GetObjectClass(listener);
+        call.onTrial = env->GetMethodID(cls, "onTrial", "(IIIII)V");
+        env->DeleteLocalRef(cls);
+        if (!call.onTrial) env->ExceptionClear();
+    }
+    const bool report = call.onTrial != nullptr;
+    int t = 0, b = 0;
+    bc_llm_pin_report r;
+    if (!bc_llm_tune_threads_pinned(llm(h), list.data(), n, &t, &b, &r, report ? on_pinned_trial : nullptr, report ? &call : nullptr))
+        return nullptr;
+    std::vector<jdouble> out = {double(r.pinnable), double(r.decode_pinned), double(r.prompt_pinned), double(r.decode_skipped),
+                                double(r.prompt_skipped), double(r.decode_threads), double(r.prompt_threads), double(r.main_core),
+                                r.seconds, double(r.n_trials)};
+    for (int i = 0; i < r.n_trials; i++) {
+        const bc_llm_trial& x = r.trials[i];
+        out.insert(out.end(), {double(x.phase), double(x.pinned), double(x.threads), double(x.tokens), x.seconds});
+    }
+    jdoubleArray a = env->NewDoubleArray(static_cast<jsize>(out.size()));
+    if (a) env->SetDoubleArrayRegion(a, 0, static_cast<jsize>(out.size()), out.data());
+    return a;
+}
+
+/** The logit sample a CPU run of `seed` gave for a prompt of `tokens`, from the other library (see bc_llm_set_reference). */
+LLM_JNI(void, setReference)(JNIEnv* env, jclass, jlong seed, jint tokens, jfloatArray sample) {
+    const jsize n = sample ? env->GetArrayLength(sample) : 0;
+    std::vector<jfloat> v(static_cast<size_t>(n), 0.0f);
+    if (n > 0) env->GetFloatArrayRegion(sample, 0, n, v.data());
+    bc_llm_set_reference(static_cast<uint64_t>(seed), tokens, v.data(), n);
+}
+
+/**
+ * What the GPU backends said about the device they chose, as lines (nothing in the CPU-only library). Driver strings are
+ * the phone's, and NewStringUTF aborts the app on bytes that aren't valid UTF-8: only printable ASCII is passed on.
+ */
+LLM_JNI(jstring, backendLog)(JNIEnv* env, jclass) {
+    std::string text = bc_llm_backend_log();
+    for (char& c : text) if (c != '\n' && (static_cast<unsigned char>(c) < 0x20 || static_cast<unsigned char>(c) > 0x7e)) c = '?';
+    return env->NewStringUTF(text.c_str());
+}
+
+/** The GPU backend to run on instead of the usual choice ("Vulkan"); "" restores the choice. */
+LLM_JNI(void, setGpuApi)(JNIEnv* env, jclass, jstring api) {
+    const char* a = api ? env->GetStringUTFChars(api, nullptr) : nullptr;
+    bc_llm_set_gpu_api(a ? a : "");
+    if (a) env->ReleaseStringUTFChars(api, a);
 }
 
 LLM_JNI(jdouble, prefill)(JNIEnv*, jclass, jlong h, jint tokens) { return bc_llm_prefill(llm(h), tokens); }

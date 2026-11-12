@@ -56,6 +56,47 @@ typedef void (*bc_llm_tune_progress)(void* user, int phase, int threads, int tri
 /** bc_llm_tune_threads, reporting each trial to `progress` (may be null). */
 int bc_llm_tune_threads_progress(bc_llm* llm, int* threads, int* batch_threads, bc_llm_tune_progress progress, void* user);
 
+/**
+ * Pinning the CPU threads to named cores (Linux and Android; elsewhere these do nothing and report no cores). `cores`
+ * lists the core numbers the CPU test may use, fastest first; a pool of n threads then puts one thread on each of the
+ * first n (ggml's cpumask with strict_cpu). Without a call nothing is ever pinned. The calling thread is pinned too
+ * (it works as the pool's first thread) and gets its own mask back on bc_llm_destroy. Returns the cores accepted.
+ */
+int bc_llm_set_cores(bc_llm* llm, const int* cores, int n, int pin_decode, int pin_prompt);
+
+/** One timed trial of bc_llm_tune_threads_pinned. */
+typedef struct {
+    int phase;      /* 0 decode, 1 prompt */
+    int pinned;     /* 1: the n fastest cores, one thread each; 0: n threads wherever the system puts them */
+    int threads;
+    int tokens;     /* what was timed: 6 tokens when decoding, a 64-token prompt */
+    double seconds;
+} bc_llm_trial;
+
+enum { BC_LLM_MAX_TRIALS = 64 };
+
+/** What bc_llm_tune_threads_pinned tried and chose. */
+typedef struct {
+    int pinnable;                          /* cores of the list that can be used */
+    int decode_pinned, prompt_pinned;      /* 1: the pinned result won (by bc_llm's margin) and is used */
+    int decode_skipped, prompt_skipped;    /* 1: no pinned pass: the unpinned one had already taken too long */
+    int decode_threads, prompt_threads;
+    int main_core;                         /* the core the calling thread sits on alone afterwards, -1 if none */
+    double seconds;                        /* the whole tuning */
+    int n_trials;
+    bc_llm_trial trials[BC_LLM_MAX_TRIALS];
+} bc_llm_pin_report;
+
+/** bc_llm_tune_progress with whether the trial is pinned. */
+typedef void (*bc_llm_tune_progress_pinned)(void* user, int phase, int pinned, int threads, int trial, int cores);
+
+/**
+ * bc_llm_tune_threads over `cores`: each phase is searched unpinned and pinned (the n fastest of `cores` for n threads)
+ * and the pinned result is used only if it is clearly faster. Leaves the model set up as chosen. Returns 0 on failure.
+ */
+int bc_llm_tune_threads_pinned(bc_llm* llm, const int* cores, int n_cores, int* threads, int* batch_threads,
+                               bc_llm_pin_report* report, bc_llm_tune_progress_pinned progress, void* user);
+
 /** One prompt of `tokens` (≤ BC_LLM_PROMPT) in a single batch, from an empty context: seconds, < 0 on failure. */
 double bc_llm_prefill(bc_llm* llm, int tokens);
 
@@ -83,6 +124,18 @@ double bc_llm_agreement(const bc_llm* llm);
  * of them to `out` (may be null to just ask).
  */
 int bc_llm_last_sample(const bc_llm* llm, float* out, int cap);
+
+/**
+ * Records the logits sample a CPU run of this seed gave for a prompt of `tokens`, as if this library had run it: the
+ * Android app runs its CPU test in one of two libraries and the GPU, in the other, has to agree with it.
+ */
+void bc_llm_set_reference(uint64_t seed, int tokens, const float* sample, int n);
+
+/** What the GPU backends said at debug level about the device they chose (Vulkan's and OpenCL's device lines), one per line. */
+const char* bc_llm_backend_log(void);
+
+/** Makes the GPU run on the named backend ("Vulkan", "OpenCL") instead of the usual choice; "" restores it. */
+void bc_llm_set_gpu_api(const char* api);
 
 void bc_llm_destroy(bc_llm* llm);
 

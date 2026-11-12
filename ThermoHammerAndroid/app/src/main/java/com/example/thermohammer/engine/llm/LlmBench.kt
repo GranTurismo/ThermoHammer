@@ -5,6 +5,7 @@ import android.content.Context
 import com.example.thermohammer.engine.BenchmarkScore
 import com.example.thermohammer.engine.LlmAccel
 import com.example.thermohammer.engine.LlmRun
+import com.example.thermohammer.engine.ThreadTasks
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -66,27 +67,35 @@ class LlmBench(private val context: Context) {
 
     fun largestModel(bytes: Long): Int = if (LlmNative.loaded) LlmNative.largestModel(bytes.toDouble()) else 0
 
-    /** Prefill and decode tokens/s on [accel]; a run that fails keeps its reason. Null if the test was stopped. */
-    fun run(accel: LlmAccel, threads: Int, isActive: () -> Boolean, onProgress: (LlmProgress) -> Unit): LlmRun? {
+    /**
+     * Prefill and decode tokens/s on [accel]; a run that fails keeps its reason. Null if the test was stopped.
+     * The CPU run happens in [lib] (the dot-product build unless the probe found the i8mm one clearly faster). With
+     * [cores] (the fast cores, fastest first) the CPU's thread search also tries pinning the threads to them and
+     * keeps that only if it is clearly faster; without, it is the search the test always had.
+     */
+    internal fun run(accel: LlmAccel, threads: Int, isActive: () -> Boolean, lib: LlmCpuLib = DotprodLib,
+                     cores: List<Int> = emptyList(), onProgress: (LlmProgress) -> Unit): LlmRun? {
         val gpu = accel == LlmAccel.GPU
+        val api: LlmCpuLib = if (gpu) DotprodLib else lib      // the C API is the same either way; only the library differs
         val where = if (gpu) "GPU · ${gpuApi().uppercase()}" else "CPU"
         if (gpu) LlmNative.setCacheDir(File(context.cacheDir, "llm-opencl").path)
         onProgress(LlmProgress(LlmPhase.BUILD, 0f, -1.0, "$where · BUILDING THE MODEL · 1.8 GB OF WEIGHTS FROM A SEED"))
         val error = arrayOfNulls<String>(1)
-        val h = LlmNative.create(gpu, threads, LlmNative.SEED, error)
-        if (h == 0L) return LlmRun(accel, 0.0, 0.0, error = error[0] ?: "the model could not be built")
+        val h = if (gpu) LlmNative.create(true, threads, LlmNative.SEED, error) else lib.create(threads, LlmNative.SEED, error)
+        if (h == 0L) return LlmRun(accel, 0.0, 0.0, error = error[0] ?: "the model could not be built", kernels = lib.variant)
         val done = AtomicBoolean(false)
         // a prompt on a slow CPU takes many seconds: a stopped run cancels it from here
         thread(isDaemon = true, name = "llm-cancel") {
             while (!done.get()) {
-                if (!isActive()) { LlmNative.cancel(h); break }
+                if (!isActive()) { api.cancel(h); break }
                 Thread.sleep(100)
             }
         }
         try {
-            fun failed() = if (!isActive()) null else LlmRun(accel, 0.0, 0.0, error = LlmNative.error(h).ifEmpty { "failed" })
+            fun failed() = if (!isActive()) null else LlmRun(accel, 0.0, 0.0, error = api.error(h).ifEmpty { "failed" }, kernels = lib.variant)
             var decodeThreads = threads
             var batchThreads = threads
+            var tune: LlmTuneReport? = null
             if (gpu) {
                 onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · COMPILING AND WARMING THE KERNELS"))
                 if (LlmNative.prefill(h, LlmNative.PROMPT) < 0) return failed()
@@ -94,16 +103,28 @@ class LlmBench(private val context: Context) {
                 repeat(WARMUP_TOKENS) { if (LlmNative.next(h, null) < 0) return failed() }
             } else {
                 onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · FINDING THE FASTEST THREAD COUNT"))
-                val tuned = LlmNative.tuneThreads(h) { phase, n, trial, cores ->
-                    val text = if (trial == 0) "FINDING THE FASTEST THREAD COUNT · WARMING UP"
-                        else "TUNING ${if (phase == 0) "DECODE" else "PREFILL"} · TRYING $n OF $cores THREADS"
-                    onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · $text"))
-                } ?: return failed()
-                decodeThreads = tuned[0]
-                batchThreads = tuned[1]
-                onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · ${tuned[0]} THREADS DECODE · ${tuned[1]} PREFILL"))
+                if (cores.size >= 2) {
+                    val raw = lib.tuneThreadsPinned(h, cores.toIntArray()) { phase, pinned, n, trial, total ->
+                        val text = if (trial == 0) "FINDING THE FASTEST THREAD COUNT · WARMING UP"
+                            else "TUNING ${if (phase == 0) "DECODE" else "PREFILL"} · TRYING $n OF $total THREADS${if (pinned != 0) " · PINNED TO THE FAST CORES" else ""}"
+                        onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · $text"))
+                    }
+                    val report = LlmTuneReport.parse(raw, cores) ?: return failed()
+                    decodeThreads = report.decodeThreads
+                    batchThreads = report.promptThreads
+                    tune = report
+                } else {
+                    val tuned = lib.tuneThreads(h) { phase, n, trial, total ->
+                        val text = if (trial == 0) "FINDING THE FASTEST THREAD COUNT · WARMING UP"
+                            else "TUNING ${if (phase == 0) "DECODE" else "PREFILL"} · TRYING $n OF $total THREADS"
+                        onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · $text"))
+                    } ?: return failed()
+                    decodeThreads = tuned[0]
+                    batchThreads = tuned[1]
+                }
+                onProgress(LlmProgress(LlmPhase.WARMUP, 0f, -1.0, "$where · $decodeThreads THREADS DECODE · $batchThreads PREFILL"))
             }
-            val threadsNote = if (gpu) "" else " · $decodeThreads THREADS"
+            val threadsNote = if (gpu) "" else " · $decodeThreads THREADS${if (tune?.decodePinned == true) " PINNED" else ""}"
 
             var prefillS = 0.0
             var prompts = 0
@@ -112,8 +133,15 @@ class LlmBench(private val context: Context) {
                 onProgress(LlmProgress(LlmPhase.PREFILL, (prefillS / PREFILL_S / 2).toFloat().coerceAtMost(0.5f),
                     if (prompts > 0) prompts * LlmNative.PROMPT / prefillS else -1.0,
                     "$where · PREFILL · ${LlmNative.PROMPT}-TOKEN PROMPT", prompts = prompts))
-                val s = LlmNative.prefill(h, LlmNative.PROMPT)
+                val s = api.prefill(h, LlmNative.PROMPT)
                 if (s < 0) return failed()
+                // the GPU's answer is checked against the CPU's, which lives in the library that ran it: when that was
+                // the i8mm one, its answer is handed over (the dot-product library's check would otherwise find none)
+                if (!gpu && prompts == 0 && lib !== DotprodLib) runCatching { LlmNative.setReference(LlmNative.SEED, LlmNative.PROMPT, lib.lastSample(h)) }
+                // what the kernel says about the process's threads, once the first prompt has run (the search's retired
+                // pools are freed by then): the check that the pinning took effect, one thread per core
+                if (prompts == 0 && tune?.pinned == true) tune = tune.copy(singleCoreThreads =
+                    ThreadTasks.singleCore(ThreadTasks.masks(ThreadTasks.ids())).filterValues { it in cores })
                 prefillS += s
                 prompts++
             }
@@ -126,10 +154,10 @@ class LlmBench(private val context: Context) {
             var shown = 0L
             while (tokens == 0 || decodeS < DECODE_S) {
                 if (!isActive()) return null
-                LlmNative.reset(h)
+                api.reset(h)
                 val reply = ArrayList<Int>(REPLY)
                 for (i in 0 until REPLY) {
-                    val s = LlmNative.next(h, token)
+                    val s = api.next(h, token)
                     if (s < 0) return failed()
                     decodeS += s
                     tokens++
@@ -143,10 +171,11 @@ class LlmBench(private val context: Context) {
                 }
             }
             return LlmRun(accel, BenchmarkScore.round2(prefill), BenchmarkScore.round2(tokens / decodeS),
-                threads = if (gpu) 0 else decodeThreads, batchThreads = if (gpu) 0 else batchThreads)
+                threads = if (gpu) 0 else decodeThreads, batchThreads = if (gpu) 0 else batchThreads,
+                kernels = if (gpu) "" else lib.variant, tune = tune)
         } finally {
             done.set(true)
-            LlmNative.destroy(h)
+            api.destroy(h)         // also gives the calling thread its own cores back when the threads were pinned
         }
     }
 }

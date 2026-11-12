@@ -29,6 +29,19 @@ internal object LlmNative {
     /** [decode threads, prefill threads] that ran fastest; null if a trial failed. */
     @JvmStatic external fun tuneThreads(handle: Long, listener: TuneListener): IntArray?
     @JvmStatic external fun setThreads(handle: Long, threads: Int, batchThreads: Int)
+    /**
+     * The cores the CPU threads may use, fastest first, and which of the two pools (reply, prompt) have one thread
+     * pinned to each of the first n of them; returns the cores usable. Without a call nothing is pinned.
+     */
+    @JvmStatic external fun setCores(handle: Long, cores: IntArray, pinDecode: Boolean, pinPrompt: Boolean): Int
+    /** [tuneThreads] over [cores], each phase unpinned and pinned, the pinned result used only if clearly faster: LlmTuneReport decodes it. */
+    @JvmStatic external fun tuneThreadsPinned(handle: Long, cores: IntArray, listener: LlmPinTuneListener): DoubleArray?
+    /** The CPU's logits sample for a prompt of [tokens] from another library's run, so the GPU's answer is checked against it. */
+    @JvmStatic external fun setReference(seed: Long, tokens: Int, sample: FloatArray)
+    /** What the GPU backends said at debug level about the device they chose (Vulkan's and OpenCL's device lines). */
+    @JvmStatic external fun backendLog(): String
+    /** Runs the GPU on this backend ("Vulkan") instead of the usual choice; "" restores it. */
+    @JvmStatic external fun setGpuApi(api: String)
     /** One prompt of [tokens] from an empty context: seconds, < 0 on failure. */
     @JvmStatic external fun prefill(handle: Long, tokens: Int): Double
     /** Empties the context for a new reply. */
@@ -53,4 +66,9 @@ internal object LlmNative {
     @JvmStatic external fun vulkanReport(llamaGpu: String): String
     /** What the phone's OpenCL driver says about itself (questions only: no kernel is built or run), as text lines. */
     @JvmStatic external fun openClReport(): String
+    /** Which of llama.cpp's Vulkan shader families this library was built with (glslc decides that at build time). */
+    @JvmStatic external fun vulkanBuildFeatures(): String
 }
+
+/** Told before each trial of the pinned thread search: [phase] 0 decode / 1 prompt, whether it [pinned], the [threads] about to be timed, the [trial] in the pass, the [cores] it starts from. */
+fun interface LlmPinTuneListener { fun onTrial(phase: Int, pinned: Int, threads: Int, trial: Int, cores: Int) }

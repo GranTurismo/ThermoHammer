@@ -20,6 +20,7 @@ class LlmProbeTest {
         val prefills = ArrayList<Int>()
         val destroyed = ArrayList<Long>()
         val threadCalls = ArrayList<Pair<Int, Int>>()
+        val coreCalls = ArrayList<List<Int>>()
         var cancelled = 0
         private var next = 1L
         private var lastError = ""
@@ -29,6 +30,7 @@ class LlmProbeTest {
             return next++
         }
         override fun setThreads(handle: Long, threads: Int, batchThreads: Int) { threadCalls += threads to batchThreads }
+        override fun setCores(handle: Long, cores: IntArray, pinDecode: Boolean, pinPrompt: Boolean): Int { coreCalls += cores.toList(); return cores.size }
         override fun prefill(handle: Long, tokens: Int): Double {
             prefills += tokens
             if (tokens > failPrefillOver) { lastError = "out of memory"; return -1.0 }
@@ -152,13 +154,27 @@ class LlmProbeTest {
     fun `the report says which build is how much faster and what wasn't tried`() {
         val r = run(FakeLib("dotprod", 45.0, 21.0), FakeLib("i8mm", 90.0, 22.05))
             .copy(skipped = mapOf("sve" to "nothing"), cpuFeatures = "CPU features · asimddp yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"),
-                opencl = listOf("OpenCL · 1 platform"))
+                opencl = listOf("OpenCL · 1 platform"), chosen = "i8mm", why = "×1.42 over the dot-product build")
         val lines = LlmProbe.lines(r)
-        assertTrue(lines[0], lines[0].startsWith("LLM probe · NOT SCORED · ") && lines[0].contains("a 96-token prompt on 5 threads and a 12-token reply on 6"))
-        assertTrue(lines[1], lines[1].startsWith("  CPU dotprod · libfake_dotprod.so · prefill 45.00 tok/s · decode 21.00 tok/s · built in "))
+        assertTrue(lines[0], lines[0].startsWith("LLM probe · ") && lines[0].contains("a 96-token prompt on 5 threads and a 12-token reply on 6, unpinned") &&
+            lines[0].endsWith("the CPU test ran in the i8mm build: ×1.42 over the dot-product build"))
+        assertTrue(lines[1], lines[1].startsWith("  CPU dotprod · libfake_dotprod.so · prefill 45.00 tok/s · decode 21.00 tok/s · built in ") && !lines[1].contains("USED"))
         assertTrue(lines[2], lines[2].contains("CPU i8mm · libfake_i8mm.so · prefill 90.00 tok/s (×2.00) · decode 22.05 tok/s (×1.05) · answers agree 1.0000"))
+        assertTrue("the build the score came from is marked", lines[2].endsWith("USED FOR THE SCORE"))
         assertEquals("  CPU sve · not tried: nothing", lines[3])
         assertEquals(listOf("CPU features · asimddp yes", "Vulkan · loader 1.3.0 · 1 device", "OpenCL · 1 platform"), lines.drop(4))
+    }
+
+    @Test
+    fun `the probe pins every build to the same cores and says so`() {
+        val dot = FakeLib("dotprod", 45.0, 21.0); val i8 = FakeLib("i8mm", 90.0, 22.0)
+        val r = LlmProbe.run(listOf(dot, i8), 4, 4, { true }, cores = listOf(7, 4, 5, 6))
+        assertEquals(listOf(listOf(7, 4, 5, 6)), dot.coreCalls)
+        assertEquals("the same cores for each build, so the comparison is one of kernels", dot.coreCalls, i8.coreCalls)
+        assertEquals(listOf(7, 4, 5, 6), r.pinnedCores)
+        assertTrue(LlmProbe.lines(r)[0], LlmProbe.lines(r)[0].contains("pinned to cores 7,4,5,6"))
+        val plain = run(FakeLib("dotprod", 45.0, 21.0))
+        assertTrue("with no cores nothing is pinned", plain.pinnedCores.isEmpty())
     }
 
     @Test
@@ -173,6 +189,130 @@ class LlmProbeTest {
     fun `a build that failed shows as zero with the reason`() {
         val r = run(FakeLib("dotprod", 1.0, 1.0, createError = "no model"))
         assertEquals("  CPU dotprod · libfake_dotprod.so · 0 (no model)", LlmProbe.lines(r)[1])
+    }
+
+    // ── which kernel build the CPU test runs in ─────────────────────────────────
+
+    private fun runs(prefill: Double, decode: Double, agreement: Double? = 0.9999, error: String? = null) = listOf(
+        LlmProbeRun("dotprod", "libbenchllm.so", 45.0, 20.0),
+        LlmProbeRun("i8mm", "libbenchllm_i8mm.so", prefill, decode, agreement = agreement, error = error))
+
+    @Test
+    fun `the i8mm build is chosen when it is clearly faster over both phases and agrees`() {
+        val c = LlmProbe.choose(runs(prefill = 90.0, decode = 20.4))      // prompt ×2.0, reply ×1.02: geometric mean ×1.43
+        assertEquals("i8mm", c.variant)
+        assertTrue(c.why, c.why.contains("×1.43"))
+        assertEquals("a gain from the prompt alone counts", "i8mm", LlmProbe.choose(runs(prefill = 50.0, decode = 20.0)).variant)   // ×1.054
+    }
+
+    @Test
+    fun `a gain under five percent, or noise, keeps the dot-product build`() {
+        val c = LlmProbe.choose(runs(prefill = 46.0, decode = 20.5))
+        assertEquals("dotprod", c.variant)
+        assertTrue(c.why, c.why.contains("gains only"))
+        assertEquals("dotprod", LlmProbe.choose(runs(prefill = 47.0, decode = 20.0)).variant)       // ×1.044
+    }
+
+    @Test
+    fun `a build that is clearly slower in either phase can't win however fast the other is`() {
+        val c = LlmProbe.choose(runs(prefill = 120.0, decode = 18.0))      // prompt ×2.67 but reply ×0.90
+        assertEquals("dotprod", c.variant)
+        assertTrue(c.why, c.why.contains("slower at writing the reply"))
+        assertEquals("dotprod", LlmProbe.choose(runs(prefill = 40.0, decode = 30.0)).variant)
+        assertEquals("within the margin of noise it isn't 'clearly slower'", "i8mm", LlmProbe.choose(runs(prefill = 100.0, decode = 19.1)).variant)   // reply ×0.955
+    }
+
+    @Test
+    fun `answers that differ, a failed build or a missing reference keep the dot-product build`() {
+        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0, agreement = 0.5)).variant)
+        assertTrue(LlmProbe.choose(runs(200.0, 40.0, agreement = 0.5)).why.contains("differs"))
+        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0, agreement = LlmProbe.MIN_AGREEMENT - 0.01)).variant)
+        assertEquals("i8mm", LlmProbe.choose(runs(200.0, 40.0, agreement = LlmProbe.MIN_AGREEMENT)).variant)
+        assertEquals("dotprod", LlmProbe.choose(runs(0.0, 0.0, error = "out of memory")).variant)
+        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0, agreement = null)).variant)
+        assertEquals("dotprod", LlmProbe.choose(emptyList()).variant)
+        assertEquals("dotprod", LlmProbe.choose(runs(200.0, 40.0).take(1)).variant)
+        // the dot-product build's own run failed: no baseline, so no switch on a guess
+        assertEquals("dotprod", LlmProbe.choose(listOf(LlmProbeRun("dotprod", "a", error = "boom"), runs(200.0, 40.0)[1])).variant)
+    }
+
+    @Test
+    fun `the whole probe picks the build the numbers say`() {
+        val r = run(FakeLib("dotprod", 45.0, 21.0), FakeLib("i8mm", 90.0, 22.0))
+        assertEquals("i8mm", LlmProbe.choose(r.runs).variant)
+        val slow = run(FakeLib("dotprod", 45.0, 21.0), FakeLib("i8mm", 45.5, 21.0))
+        assertEquals("dotprod", LlmProbe.choose(slow.runs).variant)
+    }
+
+    // ── Vulkan on an Adreno: report only ─────────────────────────────────────────
+
+    /** A GPU backend with canned rates, for the probe's protocol. */
+    private class FakeGpu(private val prefillRate: Double, private val decodeRate: Double, private val createError: String? = null,
+                          private val failPrefill: Boolean = false, private val agree: Double = 0.9999) : LlmGpuLib {
+        override val api = "Vulkan"
+        val prefills = ArrayList<Int>(); var released = 0; var destroyed = 0
+        override fun create(error: Array<String?>): Long { if (createError != null) { error[0] = createError; return 0 }; return 1 }
+        override fun deviceName() = "Adreno (TM) 830"
+        override fun prefill(handle: Long, tokens: Int): Double { prefills += tokens; return if (failPrefill) -1.0 else tokens / prefillRate }
+        override fun reset(handle: Long) {}
+        override fun next(handle: Long, token: IntArray?) = 1.0 / decodeRate
+        override fun cancel(handle: Long) {}
+        override fun error(handle: Long) = "the GPU's results differ from the CPU's (correlation 0.31)"
+        override fun agreement(handle: Long) = agree
+        override fun destroy(handle: Long) { destroyed++ }
+        override fun release() { released++ }
+    }
+
+    @Test
+    fun `Vulkan on an Adreno reads the 512 prompt twice and times the second, then undoes its backend choice`() {
+        val gpu = FakeGpu(prefillRate = 180.0, decodeRate = 14.0)
+        val events = ArrayList<String>()
+        val g = LlmProbe.runGpu(gpu, Triple("OpenCL", 300.0, 12.0), { true }, around = { events += if (it) "+" else "-" })
+        assertEquals(listOf(512, 512), gpu.prefills)
+        assertEquals(180.0, g.prefill, 1e-9); assertEquals(14.0, g.decode, 1e-9)
+        assertEquals(0.9999, g.agreement!!, 1e-9)
+        assertEquals("Adreno (TM) 830", g.device); assertEquals("OpenCL", g.vsApi); assertEquals(300.0, g.vsPrefill, 0.0)
+        assertEquals(listOf("+", "-"), events)
+        assertEquals(1, gpu.destroyed); assertEquals("the backend choice is always undone", 1, gpu.released)
+        assertNull(g.error)
+    }
+
+    @Test
+    fun `a Vulkan model that can't be built or answers wrongly is a row with its reason`() {
+        val noModel = FakeGpu(1.0, 1.0, createError = "no Vulkan device")
+        val a = LlmProbe.runGpu(noModel, Triple("OpenCL", 1.0, 1.0), { true })
+        assertEquals("no Vulkan device", a.error); assertEquals(1, noModel.released); assertEquals(0, noModel.destroyed)
+        val wrong = FakeGpu(100.0, 10.0, failPrefill = true)
+        val b = LlmProbe.runGpu(wrong, Triple("OpenCL", 1.0, 1.0), { true })
+        assertTrue(b.error!!, b.error!!.contains("differ from the CPU's"))
+        assertEquals(1, wrong.destroyed); assertEquals(1, wrong.released)
+    }
+
+    @Test
+    fun `the report sets Vulkan against the scored backend and says it is not scored`() {
+        val g = LlmProbe.runGpu(FakeGpu(150.0, 15.0), Triple("OpenCL", 300.0, 12.0), { true })
+        val lines = LlmProbe.lines(LlmProbeResult(gpu = g, vulkanBuild = "Vulkan shaders built with: cooperative matrix no · integer dot product (the int8 matrix kernels) no · bf16 no",
+            backendLog = listOf("ggml_vulkan: 0 = Adreno (TM) 830 (Qualcomm) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 32768 | int dot: 0 | matrix cores: none"),
+            topology = "CPU topology · by cpuinfo_max_freq · 4.32 GHz: cpu6-7 · 3.53 GHz: cpu0-5 · pinning order 6,7,0,1,2,3,4,5"))
+        val gpu = lines.first { it.startsWith("  GPU Vulkan on Adreno (TM) 830") }
+        assertTrue(gpu, gpu.contains("REPORT ONLY, the scored GPU backend is OpenCL") && gpu.contains("prefill 150.00 tok/s (×0.50 of OpenCL's)") && gpu.contains("decode 15.00 tok/s (×1.25)"))
+        assertTrue(lines.any { it.startsWith("Vulkan shaders built with:") })
+        assertTrue(lines.any { it == "  llama.cpp backend: ggml_vulkan: 0 = Adreno (TM) 830 (Qualcomm) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 32768 | int dot: 0 | matrix cores: none" })
+        assertTrue(lines.any { it.startsWith("CPU topology ·") })
+        val skipped = LlmProbe.lines(LlmProbeResult(gpuSkipped = "crashed the app here last time"))
+        assertTrue(skipped.contains("  GPU Vulkan on an Adreno · not tried: crashed the app here last time"))
+    }
+
+    @Test
+    fun `Vulkan is also run only on an Adreno whose scored backend is OpenCL and whose Vulkan works`() {
+        assertTrue(LlmProbe.vulkanOnAdrenoDecision("QUALCOMM Adreno(TM) 830", "OpenCL", vulkanDevice = true, crashed = false, gpuRan = true).use)
+        val mali = LlmProbe.vulkanOnAdrenoDecision("Mali-G1-Ultra MC12", "Vulkan", true, false, true)
+        assertFalse(mali.use); assertTrue(mali.why!!, mali.why!!.contains("nothing to compare"))
+        assertFalse("an Adreno already on Vulkan has nothing to compare", LlmProbe.vulkanOnAdrenoDecision("Adreno 830", "Vulkan", true, false, true).use)
+        assertFalse(LlmProbe.vulkanOnAdrenoDecision("Adreno 830", "OpenCL", false, false, true).use)
+        assertEquals("crashed the app here last time", LlmProbe.vulkanOnAdrenoDecision("Adreno 830", "OpenCL", true, true, true).why)
+        assertFalse("no scored GPU run to set it against", LlmProbe.vulkanOnAdrenoDecision("Adreno 830", "OpenCL", true, false, false).use)
+        assertFalse(LlmProbe.vulkanOnAdrenoDecision("", "", false, false, false).use)
     }
 
     // ── which builds run ─────────────────────────────────────────────────────
