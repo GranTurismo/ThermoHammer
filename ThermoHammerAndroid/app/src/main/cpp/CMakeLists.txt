@@ -141,6 +141,17 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
             list(APPEND VK_FEATURES ${DEF})
         endif()
     endforeach()
+    message(STATUS "llama.cpp's Vulkan shaders are built with: ${VK_FEATURES}")
+    # a glslc named on purpose is named to get the cooperative-matrix and int8 (integer dot product) kernels: a build
+    # that quietly lacks them would be the NDK's, and its numbers would say so only in the report
+    if(DEFINED ENV{THERMOHAMMER_VK_GLSLC} AND NOT "$ENV{THERMOHAMMER_VK_GLSLC}" STREQUAL "")
+        foreach(NEED GGML_VULKAN_COOPMAT_GLSLC_SUPPORT GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
+            if(NOT "${NEED}" IN_LIST VK_FEATURES)
+                message(FATAL_ERROR "THERMOHAMMER_VK_GLSLC=${VK_GLSLC} can't compile for ${NEED}: it needs shaderc 2023 or newer "
+                    "(`brew install shaderc`, or the Vulkan SDK's glslc)")
+            endif()
+        endforeach()
+    endif()
     # this computer's own compilers, not the NDK's (which the Android toolchain puts first on the search path)
     find_program(HOST_C_COMPILER NAMES cc clang gcc PATHS /usr/bin /usr/local/bin NO_DEFAULT_PATH)
     find_program(HOST_CXX_COMPILER NAMES c++ clang++ g++ PATHS /usr/bin /usr/local/bin NO_DEFAULT_PATH)
@@ -158,11 +169,17 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
             -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM} -DCMAKE_INSTALL_PREFIX=${VK_GEN_DIR} -DCMAKE_INSTALL_BINDIR=.
             ${VK_GEN_ARGS}
         BUILD_BYPRODUCTS ${VK_GEN})
+    # The shader header and every generated file depend on which glslc and which shader families they were made with:
+    # CMake can't see that through the generator's ExternalProject (the dependency on it is order-only), so a build
+    # folder made with another glslc kept the old header, which lacked the new variants, and failed to link them.
+    set(VK_STAMP ${VK_GEN_DIR}/features.txt)
+    file(WRITE ${VK_STAMP}.tmp "glslc ${VK_GLSLC}\nfeatures ${VK_FEATURES}\n")
+    file(COPY_FILE ${VK_STAMP}.tmp ${VK_STAMP} ONLY_IF_DIFFERENT)
     file(GLOB VK_SHADERS ${GGML_VK}/vulkan-shaders/*.comp)
     file(GLOB VK_GEN_SRC ${GGML_VK}/vulkan-shaders/*.cpp ${GGML_VK}/vulkan-shaders/*.h)
     add_custom_command(OUTPUT ${VK_HPP}
         COMMAND ${VK_GEN} --output-dir ${VK_GEN_DIR}/spv --target-hpp ${VK_HPP}
-        DEPENDS ${VK_GEN_SRC} vulkan-shaders-gen)
+        DEPENDS ${VK_GEN_SRC} ${VK_STAMP} vulkan-shaders-gen)
     set(VK_SHADER_SRC ${VK_HPP})
     foreach(S ${VK_SHADERS})
         get_filename_component(N ${S} NAME)
@@ -170,7 +187,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
             DEPFILE ${VK_GEN_DIR}/${N}.cpp.d
             COMMAND ${VK_GEN} --glslc ${VK_GLSLC} --source ${S} --output-dir ${VK_GEN_DIR}/spv --target-hpp ${VK_HPP}
                 --target-cpp ${VK_GEN_DIR}/${N}.cpp
-            DEPENDS ${S} ${VK_GEN_SRC} ${VK_HPP} vulkan-shaders-gen)
+            DEPENDS ${S} ${VK_GEN_SRC} ${VK_HPP} ${VK_STAMP} vulkan-shaders-gen)
         list(APPEND VK_SHADER_SRC ${VK_GEN_DIR}/${N}.cpp)
     endforeach()
     set(GGML_VULKAN_SRC ${GGML_VK}/ggml-vulkan.cpp ${GGML_VK}/ggml-vulkan-buffers.cpp ${GGML_VK}/ggml-vulkan-debug.cpp
