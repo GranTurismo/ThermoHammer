@@ -214,6 +214,37 @@
     });
   });
 
+  /* ── embed code, print ───────────────────────────────────────────────────────────────────────── */
+  $$('[data-copy-code]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var box = $('[data-embed-code]', btn.closest('.embed-box'));
+      if (!box) return;
+      var done = function () { var was = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = was; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(box.value).then(done, function () {});
+      else { box.select(); try { doc.execCommand('copy'); done(); } catch (err) { /* select is enough */ } }
+    });
+  });
+  $$('[data-print]').forEach(function (btn) {
+    if (!window.print) return;
+    btn.hidden = false;
+    btn.addEventListener('click', function () { window.print(); });
+  });
+
+  /* ── a run shared moments ago: its page is still being built ─────────────────────────────────── */
+  var lost = $('[data-e404]');
+  var fresh = location.pathname.match(/\/(run|stress|cert|embed\/run|embed\/stress)\/(\d+)\/?$/);
+  if (lost && fresh) {
+    var tries = +(sessionStorage.getItem('th-wait-' + fresh[2]) || 0);
+    if (tries < 20) {
+      $('[data-e404-title]').textContent = 'Run #' + fresh[2] + ' is on its way.';
+      $('[data-e404-text]').textContent = 'It was submitted a moment ago and its page is being built. This page checks again every 30 seconds.';
+      setTimeout(function () {
+        try { sessionStorage.setItem('th-wait-' + fresh[2], String(tries + 1)); } catch (err) { /* reload anyway */ }
+        location.reload();
+      }, 30000);
+    }
+  }
+
   /* ── "3 hours ago" ───────────────────────────────────────────────────────────────────────────── */
   $$('time[data-ago]').forEach(function (el) {
     var then = Date.parse(el.getAttribute('datetime'));

@@ -11,7 +11,7 @@ share images. There is no framework and no database, and the pages work without 
 
 ```
 cd ThermoHammerWeb
-python3 -m venv .venv && .venv/bin/pip install pillow jinja2 fonttools brotli     # once
+python3 -m venv .venv && .venv/bin/pip install pillow jinja2 fonttools brotli segno     # once
 .venv/bin/python build.py --serve 8088                                            # → http://localhost:8088
 ```
 
@@ -36,6 +36,26 @@ The first build fetches every stress run's samples (about a minute); after that 
 | `assets-src/` | Source fonts, icon and screenshots; `tools/prepare_assets.py` turns them into `static/` |
 
 The design uses the apps' own tokens (`ForgeTheme`): the same colours, the Thermal Ramp, JetBrains Mono and Space Grotesk.
+
+### Pages for single runs (what the apps link to)
+
+Every verified run has its own pages, so a link shared from an app lands on that exact run. They are left out of the
+sitemap and marked `noindex` (hundreds of near-identical pages); the device pages are the ones meant for search.
+
+| Path | What it is |
+| --- | --- |
+| `/run/{id}/` | A benchmark run: sections, every test, "Can your phone beat it?" — the apps' share link |
+| `/stress/{id}/` | A stress run: its throughput ribbon and facts — the apps' share link for stress runs |
+| `/cert/{id}/` | A health certificate for a benchmark run: the run against the model's median (the apps' Phone Health thresholds, at least 3 runs), a QR code to itself, and what a buyer should check. The apps show the same QR code on the device being sold |
+| `/embed/run/{id}/`, `/embed/stress/{id}/` | The run alone, for reviewers' articles; the only pages any site may frame (see `deploy/Caddyfile`) |
+
+A run submitted a moment ago has no page until the next build (the loop looks every 2 minutes); the 404 page
+recognises these paths, says the run is on its way and checks again every 30 seconds. The stress pages' dates and OS
+builds need the API's `createdAt`/`osBuild` fields on `GET /leaderboard` (added in the 2.1 API); without them those
+lines are simply left out. Device pages also show **"Did an update change it?"**, the median score per OS version,
+once a model has benchmark runs on two versions.
+
+Tests for the derived numbers: `.venv/bin/python -m unittest discover -s tests`.
 
 ## Changing things
 

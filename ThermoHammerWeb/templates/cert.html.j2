@@ -1,0 +1,62 @@
+{% extends "base.html.j2" %}
+{% block body_class %}page-cert{% endblock %}
+{% block main %}
+<section class="wrap narrow cert">
+  <article class="cert-card">
+    <header class="cert-top">
+      <span class="cert-mark">ThermoHammer</span>
+      <span class="cert-kind">Verified health certificate · #{{ run.id }}</span>
+    </header>
+    <h1>{{ d.title }}</h1>
+    <p class="cert-sub">{{ run.os_text }}{% if run.os_build %} · build {{ run.os_build }}{% endif %}{% if run.created %} · tested {{ run.created | day }}{% endif %}</p>
+
+    <div class="cert-grid">
+      <div>
+        {% if health %}
+        <div class="cert-verdict v-{{ health.verdict }}">
+          <b>{{ '%.0f' | format(health.percent) }}%</b>
+          <span>{{ health.text }}</span>
+          <small>of the median {{ d.title }} · {{ health.runs }} verified runs · this one scored {{ run.total | num }}</small>
+        </div>
+        <table class="cert-table">
+          <thead><tr><th>Section</th><th class="r">This {{ d.noun }}</th><th class="r">Median {{ d.title }}</th><th class="r"></th></tr></thead>
+          <tbody>
+            {% for s in health.sections %}{% if s.points or s.median %}
+            <tr style="--c:{{ s.color }}"><td><b>{{ s.label }}</b></td><td class="r">{{ s.points | num }}</td><td class="r">{{ s.median | num }}</td><td class="r">{% if s.vs %}{{ '%.0f' | format(s.vs * 100) }}%{% endif %}</td></tr>
+            {% endif %}{% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="cert-verdict v-unknown">
+          <b>{{ run.total | num }}</b>
+          <span>points, verified</span>
+          <small>Fewer than three verified runs of this model so far, so there is no typical {{ d.title }} to compare it with yet. The score itself is real.</small>
+        </div>
+        <table class="cert-table">
+          <tbody>{% for s in run.section_list %}{% if s.points %}<tr style="--c:{{ s.color }}"><td><b>{{ s.label }}</b></td><td class="r">{{ s.points | num }}</td></tr>{% endif %}{% endfor %}</tbody>
+        </table>
+        {% endif %}
+      </div>
+      <figure class="cert-qr">
+        {{ qr }}
+        <figcaption>{{ abs_url('/cert/' ~ run.id ~ '/') | replace('https://', '') }}</figcaption>
+      </figure>
+    </div>
+
+    <div class="cert-how">
+      <h2>Buying this {{ d.noun }}? Check three things</h2>
+      <ol>
+        <li><b>Scan the code on the {{ d.noun }} itself.</b> Ask the seller to open ThermoHammer on the {{ d.noun }} for sale and show its health certificate. A code shown by the device proves this run came from that device's app.</li>
+        <li><b>Check the date.</b> This is the {{ d.noun }}'s speed on {{ run.created | day if run.created else 'the day of the test' }}. If that was a while ago, ask for a fresh run; it takes a few minutes.</li>
+        <li><b>It measures speed, nothing physical.</b> Not battery wear, the screen, the cameras or water damage.</li>
+      </ol>
+      <p class="fine">The ThermoHammer app sent this run signed with a one-time key, and the server scored it from the raw measurements. Only runs the app found clean are accepted: not charging, not hot at the start, no power-saving mode and nothing else running. No serial number or personal data is stored.</p>
+    </div>
+  </article>
+  <p class="more cert-links">
+    <a class="btn btn-ghost btn-sm" href="{{ url('/run/' ~ run.id ~ '/') }}">Every test of this run</a>
+    <a class="btn btn-ghost btn-sm" href="{{ url('/devices/' ~ d.slug ~ '/') }}">All {{ d.title }} runs</a>
+    <button class="btn btn-ghost btn-sm" type="button" data-print hidden>Print</button>
+  </p>
+</section>
+{% endblock %}

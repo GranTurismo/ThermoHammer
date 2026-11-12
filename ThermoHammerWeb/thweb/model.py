@@ -32,6 +32,8 @@ SECTIONS = [
 SECTION_KEYS = [s[0] for s in SECTIONS]
 
 DURATION_MIN = {0: 5, 1: 15, 2: 30}
+HEALTH_MIN_RUNS = 3       # verified runs of a model before one run is judged against them (PhoneHealth.MIN_RUNS)
+UPDATE_MIN_RUNS = 2       # runs on each side of an OS update before its change is shown as more than a hint
 THERMAL_NAMES = ["Nominal", "Fair", "Serious", "Critical"]
 
 # ── the Thermal Ramp of the apps (ForgeTheme): 0 = cool teal … 1 = white-hot ────────────────────────────────────────
@@ -136,6 +138,9 @@ class StressRun:
     thermal_max: int = 0
     thermal_at: dict[int, float] = field(default_factory=dict)   # state → first second it was reported
     device: "Device | None" = None
+    created: datetime | None = None # when the run's session opened (newer API answers only)
+    os_build: str = ""
+    mode: int = 0                   # 0 CPU, 1 GPU, 2 CPU+GPU
 
     @property
     def standard(self) -> bool:
@@ -152,6 +157,10 @@ class StressRun:
     @property
     def label(self) -> str:
         return f"{self.minutes} min · {'multi-thread' if self.multi else '1 thread'}"
+
+    @property
+    def load(self) -> str:
+        return {1: "GPU", 2: "CPU+GPU"}.get(self.mode, "CPU")
 
 
 def _rolling_mean(values: list[float], n: int) -> list[float]:
@@ -222,9 +231,24 @@ class BenchRun:
     total: int
     scores: dict[str, int]                 # section key → points
     sections: list[dict]                   # the API's detail: key, title, score, groups[title, points, rows[label, value]]
+    device: "Device | None" = None
 
     def ratio(self, key: str) -> float:
         return self.scores.get(key, 0) / REFERENCE
+
+    @property
+    def section_list(self) -> list[dict]:
+        """The six sections of this run, against the 6,000-point reference (as Device.section_list does for the best)."""
+        return [{"key": key, "short": short, "label": long_, "points": self.scores.get(key, 0),
+                 "ratio": self.scores.get(key, 0) / REFERENCE, "color": color,
+                 "share": self.scores.get(key, 0) / self.total if self.total else 0}
+                for key, short, long_, _, color in SECTIONS]
+
+    @property
+    def os_text(self) -> str:
+        if not self.device:
+            return self.os_version
+        return os_label(self.device.os_id, self.os_version)
 
 
 def bench_run_from_detail(d: dict) -> BenchRun:
@@ -274,6 +298,11 @@ class Device:
         return self.alias or self.name
 
     @property
+    def noun(self) -> str:
+        """What the device is, for "Can your … beat this?"."""
+        return {3: "Mac", 4: "PC"}.get(self.os_id, "phone")
+
+    @property
     def has_bench(self) -> bool:
         return self.best is not None
 
@@ -311,6 +340,54 @@ class Device:
             out.append({"key": key, "short": short, "label": long_, "points": pts, "ratio": pts / REFERENCE, "color": color,
                         "share": pts / self.best.total if self.best.total else 0})
         return out
+
+    def health(self, run: BenchRun) -> dict | None:
+        """Phone Health on the website: one run against the median of this model's verified runs, with the apps'
+        thresholds (PhoneHealth.kt). None when there are too few runs to say."""
+        stats = self.stats or {}
+        median = (stats.get("total") or {}).get("median") or 0
+        runs = int(stats.get("runs") or 0)
+        if runs < HEALTH_MIN_RUNS or median <= 0:
+            return None
+        ratio = run.total / median
+        if ratio >= 1.05:
+            verdict, text = "faster", f"Faster than most {self.title} units"
+        elif ratio >= 0.95:
+            verdict, text = "on-par", f"As fast as a {self.title} should be"
+        elif ratio >= 0.85:
+            verdict, text = "slower", f"A little slower than other {self.title} units"
+        else:
+            verdict, text = "much-slower", f"Slower than a {self.title} should be"
+        medians = stats.get("sections") or {}
+        sections = [{**s, "median": int(medians.get(s["key"]) or 0),
+                     "vs": (s["points"] / medians[s["key"]]) if medians.get(s["key"]) else None}
+                    for s in run.section_list]
+        return {"ratio": ratio, "percent": ratio * 100, "median": median, "runs": runs, "verdict": verdict,
+                "text": text, "sections": sections}
+
+    @property
+    def os_history(self) -> list[dict]:
+        """Benchmark runs grouped by OS version, oldest first: what each update did to this model's score.
+        Each change against the previous version says whether both sides have enough runs to mean much."""
+        groups: dict[str, list[BenchRun]] = {}
+        for r in self.bench_runs:
+            if r.os_version:
+                groups.setdefault(r.os_version, []).append(r)
+        if len(groups) < 2:
+            return []
+        earliest = datetime.min.replace(tzinfo=timezone.utc)
+        rows = []
+        for version, runs in groups.items():
+            dates = [r.created for r in runs if r.created]
+            builds = sorted({r.os_build for r in runs if r.os_build})
+            rows.append({"os_version": version, "os_text": os_label(self.os_id, version), "runs": len(runs),
+                         "median": statistics.median(r.total for r in runs), "first": min(dates) if dates else None,
+                         "builds": builds})
+        rows.sort(key=lambda g: (g["first"] or earliest, g["os_version"]))
+        for prev, row in zip(rows, rows[1:]):
+            row["change"] = row["median"] / prev["median"] - 1 if prev["median"] else None
+            row["solid"] = prev["runs"] >= UPDATE_MIN_RUNS and row["runs"] >= UPDATE_MIN_RUNS
+        return rows
 
     @property
     def strongest(self) -> dict | None:
@@ -591,6 +668,7 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
         dev = devices.get(f"{d['os']}:{display_name(d['deviceManufacturer'], d['deviceModel']).lower()}")
         if dev:
             dev.bench_runs.append(runs[run_id])
+            runs[run_id].device = dev
     for dev in devices.values():
         dev.bench_runs.sort(key=lambda r: (r.created or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
 
@@ -599,7 +677,9 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
     for row in stress_rows:
         dev = device_for(row["deviceManufacturer"], row["deviceModel"], row["os"])
         run = StressRun(id=row["id"], minutes=DURATION_MIN.get(row.get("type", 0), 5), multi=row.get("testThreadingType", 1) == 1,
-                        os_version=row.get("osVersion") or "", stability=float(row.get("stabilityPercentage") or 0), device=dev)
+                        os_version=row.get("osVersion") or "", stability=float(row.get("stabilityPercentage") or 0), device=dev,
+                        created=parse_time(row.get("createdAt")), os_build=row.get("osBuild") or "",
+                        mode=int(row.get("stressMode") or 0))
         try:
             shape_stress(run, api.stamps(run.id))
         except Exception as e:

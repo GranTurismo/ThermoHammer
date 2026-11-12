@@ -97,3 +97,37 @@
   </div>
 </section>
 {% endmacro %}
+
+{# A run's six sections as bars against the 6,000 reference (the device page draws the same for its best run). #}
+{% macro section_bars(sections) %}
+{% set top = [sections | map(attribute='points') | max, REFERENCE] | max %}
+<ul class="bars">
+  {% for s in sections %}
+  <li style="--c:{{ s.color }};--w:{{ '%.2f' | format(s.points / top * 100) }}%;--ref:{{ '%.2f' | format(REFERENCE / top * 100) }}%">
+    <b>{{ s.short }}</b>
+    <span class="track"><i></i><u></u></span>
+    <span>{{ s.points | num }}</span>
+    <em>{{ s.ratio | times }}</em>
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{# The code a reviewer pastes into an article to show this run (the /embed/ pages may be framed by any site). #}
+{% macro embed_box(path, title, height) %}
+{% set code = '<iframe src="' ~ abs_url(path) ~ '" title="' ~ title ~ '" width="100%" height="' ~ height ~ '" style="border:0;max-width:760px" loading="lazy"></iframe>' %}
+<details class="embed-box">
+  <summary>Embed this run on your site</summary>
+  <p class="fine">Paste this where the chart should go. It always shows this run, and links back to it.</p>
+  <textarea readonly rows="3" data-embed-code>{{ code }}</textarea>
+  <p class="more"><button class="btn btn-ghost btn-sm" type="button" data-copy-code>Copy code</button><a class="btn btn-ghost btn-sm" href="{{ url(path) }}" target="_blank" rel="noopener">Preview</a></p>
+</details>
+{% endmacro %}
+
+{% macro beat(heading, body) %}
+<div class="block beat">
+  <h2>{{ heading }}</h2>
+  <p class="sec-lede">{{ body }}</p>
+  {{ store_buttons() }}
+</div>
+{% endmacro %}

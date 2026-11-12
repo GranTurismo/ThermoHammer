@@ -1,0 +1,69 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+<section class="wrap dev-head">
+  <div>
+    {{ m.platform_chip(d) }} <span class="chip chip-ok">Verified run #{{ run.id }}</span>
+    <h1>{{ d.title }}</h1>
+    <p class="dev-meta">
+      {% if d.chip and d.os_id != 4 %}<span><b>Chip</b>{{ d.chip }}</span>{% endif %}
+      <span><b>OS</b>{{ run.os_text }}{% if run.os_build %} <small>{{ run.os_build }}</small>{% endif %}</span>
+      {% if run.created %}<span><b>Tested</b>{{ run.created | day }}</span>{% endif %}
+      {% if run.app_version %}<span><b>App</b>{{ run.app_version }}</span>{% endif %}
+    </p>
+  </div>
+  <div class="dev-total">
+    <small>Benchmark score</small>
+    <b>{{ run.total | num }}</b>
+    <i>{% if d.best and run.id == d.best.id %}The best {{ d.title }} · #{{ d.rank }} of {{ site.board | length }} on the board{% elif d.best %}The best {{ d.title }} scores {{ d.total | num }}{% endif %}</i>
+  </div>
+</section>
+
+<section class="wrap page-body">
+  <div class="grid2">
+    <figure class="panel brackets">
+      <div class="panel-head"><span class="panel-title">Six sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
+      {{ charts.radar(run.scores, 380, d.title ~ ', run #' ~ run.id ~ ': section scores against the 6,000-point reference') | safe }}
+    </figure>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Against the reference</span><span class="panel-note">this run</span></div>
+      {{ m.section_bars(run.section_list) }}
+      <p class="keyline"><span><i></i>6,000 points: a Snapdragon 8 Elite phone, as it ships</span></p>
+    </div>
+  </div>
+
+  {% if health %}
+  <div class="block callout health health-{{ health.verdict }}">
+    <b>{{ health.text }}.</b> This run is {{ '%.0f' | format(health.percent) }}% of the median {{ d.title }}: {{ health.median | num }} points over {{ health.runs }} verified runs.
+    <a class="link" href="{{ url('/cert/' ~ run.id ~ '/') }}">Health certificate</a>
+  </div>
+  {% endif %}
+
+  {{ m.beat('Can your ' ~ d.noun ~ ' beat ' ~ (run.total | num) ~ '?', 'ThermoHammer is free. It runs the same six sections on your ' ~ d.noun ~ ', and clean runs join the leaderboard next to this one.') }}
+
+  <div class="block">
+    <h2>Every test of this run</h2>
+    <p class="sec-lede">The raw measurements behind the score, as the server recorded them.</p>
+    <div class="tests">
+      {% for s in run.sections %}
+      <details style="--c:{{ section_meta[s.key].color if s.key in section_meta else '#9FB4BC' }}"{% if loop.index <= 1 %} open{% endif %}>
+        <summary><span>{{ section_meta[s.key].label if s.key in section_meta else s.title }}</span><b>{{ s.score | num }}</b></summary>
+        {% for g in s.groups %}
+        <div class="tgroup">
+          <h3><span>{{ g.title }}</span>{% if g.points is not none %}<i>{{ g.points | num }}</i>{% endif %}</h3>
+          <dl>{% for row in g.rows %}<dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>{% endfor %}</dl>
+        </div>
+        {% endfor %}
+      </details>
+      {% endfor %}
+    </div>
+    <p class="more"><a class="link" href="{{ url('/devices/' ~ d.slug ~ '/') }}">Every {{ d.title }} run</a>{% if not health %} · <a class="link" href="{{ url('/cert/' ~ run.id ~ '/') }}">Health certificate</a>{% endif %}</p>
+  </div>
+
+  <div class="block">
+    {{ m.embed_box(embed_path, d.title ~ ' on ThermoHammer, run #' ~ run.id, 300) }}
+    <p class="share-label">Share this run</p>
+    {{ m.share(d.title ~ ' scored ' ~ (run.total | num) ~ ' on ThermoHammer', d.title ~ ' scored ' ~ (run.total | num) ~ ' on the ThermoHammer benchmark. Can your ' ~ d.noun ~ ' beat it?') }}
+  </div>
+</section>
+{% endblock %}

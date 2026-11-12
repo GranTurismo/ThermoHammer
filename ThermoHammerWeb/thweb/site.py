@@ -9,13 +9,14 @@ import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
+import segno
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 from markupsafe import Markup
 
 from . import charts, content, og
 from .config import ROOT, Config
-from .model import (REFERENCE, REFERENCE_TOTAL, SECTIONS, THERMAL_NAMES, Comparison, Device, Site, StressRun,
-                    capacity_hex, percent_text, ramp_hex)
+from .model import (REFERENCE, REFERENCE_TOTAL, SECTIONS, THERMAL_NAMES, BenchRun, Comparison, Device, Site,
+                    StressRun, capacity_hex, percent_text, ramp_hex)
 
 TEXT_TYPES = {".css", ".js", ".svg", ".json", ".txt", ".xml", ".html", ".webmanifest"}
 
@@ -148,6 +149,7 @@ class Builder:
         self._home(site, hero)
         self._leaderboards(site)
         self._devices(site)
+        self._runs(site)
         self._compare(site)
         self._how(site)
         self._notes(site)
@@ -306,6 +308,66 @@ class Builder:
             og_image=self._og(f"device-{d.slug}", self.cards.device(d, site)), og_alt=f"{d.title} on ThermoHammer",
             crumbs=[("Devices", "/devices/"), (d.title, f"/devices/{d.slug}/")],
             d=d, neighbours=neighbours, uid=re.sub(r"[^a-z0-9]", "", d.slug)[:24])
+
+    # ── single runs: the links the apps share, health certificates, embeds ──────────────────────────────────────────
+    # Every verified run gets a page, so a link shared from an app always lands on that exact run. They stay out of
+    # the sitemap and search results (hundreds of near-identical pages); the device pages are what people search for.
+
+    def qr(self, path: str, label: str) -> Markup:
+        """A QR code for a page of this site, as inline SVG (crisp at any size, allowed by the CSP)."""
+        code = segno.make(self.cfg.abs_url(path), error="m")
+        return Markup(code.svg_inline(scale=6, border=4, dark="#06090B", light="#FFFFFF", svgclass="qr", title=label))
+
+    def _runs(self, site: Site) -> None:
+        for run in sorted(site.all_bench_runs.values(), key=lambda r: r.id):
+            if run.device:
+                self._bench_run(site, run)
+        for run in sorted(site.all_stress_runs.values(), key=lambda r: r.id):
+            if run.device:
+                self._stress_run(site, run)
+
+    def _bench_run(self, site: Site, run: BenchRun) -> None:
+        d = run.device
+        health = d.health(run)
+        og_image = self._og(f"run-{run.id}", self.cards.bench_run(run))
+        sections = ", ".join(f"{s['short']} {num(s['points'])}" for s in run.section_list if s["points"])
+        crumbs = [("Devices", "/devices/"), (d.title, f"/devices/{d.slug}/"), (f"Run #{run.id}", f"/run/{run.id}/")]
+        self.page(
+            f"/run/{run.id}/", "run.html.j2", index=False,
+            title=f"{d.title} scored {num(run.total)} on ThermoHammer (run #{run.id})",
+            description=f"A verified ThermoHammer benchmark run of a {d.title}: {num(run.total)} points ({sections}). "
+                        f"Can your {d.noun} beat it?",
+            og_image=og_image, og_alt=f"{d.title}: {num(run.total)} points on ThermoHammer", crumbs=crumbs,
+            run=run, d=d, health=health, embed_path=f"/embed/run/{run.id}/")
+        self.page(
+            f"/cert/{run.id}/", "cert.html.j2", index=False,
+            title=f"Health certificate: {d.title}, run #{run.id} | ThermoHammer",
+            description=f"Verified ThermoHammer benchmark of a {d.title} on {day(run.created)}: {num(run.total)} points"
+                        + (f", {health['percent']:.0f}% of the median {d.title}." if health else "."),
+            og_image=og_image, og_alt=f"Health certificate for a {d.title}",
+            crumbs=crumbs[:2] + [(f"Certificate #{run.id}", f"/cert/{run.id}/")],
+            run=run, d=d, health=health, qr=self.qr(f"/cert/{run.id}/", f"QR code: this certificate, run #{run.id}"))
+        self.page(
+            f"/embed/run/{run.id}/", "embed.html.j2", index=False,
+            title=f"{d.title}: {num(run.total)} points | ThermoHammer", description=f"ThermoHammer run #{run.id}.",
+            og_image=og_image, kind="run", run=run, d=d, link=f"/run/{run.id}/")
+
+    def _stress_run(self, site: Site, run: StressRun) -> None:
+        d = run.device
+        og_image = self._og(f"stress-{run.id}", self.cards.stress_run(run))
+        crumbs = [("Devices", "/devices/"), (d.title, f"/devices/{d.slug}/"), (f"Stress run #{run.id}", f"/stress/{run.id}/")]
+        self.page(
+            f"/stress/{run.id}/", "stress.html.j2", index=False,
+            title=f"{d.title} kept {run.stability:.0f}% of its speed under load (run #{run.id}) | ThermoHammer",
+            description=f"A verified {run.minutes}-minute ThermoHammer stress test of a {d.title}: it kept "
+                        f"{pct(run.stability)} of its speed. Can your {d.noun} do better?",
+            og_image=og_image, og_alt=f"{d.title} kept {run.stability:.0f}% of its speed", crumbs=crumbs,
+            run=run, d=d, uid=f"s{run.id}", embed_path=f"/embed/stress/{run.id}/")
+        self.page(
+            f"/embed/stress/{run.id}/", "embed.html.j2", index=False,
+            title=f"{d.title}: {pct(run.stability)} held under load | ThermoHammer",
+            description=f"ThermoHammer stress run #{run.id}.", og_image=og_image, kind="stress", run=run, d=d,
+            uid=f"e{run.id}", link=f"/stress/{run.id}/")
 
     # ── comparisons ──────────────────────────────────────────────────────────────────────────────────────────────────
 

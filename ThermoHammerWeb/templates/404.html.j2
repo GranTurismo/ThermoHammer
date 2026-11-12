@@ -2,10 +2,10 @@
 {% import "_macros.html.j2" as m with context %}
 {% block main %}
 <section class="wrap e404">
-  <div>
+  <div data-e404>
     <b>404</b>
-    <h1>This page throttled to zero.</h1>
-    <p>It isn't here. The leaderboard is.</p>
+    <h1 data-e404-title>This page throttled to zero.</h1>
+    <p data-e404-text>It isn't here. The leaderboard is.</p>
     <p class="more" style="justify-content:center">
       <a class="btn btn-primary" href="{{ url('/leaderboard/') }}">Leaderboard</a>
       <a class="btn btn-ghost" href="{{ url('/devices/') }}">All devices</a>

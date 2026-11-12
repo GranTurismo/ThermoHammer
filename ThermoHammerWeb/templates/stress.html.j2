@@ -1,0 +1,50 @@
+{% extends "base.html.j2" %}
+{% import "_macros.html.j2" as m with context %}
+{% block main %}
+{% set r = run %}
+<section class="wrap dev-head">
+  <div>
+    {{ m.platform_chip(d) }} <span class="chip chip-ok">Verified stress run #{{ r.id }}</span>
+    <h1>{{ d.title }}</h1>
+    <p class="dev-meta">
+      <span><b>OS</b>{{ d.platform }} {{ r.os_version }}{% if r.os_build %} <small>{{ r.os_build }}</small>{% endif %}</span>
+      <span><b>Test</b>{{ r.minutes }} min · {{ r.load }} · {{ 'every core' if r.multi else 'one thread' }}</span>
+      {% if r.created %}<span><b>Tested</b>{{ r.created | day }}</span>{% endif %}
+    </p>
+  </div>
+  <div class="dev-total" style="--c:{{ r.color }}">
+    <small>Speed kept under load</small>
+    <b>{{ r.stability | pct(0) }}</b>
+    <i>{% if d.headline and r.id == d.headline.id %}The best {{ d.title }} run{% elif d.headline %}The best {{ d.title }} keeps {{ d.headline.stability | pct(0) }}{% endif %}</i>
+  </div>
+</section>
+
+<section class="wrap page-body">
+  {% if r.has_curve %}
+  <figure class="panel brackets" data-draw>
+    <div class="panel-head"><span class="panel-title">Throughput ribbon</span><span class="panel-note">{{ r.samples | num }} samples</span></div>
+    {{ m.run_readout(r) }}
+    {{ charts.ribbon(r, uid, 1100, 340, true, d.title ~ ': throughput over a ' ~ r.minutes ~ '-minute stress test, run #' ~ r.id) | safe }}
+    <figcaption>Speed as a share of {{ 'the cold baseline measured before the load' if r.basis == 'baseline' else "the run's fastest sample" }}.{% if r.thermal_at %} Dashed lines mark the second the device first reported each thermal state.{% endif %}</figcaption>
+  </figure>
+  <dl class="facts" style="margin-top:16px">
+    <div><dt>Fastest sample</dt><dd>{{ r.peak_gips | gips }} <small>GIPS</small></dd></div>
+    <div><dt>Second-half average</dt><dd>{{ r.sustained_gips | gips }} <small>GIPS</small></dd></div>
+    <div><dt>Lowest 5-second average</dt><dd>{{ r.low_pct | pct(0) }}</dd></div>
+    <div><dt>First under 90%</dt><dd>{% if r.dip_s is not none %}{{ r.dip_s | clock }} <small>into the run</small>{% else %}never{% endif %}</dd></div>
+    <div><dt>Hottest state reported</dt><dd>{{ THERMAL_NAMES[r.thermal_max] }}</dd></div>
+  </dl>
+  {% else %}
+  <div class="block callout">This run's samples are too few to draw its curve. Its stability number is what the server recorded.</div>
+  {% endif %}
+
+  {{ m.beat('Can your ' ~ d.noun ~ ' keep more than ' ~ (r.stability | pct(0)) ~ '?', 'ThermoHammer is free. Run the same ' ~ r.minutes ~ '-minute stress test and see when your ' ~ d.noun ~ ' starts to slow down.') }}
+
+  <div class="block">
+    <p class="more"><a class="link" href="{{ url('/devices/' ~ d.slug ~ '/#stress') }}">Every {{ d.title }} stress run</a> · <a class="link" href="{{ url('/leaderboard/throttling/') }}">Throttling leaderboard</a></p>
+    {{ m.embed_box(embed_path, d.title ~ ' under sustained load, ThermoHammer run #' ~ r.id, 360) }}
+    <p class="share-label">Share this run</p>
+    {{ m.share(d.title ~ ' kept ' ~ (r.stability | pct(0)) ~ ' of its speed under load', d.title ~ ' kept ' ~ (r.stability | pct(0)) ~ ' of its speed through a ' ~ r.minutes ~ '-minute ThermoHammer stress test. Can your ' ~ d.noun ~ ' do better?') }}
+  </div>
+</section>
+{% endblock %}

@@ -92,12 +92,35 @@
         <tbody>
           {% for run in d.bench_runs %}
           <tr>
-            <td>#{{ run.id }}{% if run.id == d.best.id %} <span class="chip">best</span>{% endif %}</td>
+            <td><a class="link" href="{{ url('/run/' ~ run.id ~ '/') }}">#{{ run.id }}</a>{% if run.id == d.best.id %} <span class="chip">best</span>{% endif %}</td>
             <td>{{ run.created | day }}</td>
             <td>{{ run.app_version }}</td>
             <td>{{ run.os_version }}</td>
             {% for key, short, label, field, color in SECTIONS %}<td class="r">{{ run.scores.get(key, 0) | num }}</td>{% endfor %}
             <td class="r"><b>{{ run.total | num }}</b></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% set hist = d.os_history %}
+  {% if hist %}
+  <div class="block" id="updates">
+    <h2>Did an update change it?</h2>
+    <p class="sec-lede">The median score on each {{ d.platform }} version this model has been tested on, oldest first. A change only means something once there are a few runs on both sides.</p>
+    <div class="panel scroll-x">
+      <table class="runs">
+        <thead><tr><th>OS</th><th>First run</th><th class="r">Runs</th><th class="r">Median</th><th class="r">Change</th></tr></thead>
+        <tbody>
+          {% for g in hist %}
+          <tr>
+            <td>{{ g.os_text }}{% if g.builds %} <small class="muted">{{ g.builds[-2:] | join(', ') }}</small>{% endif %}</td>
+            <td>{{ g.first | day }}</td>
+            <td class="r">{{ g.runs }}</td>
+            <td class="r">{{ g.median | num }}</td>
+            <td class="r">{% if g.change is defined and g.change is not none %}<b class="delta {{ 'up' if g.change > 0.03 else 'down' if g.change < -0.03 else 'flat' }}{% if not g.solid %} hint{% endif %}">{{ '%+.1f' | format(g.change * 100) }}%</b>{% if not g.solid %} <small class="muted">few runs</small>{% endif %}{% else %}–{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -113,7 +136,7 @@
     <p class="sec-lede">{{ d.title }} holds <b style="color:{{ r.color }}">{{ r.stability | pct }}</b> of its {{ 'baseline' if r.basis == 'baseline' else 'peak' }} speed through a {{ r.minutes }}-minute stress test on {{ 'every core' if r.multi else 'one thread' }}.{% if d.stress_rank %} That is #{{ d.stress_rank }} of {{ site.stress_board | selectattr('stress_rank') | list | length }} devices on the same test.{% endif %}</p>
     {% if r.has_curve %}
     <figure class="panel brackets" data-draw>
-      <div class="panel-head"><span class="panel-title">Throughput ribbon</span><span class="panel-note">run #{{ r.id }} · {{ d.platform }} {{ r.os_version }}</span></div>
+      <div class="panel-head"><span class="panel-title">Throughput ribbon</span><span class="panel-note"><a class="link" href="{{ url('/stress/' ~ r.id ~ '/') }}">run #{{ r.id }}</a> · {{ d.platform }} {{ r.os_version }}</span></div>
       {{ m.run_readout(r) }}
       {{ charts.ribbon(r, 'd' ~ uid, 1100, 340, true, d.title ~ ': throughput over a ' ~ r.minutes ~ '-minute stress test') | safe }}
       <figcaption>Speed as a share of {{ 'the cold baseline measured before the load' if r.basis == 'baseline' else "the run's fastest sample" }}.{% if r.thermal_at %} Dashed lines mark the second the device first reported each thermal state.{% endif %}</figcaption>
@@ -136,7 +159,7 @@
         <tbody>
           {% for run in d.stress_runs %}
           <tr>
-            <td>#{{ run.id }}</td>
+            <td><a class="link" href="{{ url('/stress/' ~ run.id ~ '/') }}">#{{ run.id }}</a></td>
             <td>{{ run.label }}</td>
             <td>{{ run.os_version }}</td>
             <td>{{ charts.sparkline(run) | safe }}</td>

@@ -1,0 +1,26 @@
+{# A run on its own, for other sites to show in an iframe: no navigation, links open the full page in a new tab. #}
+{% import "_macros.html.j2" as m with context %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }}</title>
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="{{ abs_url(link) }}">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="{{ asset('css/site.css') }}">
+</head>
+<body class="embed">
+<a class="embed-head" href="{{ abs_url(link) }}" target="_blank" rel="noopener">
+  <span><b>{{ d.title }}</b><small>{% if kind == 'stress' %}{{ run.minutes }}-min {{ run.load }} stress test · {{ d.platform }} {{ run.os_version }}{% else %}Benchmark · {{ run.os_text }}{% endif %}{% if run.created %} · {{ run.created | day }}{% endif %}</small></span>
+  {% if kind == 'stress' %}<em style="color:{{ run.color }}">{{ run.stability | pct(0) }}<small>speed kept</small></em>{% else %}<em>{{ run.total | num }}<small>points</small></em>{% endif %}
+</a>
+{% if kind == 'stress' %}
+{% if run.has_curve %}{{ charts.ribbon(run, uid, 1100, 340, false, d.title ~ ': throughput over a ' ~ run.minutes ~ '-minute stress test') | safe }}{% endif %}
+{% else %}
+{{ m.section_bars(run.section_list) }}
+{% endif %}
+<a class="embed-foot" href="{{ abs_url(link) }}" target="_blank" rel="noopener"><span>THERMOHAMMER</span><span>Verified run #{{ run.id }} · full results ↗</span></a>
+</body>
+</html>

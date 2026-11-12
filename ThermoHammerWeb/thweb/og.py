@@ -12,7 +12,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw, ImageFont
 
-from .model import SECTIONS, Comparison, Device, Site, StressRun, capacity_t, ramp_rgb
+from .model import SECTIONS, BenchRun, Comparison, Device, Site, StressRun, capacity_t, ramp_rgb
 
 VERSION = 7             # bump to redraw every card
 W, H, S = 1200, 630, 2  # drawn at twice the size, then scaled down, so lines and type come out smooth
@@ -186,6 +186,60 @@ class Cards:
             return img
 
         return self._save(f"device-{dev.slug}", key, draw)
+
+    def bench_run(self, run: BenchRun) -> Path:
+        """One benchmark run, as an app shares it: "Can your phone beat this?"."""
+        dev = run.device
+        key = ["run", run.id, dev.title, run.os_text, run.total, [s["points"] for s in run.section_list],
+               run.created.isoformat() if run.created else None]
+
+        def draw() -> Image.Image:
+            img, d = self.canvas(f"Run #{run.id}")
+            name, size = self.fit(d, dev.title, "sans", 1080, 64, 40)
+            self.text(d, (60, 148), name, "sans", size, INK0)
+            when = f"{run.created.day} {run.created.strftime('%b %Y')}" if run.created else ""
+            sub = " · ".join(x for x in (run.os_text, when) if x)
+            sub, sub_size = self.fit(d, sub, "mono", 1080, 22, 16)
+            self.text(d, (60, 148 + size + 16), sub, "mono", sub_size, INK1)
+            self.text(d, (60, 318), "BENCHMARK SCORE", "mono", 18, INK2, spacing=0.14)
+            self.text(d, (56, 344), f"{run.total:,}", "monob", 118, INK0)
+            self.text(d, (60, 510), f"CAN YOUR {dev.noun.upper()} BEAT THIS?", "monob", 22, TEAL, spacing=0.08)
+            top = max(12000, max((s["points"] for s in run.section_list), default=1))
+            y = 318
+            for s in run.section_list:
+                color = _hex(s["color"])
+                self.text(d, (660, y + 12), s["short"], "monob", 20, color, "lm")
+                self.rect(d, (730, y + 4, 1010, y + 20), fill=(17, 26, 33), radius=8)
+                self.rect(d, (730, y + 4, 730 + max(10, 280 * s["points"] / top), y + 20), fill=color, radius=8)
+                self.text(d, (1140, y + 12), f"{s['points']:,}", "mono", 20, INK0, "rm")
+                y += 38
+            return img
+
+        return self._save(f"run-{run.id}", key, draw)
+
+    def stress_run(self, run: StressRun) -> Path:
+        dev = run.device
+        key = ["stress", run.id, dev.title, run.os_version, round(run.stability, 1), run.label, run.load,
+               len(run.series), run.created.isoformat() if run.created else None]
+
+        def draw() -> Image.Image:
+            img, d = self.canvas(f"Stress run #{run.id}")
+            name, size = self.fit(d, dev.title, "sans", 1080, 64, 40)
+            self.text(d, (60, 148), name, "sans", size, INK0)
+            when = f"{run.created.day} {run.created.strftime('%b %Y')}" if run.created else ""
+            sub = " · ".join(x for x in (f"{dev.platform} {run.os_version}".strip(), run.label, when) if x)
+            sub, sub_size = self.fit(d, sub, "mono", 1080, 22, 16)
+            self.text(d, (60, 148 + size + 16), sub, "mono", sub_size, INK1)
+            self.text(d, (60, 318), "SPEED KEPT", "mono", 18, INK2, spacing=0.14)
+            self.text(d, (56, 344), f"{run.stability:.0f}%", "monob", 118, ramp_rgb(capacity_t(run.stability)))
+            self.text(d, (60, 490), f"{run.minutes}-MIN {run.load} LOAD", "mono", 20, INK1, spacing=0.1)
+            self.text(d, (60, 528), f"CAN YOUR {dev.noun.upper()} DO BETTER?", "monob", 22, TEAL, spacing=0.08)
+            if run.has_curve:
+                self.rect(d, (640, 300, 1140, 560), outline=HAIR, radius=14)
+                self.curve(d, run, (664, 322, 1116, 538))
+            return img
+
+        return self._save(f"stress-{run.id}", key, draw)
 
     def pair(self, p: Comparison) -> Path:
         a, b = p.a, p.b

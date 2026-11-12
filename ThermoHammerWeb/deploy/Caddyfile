@@ -11,11 +11,17 @@
 	header {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		X-Frame-Options "DENY"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), browsing-topics=()"
-		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		-Server
 	}
+	# /embed/ pages exist to be shown inside other sites (reviewers' articles); nothing else may be framed
+	@framed not path /embed/*
+	header @framed {
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	}
+	@embed path /embed/*
+	header @embed Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors *"
 
 	# everything under /assets/ has a content hash in its name, so it never changes
 	@assets path /assets/*
