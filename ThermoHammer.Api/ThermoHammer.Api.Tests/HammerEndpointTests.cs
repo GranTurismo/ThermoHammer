@@ -130,6 +130,7 @@ public class HammerEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
             // Assert Response
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(response.Headers.TryGetValues("X-Run-Id", out var runIds), "X-Run-Id header missing");
 
             // 3. Verify record in DB has manufacturer stripped from DeviceModel
             using var verifyScope = _factory.Services.CreateScope();
@@ -138,6 +139,7 @@ public class HammerEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
             Assert.NotNull(savedHammer);
             createdHammerId = savedHammer.Id;
+            Assert.Equal(savedHammer.Id.ToString(), Assert.Single(runIds));   // the app's share link points at this run
             Assert.Equal(expectedCleanModel, savedHammer.DeviceModel);
             Assert.Equal(manufacturer, savedHammer.DeviceManufacturer);
 

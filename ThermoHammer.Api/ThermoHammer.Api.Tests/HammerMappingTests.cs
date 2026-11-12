@@ -57,6 +57,25 @@ public class HammerMappingTests
     }
 
     [Fact]
+    public void DtoCarriesRunPageFields_AndStaysNullForLegacyRows()
+    {
+        var created = new DateTime(2026, 11, 12, 9, 30, 0, DateTimeKind.Utc);
+        var h = Request(r => { r.OsBuild = "BP4A.251205.006"; r.StressMode = 1; r.SocModel = "Tensor G4"; }).ToDao();
+        h.Session = new ThermoSession { CreatedAt = created, EncryptionKey = "k" };
+        var dto = h.ToDto();
+        Assert.Equal(created, dto.CreatedAt);
+        Assert.Equal("BP4A.251205.006", dto.OsBuild);
+        Assert.Equal(1, dto.StressMode);
+        Assert.Equal("Tensor G4", dto.SocModel);
+
+        var legacy = Request().ToDao();                 // no session loaded, no new fields
+        var old = legacy.ToDto();
+        Assert.Null(old.CreatedAt);
+        Assert.Null(old.OsBuild);
+        Assert.Null(old.StressMode);
+    }
+
+    [Fact]
     public void DirtyRunKeepsItsFlagsSoItCanBeFilteredOut()
     {
         var h = Request(r => r.ValidityFlags = 0b101).ToDao();   // e.g. WARM_STARTED | POWER_EVENT

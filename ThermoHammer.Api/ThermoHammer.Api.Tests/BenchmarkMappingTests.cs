@@ -471,4 +471,58 @@ public class BenchmarkMappingTests
         Assert.Equal("Only verified runs are accepted", BenchmarkScoring.Problem(Request(r => r.ValidityFlags = 128)));
         Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.ValidityFlags = 2)));
     }
+
+    // ── the detail rows that two runs are compared by ────────────────────────────────────────────────────────────────
+
+    private static DetailRow DetailRowOf(BenchmarkDetailDto d, string section, string group, string label) =>
+        d.Sections.Single(s => s.Key == section).Groups.Single(g => g.Title == group).Rows.Single(r => r.Label == label);
+
+    [Fact]
+    public void DetailRowsCarryTheirNumberAndWhichWayIsBetter()
+    {
+        var d = BenchmarkDetail.From(Request().ToDao());
+
+        Assert.Equal(61.5, DetailRowOf(d, "cpu", "Math", "Throughput").Number);
+        Assert.Equal("higher", DetailRowOf(d, "cpu", "Math", "Throughput").Better);
+        Assert.Equal(142.75, DetailRowOf(d, "mem", "RAM", "Latency").Number);
+        Assert.Equal("lower", DetailRowOf(d, "mem", "RAM", "Latency").Better);          // less latency is better
+        Assert.Equal("lower", DetailRowOf(d, "ux", "Web scrolling", "Frames dropped").Better);
+        Assert.Equal(3.4, DetailRowOf(d, "ux", "Web scrolling", "Frames dropped").Number);
+        Assert.Equal(98.0, DetailRowOf(d, "gpu", "Lake Valley", "1% low").Number);
+        // the text the apps show stays exactly as it was
+        Assert.Equal("61.5 ops/s", DetailRowOf(d, "cpu", "Math", "Throughput").Value);
+
+        // a test that didn't run, a format that isn't supported and an export too broken to count have no number,
+        // so they can't "lose" by 100 % against a device that has one
+        Assert.Null(DetailRowOf(d, "ux", "Photo gallery", "AVIF").Number);
+        Assert.Null(DetailRowOf(d, "ux", "Video playback", "4K60 VP9").Number);
+        Assert.Null(DetailRowOf(d, "ux", "Video export", "4K60 AV1").Number);
+        Assert.Null(DetailRowOf(d, "ux", "QR scanning", "ML Kit").Number);
+        Assert.Null(DetailRowOf(d, "llm", "Prompt (prefill)", "CPU").Number);
+
+        // text-only rows and context have no direction
+        Assert.Null(DetailRowOf(d, "mem", "Storage", "Reads").Number);
+        Assert.Null(DetailRowOf(d, "mem", "Storage", "Reads").Better);
+        Assert.Null(DetailRowOf(d, "llm", "Run", "Free memory at start").Better);
+
+        // every number that is performance says which way is better
+        var rows = d.Sections.SelectMany(s => s.Groups).SelectMany(g => g.Rows).ToList();
+        Assert.All(rows.Where(r => r.Number is not null && r.Label != "Free memory at start"),
+            r => Assert.Contains(r.Better, new[] { "higher", "lower" }));
+    }
+
+    [Fact]
+    public void NoDroppedFramesIsAResultAndAnExportTooBrokenToCountIsNot()
+    {
+        var perfect = BenchmarkDetail.From(Request(r => r.ScrollDropped = 0).ToDao());
+        Assert.Equal(0.0, DetailRowOf(perfect, "ux", "Web scrolling", "Frames dropped").Number);   // the best there is, not "missing"
+
+        var noScroll = BenchmarkDetail.From(Request(r => { r.ScrollSpeed = 0; r.ScrollDropped = 0; }).ToDao());
+        Assert.Null(DetailRowOf(noScroll, "ux", "Web scrolling", "Frames dropped").Number);         // the test didn't run
+
+        var broken = BenchmarkDetail.From(Request(r => r.ExportAvcPsnr = BenchmarkScoring.MinExportPsnr - 1).ToDao());
+        Assert.Null(DetailRowOf(broken, "ux", "Video export", "4K60 H.264").Number);
+        Assert.Equal(150.25, DetailRowOf(d: BenchmarkDetail.From(Request().ToDao()), "ux", "Video export", "4K60 H.264").Number);
+    }
 }
+

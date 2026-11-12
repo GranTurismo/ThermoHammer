@@ -26,7 +26,7 @@ public static class ThermoEndpointsMapper
             return Results.Ok(ts);
         });
 
-        app.MapPost("/hammer", async (HammerRequest hammerRequest, ThermoDbContext db, ThermoEncryptor encryptor, DeviceModelResolver modelResolver) =>
+        app.MapPost("/hammer", async (HammerRequest hammerRequest, ThermoDbContext db, ThermoEncryptor encryptor, DeviceModelResolver modelResolver, HttpResponse response) =>
         {
             var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == hammerRequest.SessionId);
             if (session is null)
@@ -43,15 +43,20 @@ public static class ThermoEndpointsMapper
 
             hammerRequest.DeviceModel = await modelResolver.ResolveModelAsync(hammerRequest.Os, hammerRequest.DeviceModel, hammerRequest.DeviceManufacturer);
 
-            await db.Hammers.AddAsync(hammerRequest.ToDao());
+            var hammer = hammerRequest.ToDao();
+            await db.Hammers.AddAsync(hammer);
             await db.SaveChangesAsync();
 
+            // The new run's id, for the app's share link (SITE/stress/{id}/). A header, so the body stays what
+            // older apps already accept.
+            response.Headers["X-Run-Id"] = hammer.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
             return Results.Ok("Data saved successfully");
         });
 
         app.MapGet("/leaderboard", async (ThermoDbContext db) =>
         {
             var hammers = await db.Hammers
+            .Include(o => o.Session)
             .Where(o => o.ValidityFlags == null || (o.ValidityFlags & ~HammerExtensions.FreqMissing) == 0)
             .OrderByDescending(o => o.StabilityPercentage)
             .Select(o => o.ToDto())

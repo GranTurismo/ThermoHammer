@@ -14,6 +14,11 @@ public class HammerDto
     public required double StabilityPercentage { get; set; }
     public required StressThreadingType TestThreadingType { get; set; }
 
+    // Added for run pages and share links (2.1); nullable so older rows and older clients are unaffected.
+    public DateTime? CreatedAt { get; set; }     // when the run's session was opened (UTC)
+    public string? OsBuild { get; set; }
+    public int? StressMode { get; set; }         // 0=CPU 1=GPU 2=COMBINED; null = legacy CPU
+    public string? SocModel { get; set; }
 }
 
 public class Hammer
@@ -168,7 +173,11 @@ public static class HammerExtensions
             Os = hammer.Os,
             OsVersion = hammer.OsVersion,
             StabilityPercentage = hammer.StabilityPercentage,
-            TestThreadingType = hammer.TestThreadingType
+            TestThreadingType = hammer.TestThreadingType,
+            CreatedAt = hammer.Session?.CreatedAt,
+            OsBuild = hammer.OsBuild,
+            StressMode = hammer.StressMode,
+            SocModel = hammer.SocModel
         };
     }
 }
