@@ -23,6 +23,7 @@ targets:
       # (Arm dot-product kernels) and its Metal backend, whose kernels compile into the app's default.metallib
       # (all but the quantized-KV-cache attention ones the test never uses). Third-party code: warnings off.
       - path: BenchCore/llm
+        excludes: ["test/**"]      # host tests with their own main(): built and run on the Mac, never part of the app
         compilerFlags: ["-O3", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"]
       - path: BenchCore/third_party/llama.cpp/src
         compilerFlags: ["-O3", "-w", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"]

@@ -13,6 +13,7 @@
 //   On Linux and Android the CPU's threads can be pinned to named cores (bc_llm_set_cores): only when a caller asks, and
 //   the Android app asks only after measuring that it helps. iOS and Windows never call it, so they run as before.
 #include "bench_llm.h"
+#include "bench_guard.h"
 
 #include <algorithm>
 #include <atomic>
@@ -290,6 +291,7 @@ struct bc_llm {
     uint64_t seed = 0, rng = 0;
     std::string error;
     bool gpu = false;
+    bool broken = false;                     // a call into the backend threw: the handle answers every call with a failure and is only freed
     double agreement = 1;                    // the last prefill's correlation with the CPU's output
     std::vector<float> last_sample;          // the last prefill's sampled logits: what two builds' outputs are compared by
     int threads = 0, batch_threads = 0;
@@ -317,6 +319,15 @@ struct bc_llm {
         const std::string why = last_log_error();
         error = cancelled ? std::string("stopped") : std::string(what) + (code ? " (" + std::to_string(code) + ")" : "")
             + (why.empty() ? "" : ": " + why);
+        return false;
+    }
+
+    /** A call into llama.cpp threw (a GPU driver that lost its device, say): this handle is done, and says why. */
+    bool fail_threw(const char* what, const std::string& thrown) {
+        broken = true;
+        const std::string why = last_log_error();
+        error = cancelled ? std::string("stopped") : std::string(what) + ": the GPU backend threw " + thrown
+            + (why.empty() ? "" : " (" + why + ")");
         return false;
     }
 };
@@ -371,9 +382,16 @@ bc_llm* bc_llm_create(int gpu, int threads, uint64_t seed, char* err, int err_si
     mp.load_mode = LLAMA_LOAD_MODE_NONE;
     gguf_context* meta = metadata();
     Fill fill{seed, {}, {}};
-    llm->model = llama_model_init_from_user(meta, fill_tensor, &fill, mp);
+    std::string thrown;
+    const bool built = bc_guard::call([&] { llm->model = llama_model_init_from_user(meta, fill_tensor, &fill, mp); }, thrown);
     gguf_free(meta);
     std::vector<uint8_t>().swap(fill.staging);
+    if (!built) {
+        llm->fail_threw("the model could not be built", thrown);
+        put(err, err_size, llm->error);
+        bc_llm_destroy(llm);
+        return nullptr;
+    }
     if (!llm->model || !fill.error.empty()) {
         llm->fail(fill.error.empty() ? "llama.cpp could not build the model" : fill.error.c_str());
         put(err, err_size, llm->error);
@@ -392,7 +410,12 @@ bc_llm* bc_llm_create(int gpu, int threads, uint64_t seed, char* err, int err_si
     cp.no_perf = true;
     cp.abort_callback = on_abort;
     cp.abort_callback_data = llm;
-    llm->ctx = llama_init_from_model(llm->model, cp);
+    if (!bc_guard::call([&] { llm->ctx = llama_init_from_model(llm->model, cp); }, thrown)) {
+        llm->fail_threw("the context could not be created", thrown);
+        put(err, err_size, llm->error);
+        bc_llm_destroy(llm);
+        return nullptr;
+    }
     if (!llm->ctx) {
         llm->fail("llama.cpp could not create a context");
         put(err, err_size, llm->error);
@@ -699,15 +722,28 @@ int bc_llm_tune_threads_pinned(bc_llm* llm, const int* cores, int n_cores, int* 
 
 double bc_llm_prefill(bc_llm* llm, int tokens) {
     tokens = std::max(1, std::min(int(BC_LLM_PROMPT), tokens));
-    apply_main(llm, false);
-    llama_memory_clear(llama_get_memory(llm->ctx), true);
-    const auto t0 = std::chrono::steady_clock::now();
-    const int32_t r = llama_decode(llm->ctx, llama_batch_get_one(llm->prompt.data(), tokens));
-    llama_synchronize(llm->ctx);
-    const double s = seconds_since(t0);
-    free_retired(llm);
+    if (llm->broken) return -1;
+    int32_t r = 0;
+    double s = 0;
+    std::string thrown;
+    if (!bc_guard::call([&] {
+            apply_main(llm, false);
+            llama_memory_clear(llama_get_memory(llm->ctx), true);
+            const auto t0 = std::chrono::steady_clock::now();
+            r = llama_decode(llm->ctx, llama_batch_get_one(llm->prompt.data(), tokens));
+            llama_synchronize(llm->ctx);
+            s = seconds_since(t0);
+            free_retired(llm);
+        }, thrown)) {
+        llm->fail_threw("the prompt did not run", thrown);
+        return -1;
+    }
     if (r != 0) { llm->fail("the prompt did not run", r); return -1; }
-    const float* logits = llama_get_logits_ith(llm->ctx, -1);
+    const float* logits = nullptr;
+    if (!bc_guard::call([&] { logits = llama_get_logits_ith(llm->ctx, -1); }, thrown)) {
+        llm->fail_threw("the prompt's output could not be read", thrown);
+        return -1;
+    }
     if (!logits) { llm->fail("no output"); return -1; }
     std::vector<float> sample;
     for (uint32_t i = 0; i < VOCAB; i += SAMPLE_STEP) {
@@ -732,19 +768,37 @@ double bc_llm_prefill(bc_llm* llm, int tokens) {
 }
 
 void bc_llm_reset(bc_llm* llm) {
-    llama_memory_clear(llama_get_memory(llm->ctx), true);
+    if (llm->broken) return;
+    std::string thrown;
+    if (!bc_guard::call([&] { llama_memory_clear(llama_get_memory(llm->ctx), true); }, thrown)) {
+        llm->fail_threw("the reply could not be reset", thrown);
+        return;
+    }
     llm->rng = mix(llm->seed ^ 0x5eed);                         // every reply draws the same numbers
     llm->next = llm->prompt[0];
 }
 
 double bc_llm_next(bc_llm* llm, int* token) {
+    if (llm->broken) return -1;
     llama_token in = llm->next;
-    apply_main(llm, true);
-    const auto t0 = std::chrono::steady_clock::now();
-    const int32_t r = llama_decode(llm->ctx, llama_batch_get_one(&in, 1));
-    free_retired(llm);
+    int32_t r = 0;
+    std::chrono::steady_clock::time_point t0;
+    std::string thrown;
+    if (!bc_guard::call([&] {
+            apply_main(llm, true);
+            t0 = std::chrono::steady_clock::now();
+            r = llama_decode(llm->ctx, llama_batch_get_one(&in, 1));
+            free_retired(llm);
+        }, thrown)) {
+        llm->fail_threw("the token did not run", thrown);
+        return -1;
+    }
     if (r != 0) { llm->fail(r == 1 ? "the context is full" : "the token did not run", r); return -1; }
-    const float* logits = llama_get_logits_ith(llm->ctx, -1);  // waits for the GPU
+    const float* logits = nullptr;
+    if (!bc_guard::call([&] { logits = llama_get_logits_ith(llm->ctx, -1); }, thrown)) {   // waits for the GPU
+        llm->fail_threw("the token's output could not be read", thrown);
+        return -1;
+    }
     if (!logits) { llm->fail("no output"); return -1; }
     // sampled as chat apps do: the 40 likeliest, temperature 0.8 (greedy picks would repeat one token forever
     // with weights that were never trained)
@@ -863,12 +917,13 @@ void bc_llm_set_gpu_api(const char* api) { g_gpu_api = api ? api : ""; }
 
 void bc_llm_destroy(bc_llm* llm) {
     if (!llm) return;
-    if (llm->ctx) llama_free(llm->ctx);
+    std::string thrown;
+    if (llm->ctx) bc_guard::call([&] { llama_free(llm->ctx); }, thrown);      // a device that was lost can throw again here
     if (llm->pool) llm->retired.push_back(llm->pool);
     if (llm->batch_pool && llm->batch_pool != llm->pool) llm->retired.push_back(llm->batch_pool);
     free_retired(llm);
     restore_all_threads(llm);                  // nothing this test pinned stays pinned: the app's threads are reused
-    if (llm->model) llama_model_free(llm->model);
+    if (llm->model) bc_guard::call([&] { llama_model_free(llm->model); }, thrown);
     delete llm;
 }
 
