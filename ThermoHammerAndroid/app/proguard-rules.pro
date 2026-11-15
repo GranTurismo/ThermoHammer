@@ -15,8 +15,10 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
-# Preserve Jetpack Compose
--keep class androidx.compose.** { *; }
+# Jetpack Compose needs no rule of its own: its libraries carry consumer rules. A blanket
+# "-keep class androidx.compose.** { *; }" used to sit here; it kept ~7,200 classes out of R8's
+# shrinking, obfuscation and optimisation, which left 75% of the DEX code untouched and Play's
+# "DEX code optimization" score at 24% (Play warns under 25%).
 
 # WebView benchmark bridge (ui/components/UxStage.kt): the page calls these by name
 -keepclassmembers class * {
