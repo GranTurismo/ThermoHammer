@@ -20,6 +20,7 @@
     <Compile Include="..\Engine\BenchmarkRecord.cs" Link="Engine\BenchmarkRecord.cs" />
     <Compile Include="..\Engine\BenchmarkUpdateImpact.cs" Link="Engine\BenchmarkUpdateImpact.cs" />
     <Compile Include="..\Engine\Native.cs" Link="Engine\Native.cs" />
+    <Compile Include="..\Engine\ReviewPolicy.cs" Link="Engine\ReviewPolicy.cs" />
     <Compile Include="..\Engine\RunCsv.cs" Link="Engine\RunCsv.cs" />
     <Compile Include="..\Engine\ShareLinks.cs" Link="Engine\ShareLinks.cs" />
     <Compile Include="..\Engine\SpeedCheckLogic.cs" Link="Engine\SpeedCheckLogic.cs" />

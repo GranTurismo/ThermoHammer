@@ -39,6 +39,8 @@ public static class Settings
     private static readonly Dictionary<string, JsonElement> values = AppData.Load<Dictionary<string, JsonElement>>("settings.json") ?? [];
 
     public static bool Bool(string key) => values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.True;
+    /// <summary>A number, 0 when there is none.</summary>
+    public static double Number(string key) => values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
     public static List<string> Strings(string key) =>
         values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Select(e => e.GetString() ?? "").ToList() : [];
 

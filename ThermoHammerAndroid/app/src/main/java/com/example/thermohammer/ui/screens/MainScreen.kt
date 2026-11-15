@@ -42,6 +42,7 @@ import com.example.thermohammer.data.MyDeviceName
 import com.example.thermohammer.data.isComplete
 import com.example.thermohammer.data.RunRecord
 import com.example.thermohammer.data.StressCurve
+import com.example.thermohammer.ui.review.ReviewPrompt
 import com.example.thermohammer.ui.share.RunCard
 import com.example.thermohammer.ui.share.ShareSheet
 import com.example.thermohammer.data.UpdateImpact
@@ -240,6 +241,19 @@ private fun DiagnosticsScreenWrapper(
             state.testThreadingType.value, state.recordedStamps, card.baselineIps, card.throttleOnsetSec)
     }
 
+    // ── Closing a finished run's result: the moment the app may ask for a store rating (ReviewPolicy has the limits) ──
+    fun closeBenchResult() {
+        val result = state.benchResult
+        showBenchResult = false; engine.resetTestResult()
+        if (result != null) ReviewPrompt.onResultClosed(context as? android.app.Activity, result.isVerified, result.isComplete)
+    }
+    fun closeSummary() {
+        val card = state.scorecard
+        val completed = state.wasCompleted
+        showSummary = false; engine.resetTestResult()
+        if (card != null) ReviewPrompt.onResultClosed(context as? android.app.Activity, card.isVerified, completed)
+    }
+
     var historyTick by remember { mutableIntStateOf(0) }
     var updateInsight by remember { mutableStateOf<UpdateImpact.Insight?>(null) }
     LaunchedEffect(historyTick) {
@@ -289,9 +303,9 @@ private fun DiagnosticsScreenWrapper(
         when {
             showSpeedCheck -> showSpeedCheck = false          // on top of everything; closing stops a check
             showCertificate -> showCertificate = false
-            showBenchResult -> { showBenchResult = false; engine.resetTestResult() }
+            showBenchResult -> closeBenchResult()
             benchErrorMsg != null -> { benchErrorMsg = null; engine.resetTestResult() }
-            showSummary -> { showSummary = false; engine.resetTestResult() }
+            showSummary -> closeSummary()
             showConnectionRequest -> showConnectionRequest = false
             showComparison -> showComparison = false
             showBackgroundAborted -> { showBackgroundAborted = false; engine.resetTestResult() }
@@ -786,7 +800,7 @@ private fun DiagnosticsScreenWrapper(
                 onSavePending = {
                     submitSuccess = "SAVED TO PENDING RESULTS!"
                 },
-                onDismiss = { showSummary = false; engine.resetTestResult() },
+                onDismiss = { closeSummary() },
                 onShare = {
                     stressCard()?.let { c ->
                         coroutineScope.launch { ShareSheet.shareCard(context, c, "thermohammer-stress-${stressServerId ?: stressRunAt}.png") }
@@ -834,7 +848,7 @@ private fun DiagnosticsScreenWrapper(
                         cm.setPrimaryClip(android.content.ClipData.newPlainText("ThermoHammer benchmark report", text))
                         Toast.makeText(context, "Report copied — paste it anywhere", Toast.LENGTH_SHORT).show()
                     },
-                    onDismiss = { showBenchResult = false; engine.resetTestResult() },
+                    onDismiss = { closeBenchResult() },
                     onShare = {
                         val c = benchCard(result)
                         val rec = benchRecordOnScreen()

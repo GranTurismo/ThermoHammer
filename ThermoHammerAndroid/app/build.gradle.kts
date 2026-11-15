@@ -13,8 +13,8 @@ android {
         applicationId = "com.granturismo.thermohammer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 21
-        versionName = "2.1.1"
+        versionCode = 24
+        versionName = "2.1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake { arguments += "-DANDROID_STL=c++_static" }
@@ -155,6 +155,8 @@ dependencies {
   // UX test: QR scanning — ZXing (scored, CPU) and ML Kit's bundled scanner (reported)
   implementation(libs.mlkit.barcode)
 
+  // Google Play's in-app rating card (ui/review/ReviewPrompt.kt)
+  implementation(libs.play.review)
 
   // AI tests: LiteRT on the CPU, the GPU and the NPU (vendor dispatch libraries). Qualcomm's QNN runtime
   // goes into the sideloaded bench build; Play builds get it, and MediaTek's adapter, from the npu/ modules.

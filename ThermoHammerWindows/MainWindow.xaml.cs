@@ -634,7 +634,8 @@ public partial class MainWindow : Window
                     v.SetError(e.Message);
                 }
             },
-            onDismiss: () => { CloseOverlay(); retainedScorecard = null; Refresh(); },
+            // a verdict is only shown for a run that finished: closing it is when the app may ask for a Store rating
+            onDismiss: () => { CloseOverlay(); retainedScorecard = null; Refresh(); ReviewPrompt.OnResultClosed(sc.IsVerified, complete: true); },
             onShare: () => { if (Showcase() is { } r) ShareSheet.Run(r); },
             onPresent: () => { if (Showcase() is { } r) PresentWindow.Open(r); },
             onExport: () => ExportStress(sc, stamps, run),
@@ -673,7 +674,9 @@ public partial class MainWindow : Window
             }
             else if (bench.Current == BenchmarkEngine.Phase.Done && bench.Result is { } r)
             {
-                var view = new BenchmarkResultView(r, bench.Record, bench.DismissResult);
+                // closing a finished run's result is when the app may ask for a Store rating (ReviewPolicy has the limits)
+                var view = new BenchmarkResultView(r, bench.Record,
+                    () => { bench.DismissResult(); ReviewPrompt.OnResultClosed(r.IsVerified, r.IsComplete); });
                 stageLayer.Children.Add(view);
                 Overlays.FadeIn(view);
             }

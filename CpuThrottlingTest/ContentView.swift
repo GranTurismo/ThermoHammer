@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -14,6 +15,7 @@ struct ContentView: View {
     @StateObject private var overlays = AppOverlays.shared   // speed check · presentation · certificate
     @StateObject private var benchHistory = BenchmarkHistoryStore.shared
     @StateObject private var benchDismissals = BenchmarkUpdateDismissals.shared
+    @Environment(\.requestReview) private var requestReview   // the App Store's rating sheet (ReviewPrompt)
     @State private var runBenchmark = false            // the run kind picked: stress test or benchmark
 
     @State private var selectedDuration: TestDuration = .minutes5
@@ -122,10 +124,12 @@ struct ContentView: View {
                                                               stamps: retainedStamps.map { ($0.elapsedMs, $0.thermalState) }),
                     onSubmit: submitScore,
                     onDismiss: {
+                        let verified = retainedScorecard?.isVerified ?? false
                         withAnimation(.easeOut(duration: 0.2)) { showVerdict = false }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                             retainedScorecard = nil; retainedStamps = []
                         }
+                        askForRating(verified: verified, complete: true)   // a verdict is only shown for a run that finished
                     }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
@@ -176,6 +180,19 @@ struct ContentView: View {
                 overlays.lostSpeed = true
                 if ProcessInfo.processInfo.arguments.contains("-lostSpeedStart") { SpeedCheckRunner.shared.start(again: true) }
             }
+            // `-askForRating` asks as if a verified, complete run's result was just closed (the limits still apply)
+            if ProcessInfo.processInfo.arguments.contains("-askForRating") { askForRating(verified: true, complete: true) }
+        }
+    }
+
+    /**
+     A finished run's result was closed: the moment the app may ask for an App Store rating, once the card has left the
+     screen. `ReviewPolicy` decides whether it does.
+     */
+    private func askForRating(verified: Bool, complete: Bool) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            ReviewPrompt.onResultClosed(verified: verified, complete: complete) { requestReview() }
         }
     }
 
@@ -190,6 +207,7 @@ struct ContentView: View {
             if bench.phase == .done, let result = bench.result {
                 BenchmarkResultView(result: result, record: bench.record) {
                     withAnimation(.easeOut(duration: 0.2)) { bench.dismissResult() }
+                    askForRating(verified: result.isVerified, complete: result.isComplete)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 .zIndex(21)

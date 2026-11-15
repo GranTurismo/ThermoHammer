@@ -19,6 +19,7 @@ kotlinxSerialization = "1.9.0"
 mlkitBarcode = "17.3.0"
 litert = "2.3.0"
 qnnRuntime = "2.51.0"
+playReview = "2.0.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -55,6 +56,7 @@ litert-npu-qualcomm = { module = "com.google.ai.edge.litert:litert-npu-runtime-q
 litert-npu-mediatek = { module = "com.google.ai.edge.litert:litert-npu-runtime-mediatek", version.ref = "litert" }
 litert-npu-google-tensor = { module = "com.google.ai.edge.litert:litert-npu-runtime-google-tensor", version.ref = "litert" }
 qnn-runtime = { module = "com.qualcomm.qti:qnn-runtime", version.ref = "qnnRuntime" }
+play-review = { module = "com.google.android.play:review", version.ref = "playReview" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
