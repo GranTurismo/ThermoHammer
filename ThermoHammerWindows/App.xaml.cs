@@ -33,10 +33,17 @@ public partial class App : Application
         DispatcherUnhandledException += (_, ex) =>
         {
             AppData.SaveText("crash.txt", $"{DateTime.Now:O}\n{ex.Exception}");
+            AppTelemetry.RecordCrash(ex.Exception);
             MessageBox.Show($"ThermoHammer hit an error and has to close:\n\n{ex.Exception.Message}\n\nDetails: %LOCALAPPDATA%\\ThermoHammer\\crash.txt",
                 "ThermoHammer", MessageBoxButton.OK, MessageBoxImage.Error);
         };
-        AppDomain.CurrentDomain.UnhandledException += (_, ex) => AppData.SaveText("crash.txt", $"{DateTime.Now:O}\n{ex.ExceptionObject}");
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+        {
+            AppData.SaveText("crash.txt", $"{DateTime.Now:O}\n{ex.ExceptionObject}");
+            AppTelemetry.RecordCrash(ex.ExceptionObject);
+        };
+        AppTelemetry.Init();     // after the handlers: whatever goes wrong in it is caught and written down like any crash
+        Exit += (_, _) => AppTelemetry.FlushOnExit();
         base.OnStartup(e);
         if (Arg("--gpuTest") is { } which)
         {

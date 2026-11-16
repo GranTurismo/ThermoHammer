@@ -275,6 +275,7 @@ final class StressEngine: ObservableObject {
     private var thermalEscalatedAtStart = false
     private var lastThermalChangeNs: UInt64 = 0
     private var currentAttribution: Attribution = .none
+    private var runTelemetryClosed = true
 
     // cooldown
     private static let cooldownMaxS: TimeInterval = 30
@@ -473,6 +474,12 @@ final class StressEngine: ObservableObject {
 
         isRunning = true
         keepAlive = true
+        runTelemetryClosed = false
+        AppTelemetry.logStressStarted(
+            mode: "cpu",
+            durationMin: Int((duration.timeInterval ?? 300) / 60),
+            threading: threadingType == .single ? "single" : "multi"
+        )
         UIApplication.shared.isIdleTimerDisabled = true
         loopTask = Task.detached(priority: .userInitiated) { [weak self] in
             await self?.runSession()
@@ -487,6 +494,16 @@ final class StressEngine: ObservableObject {
 
     func stopTest() {
         guard isRunning else { return }
+        if !runTelemetryClosed {
+            runTelemetryClosed = true
+            AppTelemetry.logStressFinished(
+                mode: "cpu",
+                durationMin: Int((testDuration.timeInterval ?? 300) / 60),
+                status: wasCancelledDueToBackground ? "bg_cancelled" : "aborted",
+                verified: false,
+                capacity: 0
+            )
+        }
         isRunning = false
         keepAlive = false
         loopTask?.cancel()
@@ -757,7 +774,18 @@ final class StressEngine: ObservableObject {
         let reachedEnd = TimeInterval(DispatchTime.now().uptimeNanoseconds - measuredStartNs) / 1e9 >= (testDuration.timeInterval ?? .infinity) * 0.9
         await MainActor.run {
             self.state.scorecard = scorecard
-            self.wasCompleted = reachedEnd && !self.abortedByUser && !self.wasCancelledDueToBackground
+            let completed = reachedEnd && !self.abortedByUser && !self.wasCancelledDueToBackground
+            self.wasCompleted = completed
+            if !self.runTelemetryClosed {
+                self.runTelemetryClosed = true
+                AppTelemetry.logStressFinished(
+                    mode: "cpu",
+                    durationMin: Int((self.testDuration.timeInterval ?? 300) / 60),
+                    status: completed ? "completed" : (self.wasCancelledDueToBackground ? "bg_cancelled" : "aborted"),
+                    verified: scorecard.isVerified,
+                    capacity: scorecard.deliveredCapacity
+                )
+            }
             self.isRunning = false
             self.state.phase = .idle
             UIApplication.shared.isIdleTimerDisabled = false
@@ -767,6 +795,16 @@ final class StressEngine: ObservableObject {
 
     private func finishAbort() {
         Task { @MainActor in
+            if !self.runTelemetryClosed {
+                self.runTelemetryClosed = true
+                AppTelemetry.logStressFinished(
+                    mode: "cpu",
+                    durationMin: Int((self.testDuration.timeInterval ?? 300) / 60),
+                    status: self.wasCancelledDueToBackground ? "bg_cancelled" : "aborted",
+                    verified: false,
+                    capacity: 0
+                )
+            }
             self.keepAlive = false
             self.isRunning = false
             self.state.phase = .idle

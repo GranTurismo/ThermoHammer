@@ -239,6 +239,11 @@ public sealed class StressEngine
         };
         IsRunning = true;
         keepAlive = true;
+        AppTelemetry.LogStressStarted(
+            mode: "cpu",
+            durationMin: (int)(duration.Seconds() / 60),
+            threading: threading == StressThreadingType.Single ? "single" : "multi"
+        );
         Win32.SetThreadExecutionState(Win32.EsContinuous | Win32.EsSystemRequired | Win32.EsDisplayRequired);
         session = new Thread(RunSession) { IsBackground = true, Name = "stress-session", Priority = ThreadPriority.Highest };
         session.Start();
@@ -464,11 +469,19 @@ public sealed class StressEngine
         keepAlive = false;
         var sc = BuildScorecard(cooldownTimedOut, contentionStamps, thermalStamps, above105, envAcc);
         bool reachedEnd = measuredStartNs > 0 && (NowNs() - measuredStartNs) / 1e9 >= Duration.Seconds() * 0.9;
+        bool completed = reachedEnd && !AbortedByUser;
+        AppTelemetry.LogStressFinished(
+            mode: "cpu",
+            durationMin: (int)(Duration.Seconds() / 60),
+            status: completed ? "completed" : "aborted",
+            verified: sc.IsVerified,
+            capacity: sc.DeliveredCapacity
+        );
         Ui(() =>
         {
             Win32.SetThreadExecutionState(Win32.EsContinuous);   // the UI thread set it (the state is per thread)
             State.Scorecard = sc;
-            WasCompleted = reachedEnd && !AbortedByUser;
+            WasCompleted = completed;
             IsRunning = false;
             State.Phase = RunPhase.Idle;
         });
@@ -478,6 +491,13 @@ public sealed class StressEngine
     private void FinishAbort()
     {
         keepAlive = false;
+        AppTelemetry.LogStressFinished(
+            mode: "cpu",
+            durationMin: (int)(Duration.Seconds() / 60),
+            status: "aborted",
+            verified: false,
+            capacity: 0
+        );
         Ui(() => { Win32.SetThreadExecutionState(Win32.EsContinuous); IsRunning = false; State.Phase = RunPhase.Idle; });
         ui.Invoke(() => RunEnded?.Invoke());
     }

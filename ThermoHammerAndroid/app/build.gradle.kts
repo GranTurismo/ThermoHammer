@@ -1,6 +1,10 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
+  alias(libs.plugins.google.services)
+  alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
@@ -13,8 +17,8 @@ android {
         applicationId = "com.granturismo.thermohammer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "2.1.5"
+        versionCode = 26
+        versionName = "2.1.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake { arguments += "-DANDROID_STL=c++_static" }
@@ -55,11 +59,21 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+                nativeSymbolUploadEnabled = false
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfigs.findByName("release")?.let { signingConfig = it }
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = true
+                nativeSymbolUploadEnabled = true
+            }
         }
         // A release-speed build for testing on a phone without USB debugging: optimised and not
         // debuggable (so CPU scores are real), debug-signed, and installed beside the Play app.
@@ -70,7 +84,17 @@ android {
             versionNameSuffix = "-bench"
             matchingFallbacks += "release"
             ndk { abiFilters += "arm64-v8a" }          // phones to sideload onto, and the arm64 emulator
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+                nativeSymbolUploadEnabled = false
+            }
         }
+    }
+
+    // Production-only Firebase: debug and bench share a no-op AppTelemetry stub and skip Firebase tasks.
+    sourceSets {
+        getByName("debug").kotlin.directories.add("src/nonRelease/java")
+        getByName("bench").kotlin.directories.add("src/nonRelease/java")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -166,4 +190,24 @@ dependencies {
   implementation(libs.litert.npu.mediatek)
   implementation(libs.litert.npu.google.tensor)
   "benchImplementation"(libs.qnn.runtime)
+
+  // Production-only Firebase Analytics + Crashlytics (including native C/C++ NDK symbols).
+  "releaseImplementation"(platform(libs.firebase.bom))
+  "releaseImplementation"(libs.firebase.crashlytics)
+  "releaseImplementation"(libs.firebase.crashlytics.ndk)
+  "releaseImplementation"(libs.firebase.analytics)
+}
+
+// Crashlytics uploads the R8 mapping file as part of the release build, but not the native (NDK) symbols: without them
+// a crash in Vulkan, an NPU driver or llama.cpp shows only addresses. Every release bundle or APK uploads them too.
+tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
+    finalizedBy("uploadCrashlyticsSymbolFileRelease")
+}
+
+// Disable Google Services and Crashlytics Gradle tasks on non-release variants (debug and bench).
+tasks.configureEach {
+    if ((name.contains("GoogleServices", ignoreCase = true) || name.contains("Crashlytics", ignoreCase = true)) &&
+        !name.contains("Release")) {
+        enabled = false
+    }
 }

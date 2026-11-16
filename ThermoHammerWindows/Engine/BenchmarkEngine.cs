@@ -107,6 +107,7 @@ public sealed class BenchmarkEngine
     public bool HasBrowser => ui != null;
     private readonly object gate = new();
     private bool active, lostFront;
+    private long benchStartTs;
     public bool IsActive { get { lock (gate) return active; } }
 
     private BenchmarkEngine() { }
@@ -298,19 +299,23 @@ public sealed class BenchmarkEngine
         // the plan, worked out up front as on the phones: a PC without DirectX Raytracing 1.1 skips Test 3, and the bar and its "ends in" leave it out
         if (Only == null || Only.Contains("gpu")) gpuPlan = RayTracingSkipReason == null ? GpuTests.All : GpuTests.All.Where(t => !t.RayTracing()).ToArray();
         if (!IsActive) { Finish(null, null); return; }
+        benchStartTs = System.Diagnostics.Stopwatch.GetTimestamp();
+        AppTelemetry.LogBenchmarkStarted(Only != null);
         Ui(() => Current = Phase.Running);
 
         try
         {
-            if (Only == null || Only.Contains("cpu")) r.Cpu = RunCpu();
+            if (Only == null || Only.Contains("cpu")) { AppTelemetry.SetPhaseContext("benchmark", "cpu"); r.Cpu = RunCpu(); }
             if (!IsActive) { Finish(null, null); return; }
             if (Telemetry.Shared.Current.OnAc != onAc) r.ValidityFlags |= BenchFlag.PowerEvent;   // a laptop plugged or unplugged
-            if (Only == null || Only.Contains("mem")) r.Mem = RunMem();
+            if (Only == null || Only.Contains("mem")) { AppTelemetry.SetPhaseContext("benchmark", "mem"); r.Mem = RunMem(); }
             if (!IsActive) { Finish(null, null); return; }
             foreach (var section in LaterSections)
             {
-                if (Only != null && !Only.Contains(section.GetType().Name.Replace("Section", "").ToLowerInvariant())) continue;
+                string secName = section.GetType().Name.Replace("Section", "").ToLowerInvariant();
+                if (Only != null && !Only.Contains(secName)) continue;
                 if (Telemetry.Shared.Current.OnAc != onAc) r.ValidityFlags |= BenchFlag.PowerEvent;
+                AppTelemetry.SetPhaseContext("benchmark", secName);
                 section.Run(this, r);
                 if (!IsActive) { Finish(null, null); return; }
             }
@@ -328,6 +333,11 @@ public sealed class BenchmarkEngine
     private void Finish(BenchmarkResult? r, string? error)
     {
         lock (gate) active = false;
+        int durSec = benchStartTs > 0
+            ? Math.Max(0, (int)((System.Diagnostics.Stopwatch.GetTimestamp() - benchStartTs) / System.Diagnostics.Stopwatch.Frequency))
+            : 0;
+        if (r != null) AppTelemetry.LogBenchmarkFinished("completed", r.Total, r.IsVerified, durSec);
+        else AppTelemetry.LogBenchmarkFinished(error == null ? "cancelled" : "failed", 0, false, durSec);
         var record = r == null ? null : BenchmarkRecord.From(r);
         Ui(() =>
         {

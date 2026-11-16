@@ -106,6 +106,13 @@ object BenchmarkUpload {
             appVersion = appVersion
         )
         val payload = unsigned.copy(hash = ThermoHasher.computeBenchmarkHash(session.encryptionKey, unsigned.canonical()))
-        return ApiClient.api.submitBenchmark(payload)
+        return try {
+            ApiClient.api.submitBenchmark(payload).also {
+                com.example.thermohammer.telemetry.AppTelemetry.logResultUploaded("benchmark", true)
+            }
+        } catch (e: Exception) {
+            com.example.thermohammer.telemetry.AppTelemetry.logResultUploaded("benchmark", false)
+            throw e
+        }
     }
 }

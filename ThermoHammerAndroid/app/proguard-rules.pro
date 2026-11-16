@@ -40,3 +40,7 @@
 # back; renamed by R8, a failed model compile aborted the whole app instead of throwing
 -keep class com.google.ai.edge.litert.** { *; }
 -keep class org.tensorflow.lite.** { *; }
+
+# Keep file names and line numbers for Crashlytics stack traces in release builds.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

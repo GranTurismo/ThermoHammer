@@ -337,9 +337,15 @@ interface ThermoApi {
  * the X-Run-Id header — null from a server that doesn't send one yet.
  */
 suspend fun ThermoApi.submitHammer(payload: HammerPayload): Int? {
-    val response = submitScore(payload)
-    if (!response.isSuccessful) throw HttpException(response)
-    return runIdHeader(response.headers()["X-Run-Id"])          // OkHttp looks headers up case-insensitively
+    return try {
+        val response = submitScore(payload)
+        if (!response.isSuccessful) throw HttpException(response)
+        com.example.thermohammer.telemetry.AppTelemetry.logResultUploaded("stress", true)
+        runIdHeader(response.headers()["X-Run-Id"])          // OkHttp looks headers up case-insensitively
+    } catch (e: Exception) {
+        com.example.thermohammer.telemetry.AppTelemetry.logResultUploaded("stress", false)
+        throw e
+    }
 }
 
 /** The X-Run-Id header's value as an id: a positive integer, anything else null. */

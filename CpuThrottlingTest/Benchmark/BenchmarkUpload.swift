@@ -230,9 +230,15 @@ enum BenchmarkUpload {
     /** Submits a run and marks it submitted with its leaderboard id — what its link and its certificate point at. */
     @MainActor
     static func submitAndRemember(_ r: BenchmarkRecord) async throws -> BenchmarkSubmitResponse {
-        let res = try await submit(r)
-        BenchmarkHistoryStore.shared.markSubmitted(r.id, serverId: res.id)
-        return res
+        do {
+            let res = try await submit(r)
+            BenchmarkHistoryStore.shared.markSubmitted(r.id, serverId: res.id)
+            AppTelemetry.logResultUploaded(kind: "benchmark", success: true)
+            return res
+        } catch {
+            AppTelemetry.logResultUploaded(kind: "benchmark", success: false)
+            throw error
+        }
     }
 
     /** The phone's chip, from its model identifier — on a Mac, the chip's name (e.g. "Apple M5"). */

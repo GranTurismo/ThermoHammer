@@ -149,8 +149,10 @@ class LeaderboardService {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            AppTelemetry.logResultUploaded(kind: "stress", success: false)
             throw NSError(domain: "LeaderboardService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Server rejected score submission"])
         }
+        AppTelemetry.logResultUploaded(kind: "stress", success: true)
         return Self.runId(fromHeader: httpResponse.value(forHTTPHeaderField: "X-Run-Id"))   // looked up case-insensitively
     }
 

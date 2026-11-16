@@ -20,6 +20,9 @@ mlkitBarcode = "17.3.0"
 litert = "2.3.0"
 qnnRuntime = "2.51.0"
 playReview = "2.0.2"
+googleServices = "4.6.0"
+firebaseCrashlyticsGradle = "3.0.8"
+firebaseBom = "35.2.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -57,9 +60,15 @@ litert-npu-mediatek = { module = "com.google.ai.edge.litert:litert-npu-runtime-m
 litert-npu-google-tensor = { module = "com.google.ai.edge.litert:litert-npu-runtime-google-tensor", version.ref = "litert" }
 qnn-runtime = { module = "com.qualcomm.qti:qnn-runtime", version.ref = "qnnRuntime" }
 play-review = { module = "com.google.android.play:review", version.ref = "playReview" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
+firebase-crashlytics-ndk = { group = "com.google.firebase", name = "firebase-crashlytics-ndk" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
 android-dynamic-feature = { id = "com.android.dynamic-feature", version.ref = "androidGradlePlugin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsGradle" }

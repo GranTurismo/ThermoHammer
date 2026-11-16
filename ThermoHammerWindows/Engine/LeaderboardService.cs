@@ -144,28 +144,38 @@ public static class Api
         string meta = MetaCanonical(p.TestDurationType, p.TestThreadingType ?? 1, p.DeviceManufacturer, p.DeviceModel, p.OsVersion,
             p.BaselineScore ?? 0, p.DeliveredCapacity ?? 0, p.ValidityFlags ?? 0);
         bool v2 = p.BaselineScore != null;
-        return await SubmitScore(new HammerPayload
+        try
         {
-            Stamps = p.Stamps,
-            Type = p.TestDurationType,
-            TestThreadingType = p.TestThreadingType ?? 1,
-            DeviceManufacturer = p.DeviceManufacturer,
-            DeviceModel = p.DeviceModel,
-            OsVersion = p.OsVersion,
-            SessionId = session.Id,
-            Hash = hash,
-            SchemaVersion = v2 ? 2 : null,
-            BaselineScore = p.BaselineScore,
-            DeliveredCapacity = p.DeliveredCapacity,
-            SustainedRatio = p.SustainedRatio,
-            ThrottleOnsetSec = p.ThrottleOnsetSec,
-            Confidence = p.Confidence,
-            ValidityFlags = p.ValidityFlags,
-            SocModel = p.SocModel,
-            ClusterTopology = p.ClusterTopology,
-            HashV2 = v2 ? ThermoHasher.ComputeHashV2(session.EncryptionKey, meta, p.Stamps) : null,
-            OsBuild = p.OsBuild,   // what was recorded at test time, never today's build
-        });
+            var id = await SubmitScore(new HammerPayload
+            {
+                Stamps = p.Stamps,
+                Type = p.TestDurationType,
+                TestThreadingType = p.TestThreadingType ?? 1,
+                DeviceManufacturer = p.DeviceManufacturer,
+                DeviceModel = p.DeviceModel,
+                OsVersion = p.OsVersion,
+                SessionId = session.Id,
+                Hash = hash,
+                SchemaVersion = v2 ? 2 : null,
+                BaselineScore = p.BaselineScore,
+                DeliveredCapacity = p.DeliveredCapacity,
+                SustainedRatio = p.SustainedRatio,
+                ThrottleOnsetSec = p.ThrottleOnsetSec,
+                Confidence = p.Confidence,
+                ValidityFlags = p.ValidityFlags,
+                SocModel = p.SocModel,
+                ClusterTopology = p.ClusterTopology,
+                HashV2 = v2 ? ThermoHasher.ComputeHashV2(session.EncryptionKey, meta, p.Stamps) : null,
+                OsBuild = p.OsBuild,   // what was recorded at test time, never today's build
+            });
+            AppTelemetry.LogResultUploaded("stress", true);
+            return id;
+        }
+        catch
+        {
+            AppTelemetry.LogResultUploaded("stress", false);
+            throw;
+        }
     }
 }
 

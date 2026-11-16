@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "180831551655",
+    "project_id": "thermohammer-gt",
+    "storage_bucket": "thermohammer-gt.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:180831551655:android:c65e63197a109ffe63db82",
+        "android_client_info": {
+          "package_name": "com.granturismo.thermohammer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2vcAsCMBFodvaXalOm83rGonNBq4ab8o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

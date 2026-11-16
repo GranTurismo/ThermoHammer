@@ -13,6 +13,7 @@
 		00C19330178B3515DE7AA12E /* vec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3B09BE569B1384260C60057A /* vec.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE -DGGML_SCHED_MAX_COPIES=4 -DGGML_USE_CPU -DGGML_USE_METAL -DGGML_USE_CPU_REPACK -DGGML_USE_LLAMAFILE -march=armv8.2-a+dotprod+fp16 -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-cpu"; }; };
 		010523425199F7D4F8009770 /* QRBitMatrixParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A973BE264B142F1ADE50C5FC /* QRBitMatrixParser.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		0173B43916732C9428C24160 /* codeshell.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 63185063C6863DDF163C2B41 /* codeshell.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		029B67566B2314C9932C322C /* AppTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68FF1412BAC58BEF56B605C /* AppTelemetry.swift */; };
 		035BC1F400D8F1768D6519CA /* ComparisonModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9608B3D2047ADE4532990BD7 /* ComparisonModels.swift */; };
 		03A677294A49FCF85DBEA91B /* ggml-quants.c in Sources */ = {isa = PBXBuildFile; fileRef = 3BEDFF70AF3909D81B488F32 /* ggml-quants.c */; settings = {COMPILER_FLAGS = "-O3 -w -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE -DGGML_SCHED_MAX_COPIES=4 -DGGML_USE_CPU -DGGML_USE_METAL -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"; }; };
 		044B6FFCD010A834DEBD78E6 /* granite-hybrid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A227846ECDA86FDCE9F4A08B /* granite-hybrid.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -66,6 +67,7 @@
 		28766D27A3CDFC2C3CDDAEAF /* reduce.metal in Sources */ = {isa = PBXBuildFile; fileRef = 37269BE9BD3CA4FDB7E4520B /* reduce.metal */; };
 		295F4F17AB77A4C79749B26F /* QRDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 62147F55D540D69324110F76 /* QRDecoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		29619EB82A2E1DAEB1A6C95B /* smallthinker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 487D8A467E1BD16D1DBC3125 /* smallthinker.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		29965974AF20F235CCF96246 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = FE7B74CE4685D51E553B9081 /* FirebaseAnalyticsCore */; };
 		29989FDA4A9EDADA10E7E67F /* mpt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 786CF207BF9F6D777EBAB7E4 /* mpt.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		299E9001D2FE184153B947D9 /* bitnet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B5233F96178F63FA1E668901 /* bitnet.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		2A5E2A41355D584160AB3917 /* dots1.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EB1E9BA53CCC29BD19B0429B /* dots1.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -199,6 +201,8 @@
 		7A460B87CD21DB350040F88B /* smollm3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2F7AB44AF7E3FECEC35971B0 /* smollm3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7AF4D5D66333EF3779DBA3A5 /* ReedSolomonDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 955A0D5AD795FC7E3D1A1AC2 /* ReedSolomonDecoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		7B277C21133067C2C7EAF2D3 /* spark2-5.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9399BD0C5F839463B6620C3D /* spark2-5.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		7B289CE439181C33BAA78BFF /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = F994A7A582952E477848D2D6 /* FirebaseCrashlytics */; };
+		7B2CABC238D572124452FCF1 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 52DE335F305734BF130D8679 /* FirebaseCore */; };
 		7B2DCF5040C6E2609B540A0A /* deci.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 97487BC3B4D181A0154E88C0 /* deci.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7C04286E055B1820CCD6450F /* Present.metal in Sources */ = {isa = PBXBuildFile; fileRef = DC815853BE3F6387B5857444 /* Present.metal */; };
 		7C88D429CEF8F817CED5FC3F /* bailingmoe3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A4935375A5E971631B429CC /* bailingmoe3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -258,6 +262,7 @@
 		A1D661B8850E0C2820158343 /* BenchmarkEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760E779BE0685479EC6806BA /* BenchmarkEngine.swift */; };
 		A260978CF589950122FABF67 /* PerspectiveTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 97C808C91C93F15094EF8FB3 /* PerspectiveTransform.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		A2672BBFC6ABE9A8B98365B4 /* fa_f32.metal in Sources */ = {isa = PBXBuildFile; fileRef = DFE61F13EC187CF936D91083 /* fa_f32.metal */; };
+		A41FB7BE1D5A226224E83500 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4D3FD2E4CA0EA1A7073ECD9E /* GoogleService-Info.plist */; };
 		A5120413BE421D1E71FDB638 /* jamba.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 67B63D8AFAAE8C9D436FF459 /* jamba.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		A524EAF61EB07D98DD9662F3 /* dflash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 20D33987DBB9229B6EC94E69 /* dflash.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		A527ADBFC273389A192343B7 /* nemotron-h-moe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 34575F0CBDD779D5758380F8 /* nemotron-h-moe.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -612,6 +617,7 @@
 		4C31AAB3D19CD973D711F132 /* BitArray.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitArray.h; sourceTree = "<group>"; };
 		4C4696A3EE9BAD2E5A9B613A /* llada-moe.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "llada-moe.cpp"; sourceTree = "<group>"; };
 		4D0FD200DEAC9DEBF6E86CE3 /* hy-v4.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "hy-v4.cpp"; sourceTree = "<group>"; };
+		4D3FD2E4CA0EA1A7073ECD9E /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		4E31837EBD338F40A4AC97AC /* hbm.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = hbm.h; sourceTree = "<group>"; };
 		4E3B315C7C911537E615F43B /* nemotron-h.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "nemotron-h.cpp"; sourceTree = "<group>"; };
 		4E46D17787CC166BE8DFFA81 /* real_esrgan_general_x4v3.mlpackage */ = {isa = PBXFileReference; path = real_esrgan_general_x4v3.mlpackage; sourceTree = "<group>"; };
@@ -856,6 +862,7 @@
 		B60860F76E5EF69500090C78 /* ReviewPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPolicyTests.swift; sourceTree = "<group>"; };
 		B642380E472C13605899A45D /* llama-kv-cache-dsv4.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama-kv-cache-dsv4.h"; sourceTree = "<group>"; };
 		B66178B505B5B3269FE8A237 /* nanbeige.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = nanbeige.cpp; sourceTree = "<group>"; };
+		B68FF1412BAC58BEF56B605C /* AppTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTelemetry.swift; sourceTree = "<group>"; };
 		B7423A1645D233BD7CCAA07D /* upscale.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = upscale.metal; sourceTree = "<group>"; };
 		B771A082A875767BE073AB24 /* rwkv7.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rwkv7.cpp; sourceTree = "<group>"; };
 		B77322FEBB920C1FE4182F06 /* llama-adapter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "llama-adapter.cpp"; sourceTree = "<group>"; };
@@ -1008,6 +1015,9 @@
 				19A7315ECBCA5D6DE3443BA7 /* TensorFlowLiteCMetal.xcframework in Frameworks */,
 				C6EE9B6FC8858ED1EF54E5DE /* CoreML.framework in Frameworks */,
 				B4E5B5B2DDAEAD89FA70972E /* Metal.framework in Frameworks */,
+				7B2CABC238D572124452FCF1 /* FirebaseCore in Frameworks */,
+				7B289CE439181C33BAA78BFF /* FirebaseCrashlytics in Frameworks */,
+				29965974AF20F235CCF96246 /* FirebaseAnalyticsCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1142,6 +1152,7 @@
 			isa = PBXGroup;
 			children = (
 				9CA3998C09760CD7A629464C /* AppOverlays.swift */,
+				B68FF1412BAC58BEF56B605C /* AppTelemetry.swift */,
 				7DD55569A14DD3A42D804BF7 /* Assets.xcassets */,
 				CAAE576E7C38AC555B1B9695 /* BenchmarkUpdateCard.swift */,
 				EC1E17F2B612E88E19C906B7 /* BenchmarkUpdateImpact.swift */,
@@ -1153,6 +1164,7 @@
 				0145D8CB99485ABB0E23DC58 /* ForgeComponents.swift */,
 				08CA1DA9A1EA746B9BD9685B /* ForgeOverlays.swift */,
 				A92E0097DE242FBE65093E7E /* ForgeTheme.swift */,
+				4D3FD2E4CA0EA1A7073ECD9E /* GoogleService-Info.plist */,
 				329D81879CF186B50E3D88C3 /* LeaderboardService.swift */,
 				9C07FAB39C7309076DA8FE11 /* LeaderboardView.swift */,
 				10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */,
@@ -1877,6 +1889,7 @@
 				217069608E8B4C260B178339 /* ggml tensor-API kernels */,
 				80EA9387E8DD830D74D2C2EE /* Resources */,
 				0C92B359D535856A9F865293 /* Frameworks */,
+				38E3909229168D3751109F69 /* Upload Crashlytics dSYMs */,
 			);
 			buildRules = (
 			);
@@ -1884,6 +1897,9 @@
 			);
 			name = CpuThrottlingTest;
 			packageProductDependencies = (
+				52DE335F305734BF130D8679 /* FirebaseCore */,
+				F994A7A582952E477848D2D6 /* FirebaseCrashlytics */,
+				FE7B74CE4685D51E553B9081 /* FirebaseAnalyticsCore */,
 			);
 			productName = CpuThrottlingTest;
 			productReference = 3D7B395254090B8D371CB0B0 /* CpuThrottlingTest.app */;
@@ -1917,6 +1933,9 @@
 			);
 			mainGroup = AB5DB8F11AF56FEDBAE0C5E4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				727A2FC53B36E3E972613446 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9063FA31A56D86581429BB19 /* Products */;
 			projectDirPath = "";
@@ -1934,6 +1953,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */,
+				A41FB7BE1D5A226224E83500 /* GoogleService-Info.plist in Resources */,
 				9EE011BD4A05C5817A6846A4 /* ai in Resources */,
 				B9E775C3A8516AC54AFF7F46 /* jetbrainsmono_bold.ttf in Resources */,
 				D419247625F51322181363F1 /* jetbrainsmono_extrabold.ttf in Resources */,
@@ -1976,6 +1996,30 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\nG=\"$SRCROOT/BenchCore/third_party/llama.cpp/ggml/src\"\nT=\"$DERIVED_FILE_DIR/ggml-tensor\"\nOS=ios26.0; [ \"$PLATFORM_NAME\" = iphonesimulator ] && OS=ios26.0-simulator\nmkdir -p \"$T\"\nfor k in mul_mm fa_tensor; do\n  xcrun -sdk \"$PLATFORM_NAME\" metal -O3 -DGGML_METAL_HAS_TENSOR -mtargetos=$OS -I \"$G\" -I \"$G/ggml-metal\" \\\n    -c \"$G/ggml-metal/kernels/$k.metal\" -o \"$T/$k.air\"\ndone\nxcrun -sdk \"$PLATFORM_NAME\" metallib \"$T/mul_mm.air\" \"$T/fa_tensor.air\" \\\n  -o \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/ggml-tensor.metallib\"\n";
 		};
+		38E3909229168D3751109F69 /* Upload Crashlytics dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
+			);
+			name = "Upload Crashlytics dSYMs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -2006,6 +2050,7 @@
 				8F69EB42845FAD99A7C0DA38 /* AiSection.swift in Sources */,
 				75E9DAA2F14107D814A27F44 /* AiStageView.swift in Sources */,
 				BC826DE41A3DA4582DD04315 /* AppOverlays.swift in Sources */,
+				029B67566B2314C9932C322C /* AppTelemetry.swift in Sources */,
 				5F63C0FBC9DB5F4BA7BD6343 /* Barcode.cpp in Sources */,
 				FFEB1AA8C7E55713EEF33439 /* BarcodeFormat.cpp in Sources */,
 				3652D7711068141F72E01177 /* BenchmarkBoardView.swift in Sources */,
@@ -2405,8 +2450,9 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
-				CURRENT_PROJECT_VERSION = 43;
+				CURRENT_PROJECT_VERSION = 44;
 				DEVELOPMENT_TEAM = C58ABB3474;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -2444,7 +2490,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.5;
+				MARKETING_VERSION = 2.1.6;
 				MTL_HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal",
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src",
@@ -2452,6 +2498,7 @@
 				OTHER_LDFLAGS = (
 					"-lz",
 					"-lc++",
+					"-ObjC",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
@@ -2575,8 +2622,9 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
-				CURRENT_PROJECT_VERSION = 43;
+				CURRENT_PROJECT_VERSION = 44;
 				DEVELOPMENT_TEAM = C58ABB3474;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -2614,7 +2662,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.5;
+				MARKETING_VERSION = 2.1.6;
 				MTL_HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal",
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src",
@@ -2622,6 +2670,7 @@
 				OTHER_LDFLAGS = (
 					"-lz",
 					"-lc++",
+					"-ObjC",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
@@ -2723,6 +2772,35 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		727A2FC53B36E3E972613446 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 13.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		52DE335F305734BF130D8679 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 727A2FC53B36E3E972613446 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		F994A7A582952E477848D2D6 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 727A2FC53B36E3E972613446 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		FE7B74CE4685D51E553B9081 /* FirebaseAnalyticsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 727A2FC53B36E3E972613446 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C588071280FB0748276C5A84 /* Project object */;
 }

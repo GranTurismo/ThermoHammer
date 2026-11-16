@@ -41,6 +41,7 @@ public static class Settings
     public static bool Bool(string key) => values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.True;
     /// <summary>A number, 0 when there is none.</summary>
     public static double Number(string key) => values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
+    public static string? String(string key) => values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     public static List<string> Strings(string key) =>
         values.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Select(e => e.GetString() ?? "").ToList() : [];
 

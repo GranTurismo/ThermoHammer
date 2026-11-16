@@ -334,6 +334,10 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private var activeThreadCount = 0
     private var startBrightness: Int? = null
     private var batterySaverAtStart = false
+    /** A run's end is logged once: a Stop and the run's own end can race (closeRunTelemetry decides which logs). */
+    private val runTelemetryOpen = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile
+    private var benchStartNs = 0L
 
     private var sessionJob: Job? = null
     private var workerThreads: List<Thread> = emptyList()
@@ -519,6 +523,12 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
 
         threadAlive.set(true)
+        runTelemetryOpen.set(true)
+        com.example.thermohammer.telemetry.AppTelemetry.logStressStarted(
+            mode = mode.name.lowercase(),
+            durationMin = (duration.seconds ?: 300) / 60,
+            threading = threadingType.name.lowercase()
+        )
         // Workers are NOT spawned here — runSession spawns them after COOLDOWN
         // so the device can actually shed heat (zero load while waiting).
         sessionJob = viewModelScope.launch(Dispatchers.IO) { runSession() }
@@ -642,8 +652,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val rtProblem = rayTracingSkipReason()
         val plan = BenchmarkTest.entries.filter { !it.rayTracing || rtProblem == null }
         _state.update { it.copy(benchPlan = plan) }
+        benchStartNs = System.nanoTime()
+        runTelemetryOpen.set(true)
+        com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkStarted(partial = from != null)
+        if (from == null) com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "cpu")
         val cpu = if (from == null) runCpu() ?: return else null
+        if (from == null) com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "mem")
         val mem = if (from == null) runMem() ?: return else null
+        com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "gpu")
         val results = ArrayList<BenchmarkTestResult>()
         val runStartNs = System.nanoTime()
         for (test in BenchmarkTest.entries) {
@@ -684,6 +700,10 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             val summary = if (error == null) BenchmarkScore.summarize(test, starts, durs, count, startTemp,
                 StressProbes.cpuAdjacentTemp(StressProbes.readThermalZones())) else null
             if (summary == null) {
+                if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
+                    status = "failed", totalScore = 0, verified = false,
+                    durationSec = ((System.nanoTime() - benchStartNs) / 1_000_000_000L).toInt()
+                )
                 _state.update { it.copy(benchError = "${test.title}: ${error ?: "too few frames rendered"}") }
                 stopTest()
                 return
@@ -692,8 +712,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val gpuScore = BenchmarkScore.overall(results)
         val gpuName = gpuBench.gpuName.ifEmpty { vkBench.gpuName }
+        com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ux")
         val ux = runUx(from) ?: return
+        com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ai")
         val ai = runAi(gpuName) ?: return
+        com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "llm")
         val llm = runLlm() ?: return
         val result = BenchmarkResult(
             tests = results,
@@ -708,6 +731,10 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             llm = llm,
             startCpuShare = quiet.share,
             quietWaitSec = quiet.waitedSec
+        )
+        if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
+            status = "completed", totalScore = result.total, verified = result.isVerified,
+            durationSec = ((System.nanoTime() - benchStartNs) / 1_000_000_000L).toInt()
         )
         _state.update {
             it.copy(benchResult = result, validityFlags = flags, wasCompleted = true, benchProgress = 1f,
@@ -1405,8 +1432,30 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         vkBench.detachDisplay()
     }
 
+    /** True for exactly one caller per run: the one that logs how the run ended. */
+    private fun closeRunTelemetry(): Boolean = runTelemetryOpen.compareAndSet(true, false)
+
     fun stopTest() {
         if (!_state.value.isRunning) return
+        val cur = _state.value
+        if (closeRunTelemetry()) {
+            val cancelStatus = if (cur.wasCancelledByBackground) "bg_cancelled" else "aborted"
+            if (cur.runKind == RunKind.BENCHMARK) {
+                com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
+                    status = if (cur.wasCancelledByBackground) "bg_cancelled" else "cancelled",
+                    totalScore = 0, verified = false,
+                    durationSec = if (benchStartNs > 0L) ((System.nanoTime() - benchStartNs) / 1_000_000_000L).toInt() else cur.elapsedSeconds
+                )
+            } else {
+                com.example.thermohammer.telemetry.AppTelemetry.logStressFinished(
+                    mode = cur.stressMode.name.lowercase(),
+                    durationMin = (cur.testDuration.seconds ?: 300) / 60,
+                    status = cancelStatus,
+                    verified = false,
+                    capacity = 0.0
+                )
+            }
+        }
         threadAlive.set(false)
         gpuBench.stop()
         vkBench.stop()
@@ -2069,6 +2118,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             saverDuringRun = batterySaverAtStart,
             gpuBaselineFps = gpuBaseline,
             gpuName = gpuBench.gpuName
+        )
+
+        if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logStressFinished(
+            mode = s.stressMode.name.lowercase(),
+            durationMin = (s.testDuration.seconds ?: 300) / 60,
+            status = if (completed) "completed" else "aborted",
+            verified = card.isVerified,
+            capacity = card.deliveredCapacity.toDouble()
         )
 
         _state.update {

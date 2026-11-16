@@ -67,3 +67,6 @@ ThermoHammerWindows/obj/
 ThermoHammerWindows/msix/.tools/
 ThermoHammerWindows/msix/.cache/
 ThermoHammerWindows/msix/out/
+
+# the Windows app's GA4 Measurement Protocol secret (ThermoHammerWindows/Engine/Ga4Config.cs says how to make it)
+ThermoHammerWindows/Engine/Ga4Secrets.cs

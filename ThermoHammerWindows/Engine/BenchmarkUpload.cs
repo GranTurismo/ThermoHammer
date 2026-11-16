@@ -168,10 +168,20 @@ public static class BenchmarkUpload
             AppVersion = DeviceInfo.ClipOrNull(AppVersion),
         };
         p.Hash = ThermoHasher.Hmac(session.EncryptionKey, p.Canonical());
-        using var resp = await Api.Http.PostAsJsonAsync("benchmark", p, Api.Json);
-        if (!resp.IsSuccessStatusCode)
-            throw new BenchException($"Server rejected the run {await resp.Content.ReadAsStringAsync()}");
-        return (await resp.Content.ReadFromJsonAsync<BenchmarkSubmitResponse>(Api.Json))!;
+        try
+        {
+            using var resp = await Api.Http.PostAsJsonAsync("benchmark", p, Api.Json);
+            if (!resp.IsSuccessStatusCode)
+                throw new BenchException($"Server rejected the run {await resp.Content.ReadAsStringAsync()}");
+            var res = (await resp.Content.ReadFromJsonAsync<BenchmarkSubmitResponse>(Api.Json))!;
+            AppTelemetry.LogResultUploaded("benchmark", true);
+            return res;
+        }
+        catch
+        {
+            AppTelemetry.LogResultUploaded("benchmark", false);
+            throw;
+        }
     }
 
     public static async Task<List<BenchmarkDto>> FetchLeaderboard()

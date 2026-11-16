@@ -70,6 +70,7 @@ final class BenchmarkEngine: ObservableObject {
     private var active = false
     private var lostFront = false       // the app wasn't in front at some point of the run (Mac)
     private var focusObservers: [NSObjectProtocol] = []
+    private var benchStartDate = Date()
     var isActive: Bool { lock.withLock { active } }
     var isRunning: Bool { phase == .preparing || phase == .running }
 
@@ -269,6 +270,8 @@ final class BenchmarkEngine: ObservableObject {
         var r = BenchmarkResult()
         r.gpuName = BenchmarkUpload.gpuName()
         if ProcessInfo.processInfo.isLowPowerModeEnabled { r.validityFlags |= BenchFlag.envCapped }
+        benchStartDate = Date()
+        AppTelemetry.logBenchmarkStarted(partial: startFrom != nil)
 
         // getting ready: cool, and nothing else eating the CPU. Not cooling all the way doesn't flag the run: the wait
         // is a courtesy, not a condition (as on Android)
@@ -287,9 +290,11 @@ final class BenchmarkEngine: ObservableObject {
         do {
             let from = startFrom
             if from == nil {
+                AppTelemetry.setPhaseContext(mode: "benchmark", section: "cpu")
                 r.cpu = try runCpu()
                 guard isActive else { return finish(nil, error: nil) }
                 if charging() { r.validityFlags |= BenchFlag.powerEvent }
+                AppTelemetry.setPhaseContext(mode: "benchmark", section: "mem")
                 r.mem = try runMem()
                 guard isActive else { return finish(nil, error: nil) }
             }
@@ -297,6 +302,8 @@ final class BenchmarkEngine: ObservableObject {
                 && !(from == "ai" && section is UxSection) && !(from == "rt" && !(section is GpuSection))
                 && !(from == "llm" && !(section is LlmSection)) {
                 if charging() { r.validityFlags |= BenchFlag.powerEvent }
+                let secName = section is GpuSection ? "gpu" : section is UxSection ? "ux" : section is AiSection ? "ai" : section is LlmSection ? "llm" : "other"
+                AppTelemetry.setPhaseContext(mode: "benchmark", section: secName)
                 try section.run(self, &r)
                 guard isActive else { return finish(nil, error: nil) }
             }
@@ -309,6 +316,12 @@ final class BenchmarkEngine: ObservableObject {
 
     private func finish(_ r: BenchmarkResult?, error: String?) {
         lock.withLock { active = false }
+        let durationSec = max(0, Int(Date().timeIntervalSince(benchStartDate)))
+        if let r {
+            AppTelemetry.logBenchmarkFinished(status: "completed", totalScore: r.total, verified: r.isVerified, durationSec: durationSec)
+        } else {
+            AppTelemetry.logBenchmarkFinished(status: error == nil ? "cancelled" : "failed", totalScore: 0, verified: false, durationSec: durationSec)
+        }
         let record = r.map(BenchmarkRecord.init)
         ui {
             UIApplication.shared.isIdleTimerDisabled = false
