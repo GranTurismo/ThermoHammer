@@ -8,6 +8,7 @@ EXPORTS
     bc_llm_create
     bc_llm_set_threads
     bc_llm_tune_threads
+    bc_llm_tune_threads_progress
     bc_llm_prefill
     bc_llm_reset
     bc_llm_next
