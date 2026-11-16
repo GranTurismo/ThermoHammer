@@ -24,6 +24,30 @@
             </intent-filter>
         </activity>
 
+        <!-- The driver check (engine/DriverCheck.kt): a MediaTek NPU, and a GPU through Vulkan for the LLM test, are
+             tried first in a process of their own, so a driver that crashes takes down that process and not the app -->
+        <service
+            android:name=".engine.DriverCheckService"
+            android:exported="false"
+            android:process=":drivercheck" />
+
+        <!-- System libraries MediaTek's NeuroPilot adapters (npu/mtk_v8, npu/mtk_v9) load by name. From Android 12 an
+             app may load a chip maker's public library only if it names it here, and the list LiteRT brings leaves
+             these out. Without them the adapter cannot reach the VPU (xrp) or its own CPU fallback (nir_neon, cmdl);
+             on a Dimensity 1200 it then jumped through a null pointer while compiling a model and took the app
+             down. The names are the ones the two adapters ask the system for; a phone that has none ignores them. -->
+        <uses-native-library android:name="libapuwarexrp_v2.mtk.so" android:required="false" />
+        <uses-native-library android:name="libapuwarexrp.mtk.so" android:required="false" />
+        <uses-native-library android:name="libapuwarehmp.mtk.so" android:required="false" />
+        <uses-native-library android:name="libapuwareaiste.mtk.so" android:required="false" />
+        <uses-native-library android:name="libcmdl_ndk.mtk.so" android:required="false" />
+        <uses-native-library android:name="libcmdl_ndk.mtk.vndk.so" android:required="false" />
+        <uses-native-library android:name="libnir_neon_driver_ndk.mtk.so" android:required="false" />
+        <uses-native-library android:name="libnir_neon_driver_ndk.mtk.vndk.so" android:required="false" />
+        <uses-native-library android:name="libarmnn_ndk.mtk.so" android:required="false" />
+        <uses-native-library android:name="libarmnn_ndk.mtk.vndk.so" android:required="false" />
+        <uses-native-library android:name="libtflite_mtk.mtk.so" android:required="false" />
+
         <!-- Share cards (cache/share) and CSV exports (cache/export) for the system share sheet -->
         <provider
             android:name="androidx.core.content.FileProvider"

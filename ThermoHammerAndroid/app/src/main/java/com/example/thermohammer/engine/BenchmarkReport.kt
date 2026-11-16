@@ -82,7 +82,9 @@ object BenchmarkReport {
                 for (t in AiTest.entries) {
                     appendLine("AI %d %s · %s".format(t.number, t.title, AiAccel.entries.joinToString(", ") { a ->
                         val run = ai.runs.firstOrNull { it.test == t && it.accel == a }
-                        if (run != null && run.ips > 0) "%s %.2f/s".format(a.label, run.ips) else "${a.label} 0 (${run?.error ?: "not run"})"
+                        // a GPU's or an NPU's rate comes with how well its answer agreed with the CPU's (1.00 is a match)
+                        if (run != null && run.ips > 0) "%s %.2f/s".format(a.label, run.ips) + (run.agreement?.let { " (agreement %.2f)".format(it) } ?: "")
+                        else "${a.label} 0 (${run?.error ?: "not run"})"
                     }))
                 }
                 for (t in ai.tuning) AiTuner.lines(t).forEach { appendLine(it) }

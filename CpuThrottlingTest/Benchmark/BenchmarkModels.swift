@@ -433,7 +433,11 @@ enum AiTest: Int, CaseIterable {
     var asset: String { ["", "mobilenet_v2", "yolox", "ffnet_40s", "real_esrgan_general_x4v3", "midas", "yamnet"][rawValue] }
 }
 
-struct AiRun { let test: AiTest; let accel: AiAccel; let ips: Double; var error: String? = nil }
+struct AiRun {
+    let test: AiTest; let accel: AiAccel; let ips: Double; var error: String? = nil
+    /// How well a GPU's or an NPU's answer agreed with the CPU's for this model (AiAgreement; 1 is a match); nil where there was none to compare.
+    var agreement: Double? = nil
+}
 
 struct AiResult {
     let runs: [AiRun]

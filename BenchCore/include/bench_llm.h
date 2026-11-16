@@ -139,6 +139,14 @@ enum { BC_LLM_SELFTEST_LOGITS = 2048 };
 int bc_llm_kernel_selftest(int threads, float* out, int cap, char* err, int err_size);
 
 /**
+ * The same tiny model with every layer on the GPU llama.cpp chose: the driver's set-up, its buffers and shaders, a
+ * prompt and one more token. 1 when the output is a number, 0 otherwise (the reason in `err`). The Android app runs
+ * it in a process of its own before the GPU test on a Vulkan GPU, so a driver that crashes takes down only that
+ * process: a Mali whose driver was older than the backend needs crashed here, in the first buffer.
+ */
+int bc_llm_gpu_selftest(char* err, int err_size);
+
+/**
  * Records the logits sample a CPU run of this seed gave for a prompt of `tokens`, as if this library had run it: the
  * Android app runs its CPU test in one of two libraries and the GPU, in the other, has to agree with it.
  */

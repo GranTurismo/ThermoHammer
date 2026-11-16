@@ -298,7 +298,9 @@ public static class BenchmarkReport
                 {
                     var run = ai.Runs.FirstOrDefault(x => x.Test == t && x.Accel == a);
                     double ips = run?.Ips ?? 0;
-                    return ips > 0 ? $"{a.Label()} {F(ips)}/s" : $"{a.Label()} 0 ({run?.Error ?? "not run"})";
+                    // a GPU's or an NPU's rate comes with how well its answer agreed with the CPU's (1.00 is a match)
+                    string agreed = run?.Agreement is { } g ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $" (agreement {g:0.00})") : "";
+                    return ips > 0 ? $"{a.Label()} {F(ips)}/s{agreed}" : $"{a.Label()} 0 ({run?.Error ?? "not run"})";
                 });
                 Line($"AI {t.Number()} {t.Title()} · " + string.Join(", ", parts));
             }

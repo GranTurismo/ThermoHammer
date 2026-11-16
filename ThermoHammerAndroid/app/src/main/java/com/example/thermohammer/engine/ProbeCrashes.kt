@@ -18,4 +18,18 @@ object ProbeCrashes {
     /** "WHAT:name" for every crashed entry of this install. */
     fun keys(crashed: Set<String>, install: Long): Set<String> =
         crashed.mapNotNull { e -> e.split(':').takeIf { it.size == 3 && it[0] == install.toString() }?.let { "${it[1]}:${it[2]}" } }.toSet()
+
+    /** Android's reasons for a process's end that mean it crashed (ApplicationExitInfo): CRASH, CRASH_NATIVE, ANR, INITIALIZATION_FAILURE. */
+    private val CRASH_REASONS = setOf(4, 5, 6, 7)
+
+    /**
+     * Whether a marker found when the app starts was left by a crash. `exitReason` is Android's own record of how the
+     * process that wrote it ended (ApplicationExitInfo.getReason; null when there is none: Android 10 and older, or the
+     * record is gone). `stopRequested`: that process had been asked to stop its run (the user's abort, the app going
+     * to the background) — Android also stops a crashing app on its way down, so a recorded crash counts whatever was
+     * asked. Without a record of a crash, a marker is a crash unless a stop was asked for: then the process was simply
+     * closed before the stopped test had returned.
+     */
+    fun leftByCrash(exitReason: Int?, stopRequested: Boolean): Boolean =
+        if (exitReason != null && exitReason in CRASH_REASONS) true else !stopRequested
 }

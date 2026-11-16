@@ -63,7 +63,9 @@ enum BenchmarkReport {
                 for a in AiAccel.allCases {
                     let run = ai.runs.first { $0.test == t && $0.accel == a }
                     let ips = run?.ips ?? 0
-                    parts.append(ips > 0 ? "\(a.label) \(f(ips))/s" : "\(a.label) 0 (\(run?.error ?? "not run"))")
+                    // a GPU's or an NPU's rate comes with how well its answer agreed with the CPU's (1.00 is a match)
+                    let agreed = run?.agreement.map { String(format: " (agreement %.2f)", $0) } ?? ""
+                    parts.append(ips > 0 ? "\(a.label) \(f(ips))/s\(agreed)" : "\(a.label) 0 (\(run?.error ?? "not run"))")
                 }
                 line("AI \(t.number) \(t.title) · " + parts.joined(separator: ", "))
             }

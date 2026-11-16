@@ -26,4 +26,27 @@ class ProbeCrashesTest {
     fun `the LLM probe uses the same record`() {
         assertEquals(setOf("LLM:i8mm"), ProbeCrashes.keys(ProbeCrashes.after("12:LLM:i8mm", emptySet(), 12), 12))
     }
+
+    // ApplicationExitInfo's reasons: 4 CRASH, 5 CRASH_NATIVE, 6 ANR, 7 INITIALIZATION_FAILURE; 10 USER_REQUESTED, 13 OTHER, 2 SIGNALED, 3 LOW_MEMORY
+
+    @Test
+    fun `a recorded crash counts even when the run was being stopped`() {
+        // a crashing app is stopped by Android on its way down: that stop must not hide the crash
+        for (reason in listOf(4, 5, 6, 7)) {
+            assertEquals(true, ProbeCrashes.leftByCrash(reason, stopRequested = true))
+            assertEquals(true, ProbeCrashes.leftByCrash(reason, stopRequested = false))
+        }
+    }
+
+    @Test
+    fun `a marker left after a requested stop is not a crash when the process was merely closed`() {
+        for (reason in listOf(10, 11, 13, 2, 3, 1)) assertEquals(false, ProbeCrashes.leftByCrash(reason, stopRequested = true))
+        assertEquals("no record of how it ended (Android 10 and older)", false, ProbeCrashes.leftByCrash(null, stopRequested = true))
+    }
+
+    @Test
+    fun `a process that died inside a test without being asked to stop left a crash marker`() {
+        for (reason in listOf(2, 3, 13, 10)) assertEquals(true, ProbeCrashes.leftByCrash(reason, stopRequested = false))
+        assertEquals(true, ProbeCrashes.leftByCrash(null, stopRequested = false))
+    }
 }

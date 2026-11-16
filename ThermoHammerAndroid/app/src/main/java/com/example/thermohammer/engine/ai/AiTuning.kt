@@ -181,6 +181,23 @@ object AiAgreement {
         if (a.isEmpty() || a.size != b.size) return 0.0
         return compared(test, a.size).minOf { correlation(a[it], b[it]) }
     }
+
+    /**
+     * A scored run's answer is wrong below this: it has nothing in common with the CPU's (the broken ones seen sat at
+     * 0.00–0.06). Between this and AiTuner.MIN_AGREEMENT an answer is off but recognisably the same — a GPU runs these
+     * 8-bit models as a floating-point approximation, and object detection drifts to about 0.7 that way — and keeps
+     * its points, with the agreement shown in the report: the line can be drawn tighter once phones have reported theirs.
+     */
+    const val WRONG_BELOW = 0.5
+
+    fun isWrong(agreement: Double): Boolean = agreement < WRONG_BELOW
+
+    /**
+     * Why a GPU's or an NPU's run scores 0 although it ran, as the result card and the report say it: its answer
+     * isn't the CPU's ([isWrong]). Speed with a wrong answer is worth nothing.
+     */
+    fun wrongAnswer(ips: Double, agreement: Double): String =
+        "wrong answer: its result doesn't match the CPU's (agreement %.2f, a match is 1.00), so it scores 0 · it ran at %.2f/s".format(agreement, ips)
 }
 
 // ── choosing ─────────────────────────────────────────────────────────────────
@@ -225,10 +242,38 @@ object AiTuner {
         return if (ratios.any { it <= 0 }) 0.0 else exp(ratios.sumOf { ln(it) } / ratios.size)
     }
 
-    /** The fastest setting that qualifies and gains at least [MIN_GAIN]; the default otherwise. */
+    /** True when `row` ran every model and each answer agreed with the reference's at least `floor`. */
+    private fun answers(row: AiTuningRow, models: List<AiTest>, floor: Double): Boolean =
+        row.skipped == null && models.all { t -> row.results[t]?.let { it.error == null && it.ips > 0 && it.agreement >= floor } == true }
+
+    /** True when `row` ran every model and each answer was the reference's. */
+    fun answersRight(row: AiTuningRow, models: List<AiTest>): Boolean = answers(row, models, MIN_AGREEMENT)
+
+    /** True when `row` ran every model and no answer was wrong (AiAgreement.isWrong): right, or off but the same answer. */
+    fun answersUsable(row: AiTuningRow, models: List<AiTest>): Boolean = answers(row, models, AiAgreement.WRONG_BELOW)
+
+    /**
+     * True when the default ran but one of its answers is wrong (AiAgreement.isWrong). A run that answers wrongly
+     * scores 0, so such a default is no yardstick for speed: what is looked for then is a setting that answers right.
+     * (Compared with the default's own outputs — no CPU answer to go by — a default always agrees with itself.)
+     */
+    fun defaultWrong(base: AiTuningRow?, models: List<AiTest>): Boolean =
+        base != null && models.any { t -> base.results[t]?.let { it.error == null && AiAgreement.isWrong(it.agreement) } == true }
+
+    /**
+     * The fastest setting that qualifies and gains at least [MIN_GAIN]; the default otherwise. Where the default's
+     * own answers are wrong: the fastest setting whose answers are right, however its speed compares — and the default
+     * when there is none (its runs then score 0, and say why).
+     */
     fun choose(rows: List<AiTuningRow>, models: List<AiTest>): AiSetting {
         val base = rows.firstOrNull { it.setting.isDefault } ?: return AiSettings.DEFAULT
         if (models.any { rate(base, it) <= 0 }) return base.setting      // no baseline to beat
+        if (defaultWrong(base, models)) {
+            val others = rows.filter { !it.setting.isDefault }
+            // the fastest whose answers are right; failing that the fastest whose answers at least aren't wrong
+            return (others.filter { answersRight(it, models) }.maxByOrNull { gain(it, base, models) }
+                ?: others.filter { answersUsable(it, models) }.maxByOrNull { gain(it, base, models) })?.setting ?: base.setting
+        }
         val best = rows.filter { !it.setting.isDefault && disqualified(it, base, models) == null }
             .maxByOrNull { gain(it, base, models) }
         return if (best != null && gain(best, base, models) >= MIN_GAIN) best.setting else base.setting
@@ -256,7 +301,8 @@ object AiTuner {
                 if (!isActive()) break
                 if (skipped != null) break
                 if (!setting.isDefault && nanoTime() > deadlineNs) { skipped = "out of time"; break }
-                if (!setting.isDefault && i > 0 && base != null &&
+                // (a default that answers wrongly is no yardstick: every setting gets its full turn then)
+                if (!setting.isDefault && i > 0 && base != null && !defaultWrong(base, models) &&
                     ratio(AiTuningRow(setting, results), base, models.first()) < HOPELESS) { skipped = "clearly slower on ${models.first().name.lowercase()}"; break }
                 val s = try { measure(test, setting) } catch (e: Exception) { AiSample(0.0, error = e.message ?: e.javaClass.simpleName) }
                 val ref = reference(test)
@@ -289,9 +335,17 @@ object AiTuner {
                 val copies = if (r.writeMs >= 0) ", ${"%.2f".format(1000.0 / r.ips)} ms/call, copy in %.2f out %.2f ms".format(r.writeMs, r.readMs) else ""
                 "%s %.2f/s%s (agreement %.2f%s)".format(m.name.lowercase(), r.ips, rel, r.agreement, copies)
             }
+            val wrongDefault = defaultWrong(base, models)
             val verdict = when {
-                row.setting == t.chosen -> "used"
+                row.setting == t.chosen -> if (wrongDefault && row.setting.isDefault) "used: no setting's answers were the CPU's (wrong answers score 0)" else "used"
                 row.skipped != null -> "not tried: ${row.skipped}"
+                wrongDefault && row.setting.isDefault -> "its answers differ from the CPU's: not used"
+                wrongDefault -> row.results.values.firstNotNullOfOrNull { it.error }?.let { "rejected: failed: $it" }
+                    ?: when {
+                        answersRight(row, models) -> "answers right, but another right setting was faster"
+                        answersUsable(row, models) -> "answers off but not wrong: another setting was used"
+                        else -> "rejected: its answers differ from the CPU's too"
+                    }
                 base != null && !row.setting.isDefault -> disqualified(row, base, models)?.let { "rejected: $it" }
                     ?: if (gain(row, base, models) >= MIN_GAIN) "a faster setting was used" else "gain under ${((MIN_GAIN - 1) * 100).toInt()}%, default kept"
                 else -> ""

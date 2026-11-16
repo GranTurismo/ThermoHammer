@@ -58,6 +58,12 @@ internal object LlmNative {
     @JvmStatic external fun destroy(handle: Long)
     /** The few-millisecond kernel self-test (a tiny seeded model: a prompt, then one token): its [LlmProbe.SELFTEST_LOGITS] logits, or null with the reason in error[0]. */
     @JvmStatic external fun kernelSelftest(threads: Int, error: Array<String?>): FloatArray?
+    /**
+     * The same tiny model with every layer on the GPU llama.cpp chose (driver set-up, buffers, shaders, a prompt and
+     * one token); false with the reason in error[0]. Run in the driver check's own process (DriverCheck): a GPU
+     * driver that crashes here must not be this one's.
+     */
+    @JvmStatic external fun gpuSelftest(error: Array<String?>): Boolean
     /** The largest common 4-bit model (billions of parameters) that fits in [bytes]; 0 if none. */
     @JvmStatic external fun largestModel(bytes: Double): Int
 

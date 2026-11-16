@@ -15,6 +15,8 @@ class AiTuningTest {
     private val ramp = ByteArray(256) { it.toByte() }
     /** An output unrelated to [ramp] (correlation about 0.01). */
     private val scrambled = ByteArray(256) { ((it * 37) % 251).toByte() }
+    /** An output that is [ramp] three times out of four: off, but recognisably the same answer (correlation about 0.75). */
+    private val drifted = ByteArray(256) { if (it % 4 != 0) ramp[it] else scrambled[it] }
 
     /** A fake probe: rates by (setting id, model), the same outputs unless `outputs` says otherwise, failures by `fail`. */
     private fun tune(
@@ -130,11 +132,80 @@ class AiTuningTest {
     }
 
     @Test
-    fun `when the default itself agrees poorly a setting only has to be as good`() {
-        // an output the default and the CPU already differ on: a setting that differs just as much is no worse
+    fun `when the default answers wrongly and nothing answers right the default stays - its runs will score 0`() {
+        // every setting's output differs from the CPU's: none is better than another, and speed with a wrong answer is worth nothing
         val t = tune(flat(100.0, "opencl" to 130.0), outputs = { _, _ -> listOf(scrambled) })
         assertTrue(t.rows.first().results.getValue(AiTest.CLASSIFY).agreement < 0.5)
-        assertEquals("opencl", t.chosen.id)
+        assertTrue(AiTuner.defaultWrong(t.rows.first(), gpuModels))
+        assertTrue(t.chosen.isDefault)
+        assertTrue(AiTuner.lines(t)[1], AiTuner.lines(t)[1].endsWith("used: no setting's answers were the CPU's (wrong answers score 0)"))
+    }
+
+    @Test
+    fun `when the default answers wrongly a slower setting that answers right is used`() {
+        // the Xiaomi 11T's Mali-G77: OpenCL (the default) fast and wrong, OpenGL ES right at 0.84× and 0.69×
+        val rates = flat(100.0).toMutableMap()
+        rates["opengl" to AiTest.CLASSIFY] = 84.0
+        rates["opengl" to AiTest.UPSCALE] = 69.0
+        val calls = ArrayList<String>()
+        val t = tune(rates, outputs = { id, _ -> listOf(if (id == "opengl") ramp else scrambled) }, calls = calls)
+        assertEquals("opengl", t.chosen.id)
+        assertTrue("a wrong default is no yardstick: the slower setting still gets its second model", calls.contains("opengl/${AiTest.UPSCALE.name}"))
+        val lines = AiTuner.lines(t)
+        assertTrue(lines.first(), lines.first().contains("scored with OpenGL ES backend"))
+        assertTrue(lines[1], lines[1].endsWith("its answers differ from the CPU's: not used"))
+        val settings = lines.drop(1)      // the first line is the heading, which names the setting used as well
+        assertTrue(settings.first { it.contains("OpenGL ES backend") }.endsWith("· used"))
+        assertTrue(settings.first { it.contains("buffer storage") }.endsWith("rejected: its answers differ from the CPU's too"))
+    }
+
+    @Test
+    fun `of several settings that answer right where the default doesn't, the fastest is used`() {
+        val t = tune(flat(100.0, "opengl" to 60.0, "textures" to 75.0),
+            outputs = { id, _ -> listOf(if (id == "opengl" || id == "textures") ramp else scrambled) })
+        assertEquals("textures", t.chosen.id)
+        assertTrue(AiTuner.lines(t).drop(1).first { it.contains("OpenGL ES backend") }.endsWith("answers right, but another right setting was faster"))
+    }
+
+    @Test
+    fun `an answer is wrong only when it has nothing in common with the CPU's`() {
+        assertTrue(AiAgreement.isWrong(AiAgreement.correlation(ramp, scrambled)))          // the broken GPUs and NPUs: about 0
+        val off = AiAgreement.correlation(ramp, drifted)
+        assertTrue("$off", off > AiAgreement.WRONG_BELOW && off < AiTuner.MIN_AGREEMENT)     // a GPU's floating-point approximation: about 0.7
+        assertFalse(AiAgreement.isWrong(off))
+        assertFalse(AiAgreement.isWrong(1.0))
+        assertTrue(AiAgreement.isWrong(0.49))
+        assertFalse(AiAgreement.isWrong(0.5))
+    }
+
+    @Test
+    fun `a default that is off but not wrong is judged for speed like any other`() {
+        // nothing is zeroed for it, so nothing is searched for: the usual rule applies, and a merely faster setting can't replace an answer that agrees better
+        val t = tune(flat(100.0, "opengl" to 60.0), outputs = { id, _ -> listOf(if (id == "opengl") ramp else drifted) })
+        assertFalse(AiTuner.defaultWrong(t.rows.first(), gpuModels))
+        assertTrue(t.chosen.isDefault)
+    }
+
+    @Test
+    fun `where the default is wrong and nothing answers right a setting that is merely off is used`() {
+        val t = tune(flat(100.0, "opengl" to 60.0), outputs = { id, _ -> listOf(if (id == "opengl") drifted else scrambled) })
+        assertEquals("opengl", t.chosen.id)
+        assertTrue(AiTuner.answersUsable(t.rows.first { it.setting.id == "opengl" }, gpuModels))
+        assertFalse(AiTuner.answersRight(t.rows.first { it.setting.id == "opengl" }, gpuModels))
+    }
+
+    @Test
+    fun `a setting that answers right is preferred to a faster one that is merely off`() {
+        val t = tune(flat(100.0, "opengl" to 60.0, "textures" to 90.0),
+            outputs = { id, _ -> listOf(when (id) { "opengl" -> ramp; "textures" -> drifted; else -> scrambled }) })
+        assertEquals("opengl", t.chosen.id)
+        assertTrue(AiTuner.lines(t).drop(1).first { it.contains("2D texture storage") }.endsWith("answers off but not wrong: another setting was used"))
+    }
+
+    @Test
+    fun `a wrong answer's explanation says what is wrong, that it scores 0, and how fast it ran`() {
+        assertEquals("wrong answer: its result doesn't match the CPU's (agreement %.2f, a match is 1.00), so it scores 0 · it ran at %.2f/s".format(0.02, 25.97),
+            AiAgreement.wrongAnswer(25.97, 0.02))
     }
 
     @Test

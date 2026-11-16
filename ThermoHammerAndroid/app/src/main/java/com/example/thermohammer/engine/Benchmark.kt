@@ -454,7 +454,9 @@ enum class AiTest(val number: Int, val title: String, val model: String, val ass
 }
 
 /** One model on one accelerator: inferences per second (0 = it couldn't run there, `error` says why). */
-data class AiRun(val test: AiTest, val accel: AiAccel, val ips: Double, val error: String? = null)
+data class AiRun(val test: AiTest, val accel: AiAccel, val ips: Double, val error: String? = null,
+                 /** How well a GPU's or an NPU's answer agreed with the CPU's for this model (AiAgreement; 1 is a match); null where there was none to compare. */
+                 val agreement: Double? = null)
 
 data class AiResult(
     val runs: List<AiRun>,

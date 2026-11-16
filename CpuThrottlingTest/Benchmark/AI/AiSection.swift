@@ -59,6 +59,7 @@ struct AiSection: BenchmarkSection {
             engine.publishAi(test, accel: nil, progress: 0, rate: -1, detail: test.model.uppercased())
             engine.publishAiVisual(AiVisual(test: test, picture: picture))
             var decodedAt: UInt64 = 0
+            var cpuOutputs: [[UInt8]]? = nil      // this model's answer on the CPU: what the GPU's and the NPU's have to be
             for (k, accel) in AiAccel.allCases.enumerated() {
                 guard engine.isActive else { return }
                 let skip = crashed.contains(accel) ? "crashed the app twice in this version" : accel == .npu ? npuProblem : nil
@@ -79,7 +80,14 @@ struct AiSection: BenchmarkSection {
                 }
                 guard engine.isActive else { return }
                 Self.clearStrikes(test, accel)
-                runs.append(AiRun(test: test, accel: accel, ips: BenchmarkScore.round2(measured.ips)))
+                if accel == .cpu { cpuOutputs = measured.outputs }
+                // a GPU's or an NPU's answer has to be the CPU's: speed with a wrong answer scores 0, and the run says why
+                let agreement: Double? = accel != .cpu ? cpuOutputs.map { AiAgreement.of(test, $0, measured.outputs) } : nil
+                if let agreement, AiAgreement.isWrong(agreement) {
+                    runs.append(AiRun(test: test, accel: accel, ips: 0, error: AiAgreement.wrongAnswer(ips: measured.ips, agreement: agreement), agreement: agreement))
+                } else {
+                    runs.append(AiRun(test: test, accel: accel, ips: BenchmarkScore.round2(measured.ips), agreement: agreement))
+                }
                 if decodedAt == 0 {
                     decodedAt = DispatchTime.now().uptimeNanoseconds
                     engine.publishAiVisual(inputs.visual(test, picture: picture, outputs: measured.outputs))
@@ -110,7 +118,8 @@ struct AiSection: BenchmarkSection {
         return runs.map { run in
             guard run.accel == .npu, run.ips > 0 else { return run }
             return AiRun(test: run.test, accel: run.accel, ips: 0,
-                         error: String(format: "no faster than the CPU (%.2f×): Core ML fell back to it", speedup))
+                         error: String(format: "no faster than the CPU (%.2f×): Core ML fell back to it, so it scores 0 · it ran at %.2f/s", speedup, run.ips),
+                         agreement: run.agreement)
         }
     }
 }

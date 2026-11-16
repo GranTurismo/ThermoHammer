@@ -43,7 +43,8 @@ data class AiVisual(
     val labels: List<Pair<String, Float>> = emptyList()   // top classes, 0..1
 )
 
-class AiBench(private val context: Context) {
+/** `dispatchFolder`: the name of this instance's folder of links (see dispatchDir) — the NPU safety check's process has its own. */
+class AiBench(private val context: Context, private val dispatchFolder: String = "npu-dispatch") {
 
     companion object {
         private const val WARMUP_RUNS = 3
@@ -81,7 +82,7 @@ class AiBench(private val context: Context) {
      */
     private fun dispatchDir(libDir: String): String = runCatching {
         val vendor = when (npuRuntime()) { "Qualcomm QNN" -> "Qualcomm"; "MediaTek NeuroPilot" -> "MediaTek"; else -> return libDir }
-        val dir = java.io.File(context.codeCacheDir, "npu-dispatch").apply { deleteRecursively(); mkdirs() }
+        val dir = java.io.File(context.codeCacheDir, dispatchFolder).apply { deleteRecursively(); mkdirs() }
         for (lib in java.io.File(libDir).listFiles().orEmpty()) {
             val otherVendor = lib.name.startsWith("libLiteRtDispatch_") && lib.name != "libLiteRtDispatch_$vendor.so"
             if (!otherVendor) android.system.Os.symlink(lib.path, java.io.File(dir, lib.name).path)

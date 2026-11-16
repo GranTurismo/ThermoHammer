@@ -38,6 +38,7 @@ public sealed class AiSection : IBenchmarkSection
             engine.PublishAi(test, null, 0, -1, test.Model().ToUpperInvariant());
             engine.PublishAiVisual(new AiVisual(test, picture));
             long decodedAt = 0;
+            byte[][]? cpuOutputs = null;        // this model's answer on the CPU: what the GPU's and the NPU's have to be
             for (int k = 0; k < AiTests.Accels.Length; k++)
             {
                 var accel = AiTests.Accels[k];
@@ -73,7 +74,12 @@ public sealed class AiSection : IBenchmarkSection
                 finally { Guard.End(); }
                 if (!engine.IsActive) return;
                 Guard.Finished(entry);      // it ran here: earlier unfinished runs of this model were chance
-                runs.Add(new AiRun(test, accel, BenchmarkScore.Round2(measured.Ips)));
+                if (accel == AiAccel.Cpu) cpuOutputs = measured.Outputs;
+                // a GPU's or an NPU's answer has to be the CPU's: speed with a wrong answer scores 0, and the run says why
+                double? agreement = accel != AiAccel.Cpu && cpuOutputs != null ? AiAgreement.Of(test, cpuOutputs, measured.Outputs) : null;
+                runs.Add(agreement is { } a && AiAgreement.IsWrong(a)
+                    ? new AiRun(test, accel, 0, AiAgreement.WrongAnswer(measured.Ips, a), a)
+                    : new AiRun(test, accel, BenchmarkScore.Round2(measured.Ips), Agreement: agreement));
                 if (decodedAt == 0)
                 {
                     decodedAt = Clock.Ns();
@@ -103,7 +109,7 @@ public sealed class AiSection : IBenchmarkSection
         double speedup = Math.Exp(ratios.Select(x => Math.Log(x)).Average());
         if (speedup >= 1.2) return runs;
         return runs.Select(x => x.Accel == AiAccel.Npu && x.Ips > 0
-            ? new AiRun(x.Test, x.Accel, 0, $"no faster than the CPU ({speedup:0.00}×): the runtime fell back to it") : x).ToList();
+            ? new AiRun(x.Test, x.Accel, 0, $"no faster than the CPU ({speedup:0.00}×): the runtime fell back to it, so it scores 0 · it ran at {x.Ips:0.00}/s", x.Agreement) : x).ToList();
     }
 }
 

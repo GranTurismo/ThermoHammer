@@ -243,6 +243,12 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         private const val KEY_LLM_PROBE_RUNNING = "llm_probe_running"   // "install:LLM:i8mm" while the i8mm CPU build runs
         private const val KEY_LLM_PROBE_CRASHED = "llm_probe_crashed"   // {"install:LLM:i8mm"} that took the app down
         private const val LLM_NOTICE_MS = 3_000L                  // how long "not run" stays up when the test can't run
+        /** Every "a test is in flight" marker: what a process that dies inside a test leaves behind. */
+        private val RUNNING_KEYS = listOf(KEY_RT_RUNNING, KEY_AI_RUNNING, KEY_AI_PROBE_RUNNING, KEY_LLM_RUNNING, KEY_LLM_PROBE_RUNNING)
+        private const val KEY_ENGINE_PID = "engine_pid"          // the process whose engine wrote the markers
+        private const val KEY_STOP_PID = "stop_requested_pid"    // that process was asked to stop its run
+        private const val KEY_NPU_CHECK = "npu_check"            // DriverCheck's verdict on the NPU, for this install and system build
+        private const val KEY_LLM_GPU_CHECK = "llm_gpu_check"    // and on the GPU for the LLM test
         private const val AI_SHOW_NS = 3_500_000_000L              // each model's result stays up at least this long
     }
 
@@ -343,6 +349,45 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         appContext.packageManager.getPackageInfo(appContext.packageName, 0).lastUpdateTime
     } catch (_: Exception) { 0L }
 
+    init { collectLeftoverMarkers() }
+
+    /**
+     * Markers still there when the app starts were left by the process before this one: here, once, they become crash
+     * records (or are dropped). It has to happen now and not when each test next runs — a run stopped before reaching
+     * the AI tests used to delete the record of the crash that came before it, and the next full run crashed again.
+     * Whether the old process crashed is Android's word (ProbeCrashes.leftByCrash), not just the app's own note that
+     * a stop was asked for: Android stops a crashing app too.
+     */
+    private fun collectLeftoverMarkers() {
+        val myPid = android.os.Process.myPid()
+        val previousPid = benchPrefs.getInt(KEY_ENGINE_PID, 0)
+        if (previousPid == myPid) return                       // the same process made a new engine: nothing died
+        if (RUNNING_KEYS.any { benchPrefs.contains(it) }) {
+            val stopRequested = previousPid != 0 && benchPrefs.getInt(KEY_STOP_PID, 0) == previousPid
+            if (ProbeCrashes.leftByCrash(exitReason(previousPid), stopRequested)) {
+                rayTracingSkipReason(); aiCrashedAccels(); aiCrashedSettings(); llmCrashedAccels(); llmCrashedProbes()
+            } else {
+                benchPrefs.edit().apply { RUNNING_KEYS.forEach { remove(it) } }.commit()
+            }
+        }
+        benchPrefs.edit().putInt(KEY_ENGINE_PID, myPid).remove(KEY_STOP_PID).commit()
+    }
+
+    /** Android's record of how this app's process `pid` ended (ApplicationExitInfo's reason), or null: none, or Android 10 and older. */
+    private fun exitReason(pid: Int): Int? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || pid == 0) return null
+        return runCatching {
+            val am = appContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            am.getHistoricalProcessExitReasons(appContext.packageName, pid, 1)
+                .firstOrNull { it.pid == pid && it.processName == appContext.packageName }?.reason
+        }.getOrNull()
+    }
+
+    /** A run begins: nothing is in flight in this process any more, and no stop has been asked of this run. */
+    private fun clearRunMarkers() {
+        benchPrefs.edit().apply { RUNNING_KEYS.forEach { remove(it) } }.remove(KEY_STOP_PID).commit()
+    }
+
     /** Why GPU Test 3 won't run on this phone (no ray tracing, or it crashed here before), or null. */
     fun rayTracingSkipReason(): String? {
         if (benchPrefs.getLong(KEY_RT_RUNNING, 0L) == installStamp && installStamp != 0L) {
@@ -408,6 +453,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             mode: StressMode = StressMode.CPU
     ) {
         if (_state.value.isRunning) return
+        clearRunMarkers()
 
         activeThreadCount =
             if (!mode.usesCpu) 0
@@ -538,6 +584,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     fun startBenchmark(from: String? = null) {
         if (_state.value.isRunning) return
+        clearRunMarkers()
         benchFrom = from
         activeThreadCount = 0
         val startBatt = StressProbes.battery(appContext)
@@ -967,7 +1014,13 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val inputs = com.example.thermohammer.engine.ai.AiInputs(appContext)
         val crashed = aiCrashedAccels()
         val available = bench.available()
-        val npuProblem = bench.npuProblem()
+        var npuProblem = bench.npuProblem()
+        // MediaTek's NeuroPilot first proves itself in a process of its own (DriverCheck): a driver that crashes there
+        // costs the NPU, not the app
+        if (npuProblem == null && bench.npuRuntime() == "MediaTek NeuroPilot" && AiAccel.NPU !in crashed) {
+            npuProblem = npuSafetyCheck(inputs)
+            if (!_state.value.isRunning) return@withContext null
+        }
         var npuBurst = true          // BURST until it fails once: then QNN's default performance mode
         var npuRetried = false       // the default-clocks retry is tried once, not on every model
         var npuLog: String? = null   // QNN's own words, the first time the NPU failed
@@ -1002,6 +1055,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             chosen[accel] = t.chosen
         }
         val delegation = ArrayList<AiDelegation>()
+        val npuProven = HashSet<AiTest>()        // models whose NPU run is known to be the NPU's own (NpuFallback)
 
         for (test in AiTest.entries) {
             if (!_state.value.isRunning) return@withContext null
@@ -1009,6 +1063,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             _state.update { it.copy(aiTest = test, aiAccel = null, aiProgress = 0f, aiRate = -1.0,
                 aiDetail = test.model.uppercase(), aiVisual = com.example.thermohammer.engine.ai.AiVisual(test, picture)) }
             var decodedAt = 0L
+            var cpuOutputs: List<ByteArray>? = null      // this model's answer on the CPU: what the NPU's is checked against
             for ((k, accel) in AiAccel.entries.withIndex()) {
                 if (!_state.value.isRunning) return@withContext null
                 val skip = when {
@@ -1059,12 +1114,24 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 } finally {
                     benchPrefs.edit().remove(KEY_AI_RUNNING).remove(KEY_AI_PROBE_RUNNING).commit()
                 }
+                if (measured != null && accel == AiAccel.CPU) cpuOutputs = measured.outputs
+                // how well this accelerator's answer agrees with the CPU's for the same model (null: none to compare with)
+                val agreement: Double? = cpuOutputs?.takeIf { measured != null && accel != AiAccel.CPU }
+                    ?.let { com.example.thermohammer.engine.ai.AiAgreement.of(test, it, measured!!.outputs) }
+                val wrong = agreement != null && com.example.thermohammer.engine.ai.AiAgreement.isWrong(agreement)
                 // which ops of the model stayed on the CPU, from LiteRT's own log; a model it logged nothing for is said so
-                if (measured != null && accel == AiAccel.NPU && mediatekNpu)
-                    delegation += LiteRtLog.delegation(test, bench.litertLines(startedMs - 500, AI_DELEGATION_LOG))
+                if (measured != null && accel == AiAccel.NPU && mediatekNpu) {
+                    val taken = LiteRtLog.delegation(test, bench.litertLines(startedMs - 500, AI_DELEGATION_LOG))
                         ?: AiDelegation(test, 0, 0, 0, emptyList(), logged = false)
+                    delegation += taken
+                    // the NPU's own work and not LiteRT's silent CPU fallback: MediaTek's compiler took ops of the model, and
+                    // the answer is the CPU's. Such a run keeps its rate even where the CPU is faster (NpuFallback).
+                    if (taken.logged && taken.selected > 0 && agreement != null && !wrong) npuProven += test
+                }
                 if (measured == null || !_state.value.isRunning) continue
-                runs += AiRun(test, accel, BenchmarkScore.round2(measured.ips))
+                // a GPU's or an NPU's answer has to be the CPU's: speed with a wrong answer scores 0, and the run says why
+                runs += if (wrong) AiRun(test, accel, 0.0, com.example.thermohammer.engine.ai.AiAgreement.wrongAnswer(measured.ips, agreement!!), agreement)
+                else AiRun(test, accel, BenchmarkScore.round2(measured.ips), agreement = agreement)
                 if (decodedAt == 0L) {
                     decodedAt = System.nanoTime()
                     val v = runCatching { inputs.visual(test, picture, measured.outputs) }.getOrNull()
@@ -1077,9 +1144,47 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 if (left > 0) { _state.update { it.copy(aiProgress = 1f) }; delay(left / 1_000_000) }
             }
         }
-        AiResult(fallbackChecked(runs), bench.npuRuntime().takeIf { npuProblem == null }, npuProblem,
+        AiResult(com.example.thermohammer.engine.ai.NpuFallback.check(runs, npuProven), bench.npuRuntime().takeIf { npuProblem == null }, npuProblem,
             npuFiles = if (bench.npuRuntime() == "Qualcomm QNN") bench.npuFiles() else null,
             npuLog = npuLog, npuBurst = npuBurst, tuning = tuning, delegation = delegation)
+    }
+
+    /** What a driver check's verdict is kept for: this install on this system build. */
+    private val driverCheckKey: String get() = "$installStamp ${Build.FINGERPRINT}"
+
+    /**
+     * DriverCheck's verdict on the NPU for this install on this system build: asked once, then kept. Null when the
+     * NPU may run, else why it is left alone.
+     */
+    private suspend fun npuSafetyCheck(inputs: AiInputs): String? {
+        val key = driverCheckKey
+        DriverCheck.cached(benchPrefs.getString(KEY_NPU_CHECK, null), key)?.let { return DriverCheck.problem(it, "NPU") }
+        val pictures = AiTest.entries.associateWith { inputs.input(it).second }
+        val outcome = DriverCheck.npu(appContext, AiTest.entries) { test ->
+            _state.update {
+                it.copy(aiTest = test, aiAccel = AiAccel.NPU, aiRate = -1.0, aiProgress = test.ordinal / AiTest.entries.size.toFloat(),
+                    aiVisual = com.example.thermohammer.engine.ai.AiVisual(test, pictures.getValue(test)),
+                    aiDetail = "NPU · MEDIATEK NEUROPILOT · SAFETY CHECK · ${test.model.uppercase()} · NOT SCORED")
+            }
+        }
+        if (!_state.value.isRunning) return null
+        DriverCheck.record(key, outcome)?.let { benchPrefs.edit().putString(KEY_NPU_CHECK, it).commit() }
+        return DriverCheck.problem(outcome, "NPU")
+    }
+
+    /**
+     * The same for the LLM test's GPU on Vulkan: a tiny model built and run on it in the check's process, just before
+     * the app builds the real one there. Null when the GPU may run, else why it is left alone.
+     */
+    private suspend fun llmGpuSafetyCheck(): String? {
+        val key = driverCheckKey
+        DriverCheck.cached(benchPrefs.getString(KEY_LLM_GPU_CHECK, null), key)?.let { return DriverCheck.problem(it, "GPU") }
+        _state.update { it.copy(llmAccel = LlmAccel.GPU, llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0,
+            llmDetail = "GPU · VULKAN · SAFETY CHECK · NOT SCORED") }
+        val outcome = DriverCheck.llmGpu(appContext)
+        if (!_state.value.isRunning) return null
+        DriverCheck.record(key, outcome)?.let { benchPrefs.edit().putString(KEY_LLM_GPU_CHECK, it).commit() }
+        return DriverCheck.problem(outcome, "GPU")
     }
 
     /**
@@ -1140,20 +1245,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         return result.copy(backend = backend)
     }
 
-    /**
-     * An "NPU" no faster than the CPU across the models means LiteRT ran it on the CPU after all (its
-     * fallback is silent): those runs score 0 instead of passing for an NPU.
-     */
-    private fun fallbackChecked(runs: List<AiRun>): List<AiRun> {
-        fun ips(t: AiTest, a: AiAccel) = runs.firstOrNull { it.test == t && it.accel == a }?.ips ?: 0.0
-        val ratios = AiTest.entries.mapNotNull { t -> ips(t, AiAccel.CPU).takeIf { it > 0 }?.let { c -> ips(t, AiAccel.NPU) / c }?.takeIf { it > 0 } }
-        if (ratios.isEmpty()) return runs
-        val speedup = kotlin.math.exp(ratios.sumOf { kotlin.math.ln(it) } / ratios.size)
-        if (speedup >= 1.2) return runs
-        return runs.map { if (it.accel == AiAccel.NPU && it.ips > 0) it.copy(ips = 0.0,
-            error = "no faster than the CPU (%.2f×): LiteRT fell back to it".format(speedup)) else it }
-    }
-
     // ── LLM test ──────────────────────────────────────────────────────────────
 
     /** The 3B model on the CPU, then the GPU, with the reply it writes on the stage. Null if the run was stopped. */
@@ -1188,8 +1279,12 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             val skip = when {
                 accel in crashed -> "crashed the app here last time"
                 accel == LlmAccel.GPU -> gpuProblem
+                    // a GPU on Vulkan first proves itself in a process of its own (DriverCheck), after the CPU test so
+                    // it can't touch that one; Adreno's OpenCL runs as it always has
+                    ?: if (gpuApi == "Vulkan") llmGpuSafetyCheck() else null
                 else -> null
             }
+            if (!_state.value.isRunning) return@withContext null
             if (skip != null) { runs += LlmRun(accel, 0.0, 0.0, error = skip); continue }
             if (accel == LlmAccel.CPU) {
                 // which CPU kernel build the CPU test runs in: the i8mm one where its few-millisecond self-test agrees
@@ -1315,9 +1410,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         threadAlive.set(false)
         gpuBench.stop()
         vkBench.stop()
-        // a stopped run is not a crash: only a process killed inside Test 3, an AI or an LLM run leaves a marker behind
-        benchPrefs.edit().remove(KEY_RT_RUNNING).remove(KEY_AI_RUNNING).remove(KEY_LLM_RUNNING)
-            .remove(KEY_AI_PROBE_RUNNING).remove(KEY_LLM_PROBE_RUNNING).apply()
+        // A stopped run is not a crash, but the markers are no longer deleted here: that also deleted the record of a
+        // crash, because Android stops a crashing app on its way down. Each test removes its own marker once its
+        // native call has returned, the next run starts clean (clearRunMarkers), and what is kept is that a stop was
+        // asked for — collectLeftoverMarkers weighs it against Android's record of how the process ended.
+        benchPrefs.edit().putInt(KEY_STOP_PID, android.os.Process.myPid()).apply()
         _state.update { it.copy(gpuActive = false) }
         sessionJob?.cancel()
         sessionJob = null

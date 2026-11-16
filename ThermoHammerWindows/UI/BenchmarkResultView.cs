@@ -235,7 +235,9 @@ public sealed class BenchmarkResultView : Grid
                     double ips = ai.Ips(t, a);
                     return Metric($"{a.Label()} {a.Precision()} INF/S", ips > 0 ? (ips < 100 ? ips.F(1) : ips.N0()) : "—", ips > 0 ? Forge.Ink0 : missing);
                 }).ToArray()));
-            foreach (var run in ai.Runs.Where(r => r.Test == t && r.Error != null && r.Accel != AiAccel.Npu))
+            // why an accelerator has no number here. A PC without an NPU says so once, on the summary above; any other
+            // reason — a wrong answer, a failure, a crash before — belongs to its model
+            foreach (var run in ai.Runs.Where(r => r.Test == t && r.Error != null && !(r.Accel == AiAccel.Npu && r.Error == ai.NpuProblem)))
                 col.Children.Add(Note($"{run.Accel.Label()}: {run.Error}", missing));
             var box = Ui.Box(col, Forge.Surface, 14, 0, BenchColor.Ai.WithAlpha(0.3));
             box.Padding = new Thickness(14, 12, 14, 12);

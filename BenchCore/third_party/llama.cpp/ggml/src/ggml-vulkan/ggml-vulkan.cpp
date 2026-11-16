@@ -5416,7 +5416,9 @@ void ggml_vk_instance_init() {
         // If only CPU devices are available, return without devices.
         if (vk_instance.device_indices.empty()) {
             for (size_t i = 0; i < devices.size(); i++) {
-                if (devices[i].getProperties().deviceType != vk::PhysicalDeviceType::eCpu) {
+                // ThermoHammer: the fallback device needs a Vulkan 1.2 driver too
+                if (devices[i].getProperties().deviceType != vk::PhysicalDeviceType::eCpu &&
+                    devices[i].getProperties().apiVersion >= VK_API_VERSION_1_2) {
                     vk_instance.device_indices.push_back(i);
                     break;
                 }
@@ -16345,7 +16347,25 @@ bool ggml_vk_instance_debug_utils_ext_available(
     UNUSED(instance_extensions);
 }
 
+// ThermoHammer: this backend needs Vulkan 1.2 from the GPU's own driver, and upstream only asks the loader (the
+// instance), which on Android is newer than many drivers. A Mali-G77 with a 1.1 driver got through, reported
+// bufferDeviceAddress in a 1.2 feature struct it had no business filling, and the first buffer then called
+// vkGetBufferDeviceAddress through a null pointer: a crash no exception handler sees. Such a device is not a device.
+static bool ggml_vk_device_has_vulkan_1_2(const vk::PhysicalDevice & vkdev) {
+    const vk::PhysicalDeviceProperties props = vkdev.getProperties();
+    if (props.apiVersion >= VK_API_VERSION_1_2) {
+        return true;
+    }
+    GGML_LOG_WARN("ggml_vulkan: skipping %s: its driver is Vulkan %u.%u, and 1.2 is required\n", props.deviceName.data(),
+                  VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion));
+    return false;
+}
+
 bool ggml_vk_device_is_supported(const vk::PhysicalDevice & vkdev) {
+    if (!ggml_vk_device_has_vulkan_1_2(vkdev)) {
+        return false;
+    }
+
     VkPhysicalDeviceFeatures2 device_features2;
     device_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 

@@ -322,7 +322,9 @@ struct BenchmarkResultView: View {
                         if a != .npu { Spacer() }
                     }
                 }
-                ForEach(ai.runs.filter { $0.test == t && $0.error != nil && $0.accel != .npu }, id: \.accel) { run in
+                // why an accelerator has no number here. A device without an NPU says so once, on the summary above; any
+                // other reason — a wrong answer, a failure, a crash before — belongs to its model
+                ForEach(ai.runs.filter { $0.test == t && $0.error != nil && !($0.accel == .npu && $0.error == ai.npuProblem) }, id: \.accel) { run in
                     note("\(run.accel.label): \(run.error ?? "")", missing)
                 }
             }

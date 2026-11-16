@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Engine\AiAgreement.cs" Link="Engine\AiAgreement.cs" />
     <Compile Include="..\Engine\BenchmarkModels.cs" Link="Engine\BenchmarkModels.cs" />
     <Compile Include="..\Engine\BenchmarkRecord.cs" Link="Engine\BenchmarkRecord.cs" />
     <Compile Include="..\Engine\BenchmarkUpdateImpact.cs" Link="Engine\BenchmarkUpdateImpact.cs" />

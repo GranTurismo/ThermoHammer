@@ -75,6 +75,14 @@ LLM_JNI(jfloatArray, kernelSelftest)(JNIEnv* env, jclass, jint threads, jobjectA
     return a;
 }
 
+/** The GPU self-test (BenchCore/llm): the tiny seeded model on the GPU llama.cpp chose; false with the reason in error[0]. */
+LLM_JNI(jboolean, gpuSelftest)(JNIEnv* env, jclass, jobjectArray error) {
+    char err[256] = "";
+    const int ok = bc_llm_gpu_selftest(err, sizeof err);
+    if (!ok && error && env->GetArrayLength(error) > 0) env->SetObjectArrayElement(error, 0, env->NewStringUTF(err));
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
 /** What the tuning callback needs to reach LlmNative.TuneListener.onTrial; it runs on the thread that called tuneThreads. */
 struct TuneCall {
     JNIEnv* env;

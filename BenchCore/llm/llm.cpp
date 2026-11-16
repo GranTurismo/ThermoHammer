@@ -845,15 +845,19 @@ int bc_llm_last_sample(const bc_llm* llm, float* out, int cap) {
     return n;
 }
 
-int bc_llm_kernel_selftest(int threads, float* out, int cap, char* err, int err_size) {
-    init_once();
+namespace {
+/**
+ * The self-test model (TINY) reading a prompt and one more token: on the CPU (`dev` null: no device, nothing
+ * offloaded — the kernel self-test) or with every layer on `dev` (the GPU self-test). The logits of both go to `out`.
+ */
+int tiny_selftest(ggml_backend_dev_t dev, int threads, float* out, int cap, char* err, int err_size) {
     constexpr int PROMPT = 24;
     const int need = 2 * int(TINY.vocab);
     if (!out || cap < need) { put(err, err_size, "the self-test's output buffer is too small"); return 0; }
     llama_model_params mp = llama_model_default_params();
-    ggml_backend_dev_t devices[1] = {nullptr};                   // CPU only: no device, nothing offloaded
+    ggml_backend_dev_t devices[2] = {dev, nullptr};
     mp.devices = devices;
-    mp.n_gpu_layers = 0;
+    mp.n_gpu_layers = dev ? -1 : 0;
     mp.split_mode = LLAMA_SPLIT_MODE_NONE;
     mp.load_mode = LLAMA_LOAD_MODE_NONE;
     gguf_context* meta = metadata(TINY);
@@ -896,6 +900,27 @@ int bc_llm_kernel_selftest(int threads, float* out, int cap, char* err, int err_
     }
     llama_model_free(model);
     return n;
+}
+}  // namespace
+
+int bc_llm_kernel_selftest(int threads, float* out, int cap, char* err, int err_size) {
+    init_once();
+    return tiny_selftest(nullptr, threads, out, cap, err, err_size);
+}
+
+int bc_llm_gpu_selftest(char* err, int err_size) {
+    init_once();
+    ggml_backend_dev_t dev = gpu_device();
+    if (!dev) { put(err, err_size, "llama.cpp found no GPU it can run on (Metal, OpenCL or Vulkan)"); return 0; }
+    std::vector<float> logits(static_cast<size_t>(BC_LLM_SELFTEST_LOGITS), 0.0f);
+    int n = 0;
+    std::string thrown;
+    // a backend that throws is an answer; one that crashes is what the caller's own process is for
+    if (!bc_guard::call([&] { n = tiny_selftest(dev, 1, logits.data(), int(logits.size()), err, err_size); }, thrown)) {
+        put(err, err_size, "the GPU self-test threw " + thrown);
+        return 0;
+    }
+    return n > 0 ? 1 : 0;
 }
 
 void bc_llm_set_reference(uint64_t seed, int tokens, const float* sample, int n) {

@@ -542,7 +542,9 @@ private fun AiCard(test: AiTest, ai: AiResult) {
                     if (ips > 0) Forge.ink0 else Ramp.at(0.85f))
             }
         }
-        ai.runs.filter { it.test == test && it.error != null && it.accel != AiAccel.NPU }.forEach {
+        // why an accelerator has no number here. A phone without an NPU says so once, on the summary card above, and
+        // not on every model; any other reason — a wrong answer, a failure, a crash last time — belongs to its model
+        ai.runs.filter { it.test == test && it.error != null && !(it.accel == AiAccel.NPU && it.error == ai.npuProblem) }.forEach {
             Text("${it.accel.label}: ${it.error}", style = ThermoType.annotation(8f, Ramp.at(0.85f)))
         }
     }

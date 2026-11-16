@@ -314,7 +314,8 @@ public static class AiTests
     public static string Precision(this AiAccel a) => a == AiAccel.Gpu ? "FP16" : "INT8";
 }
 
-public sealed record AiRun(AiTest Test, AiAccel Accel, double Ips, string? Error = null);
+/// <summary>Agreement: how well a GPU's or an NPU's answer agreed with the CPU's for this model (AiAgreement; 1 is a match); null where there was none to compare.</summary>
+public sealed record AiRun(AiTest Test, AiAccel Accel, double Ips, string? Error = null, double? Agreement = null);
 
 public sealed record AiResult(List<AiRun> Runs, string? NpuRuntime, string? NpuProblem = null)
 {
