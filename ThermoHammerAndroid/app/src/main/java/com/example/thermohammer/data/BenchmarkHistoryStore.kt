@@ -187,7 +187,7 @@ val BenchmarkResult.isComplete: Boolean
     get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0 && llmScore > 0
 
 /**
- * On-device benchmark history: the latest runs, so the home card can show this phone's best and
+ * On-device benchmark history: the latest runs, listed by MY RUNS, so the home card can show this phone's best and
  * offer to submit a run made offline. Corrupt or unreadable data degrades to "no history".
  */
 class BenchmarkHistoryStore(context: Context) {
@@ -245,7 +245,7 @@ class BenchmarkHistoryStore(context: Context) {
     }
 
     private companion object {
-        const val MAX_RECORDS = 30
+        const val MAX_RECORDS = MyRuns.KEPT                       // MY RUNS lists them
         const val TAG = "BenchmarkHistory"
         const val KEY_DISMISSED = "dismissed"
     }

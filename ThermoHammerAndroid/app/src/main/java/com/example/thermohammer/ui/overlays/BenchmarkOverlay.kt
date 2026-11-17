@@ -725,14 +725,14 @@ private fun Metric(label: String, value: String, color: Color) {
 private fun tempSpan(a: Float?, b: Float?): String =
     if (a == null || b == null) "--" else "%.0f→%.0f°".format(a, b)
 
-private fun validityNote(flags: Int): String {
+internal fun validityNote(flags: Int): String {
     val notes = buildList {
         if (flags and ValidityFlag.POWER_EVENT != 0) add("charger connected during the run")
         if (flags and ValidityFlag.ENV_CAPPED != 0) add("battery saver was on")
-        if (flags and ValidityFlag.COOLDOWN_TIMEOUT != 0) add("started warm")
+        if (flags and (ValidityFlag.COOLDOWN_TIMEOUT or ValidityFlag.WARM_STARTED) != 0) add("started warm")   // as PhoneHealth
         if (flags and ValidityFlag.INTERFERENCE != 0) add("the phone was busy with background work")
     }
-    return "Unverified: " + notes.joinToString(", ") + "."
+    return if (notes.isEmpty()) "Unverified." else "Unverified: " + notes.joinToString(", ") + "."
 }
 
 /** A test that could not be scored (e.g. the GPU failed to build a scene). */

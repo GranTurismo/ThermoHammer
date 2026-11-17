@@ -28,7 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.thermohammer.data.PendingResultStore
 import com.example.thermohammer.data.PendingTestResult
+import com.example.thermohammer.data.BenchmarkHistoryStore
+import com.example.thermohammer.data.BenchmarkRecord
 import com.example.thermohammer.data.CsvExport
+import com.example.thermohammer.data.MyRuns
 import com.example.thermohammer.data.MyDeviceName
 import com.example.thermohammer.data.RunHistoryStore
 import com.example.thermohammer.data.ShareLinks
@@ -190,6 +193,16 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean, platform: Int) {
     if (comparePair != null) lastCompare = comparePair
     BackHandler(enabled = comparePair != null || picking) { stopComparing() }
 
+    // MY RUNS: this phone's own runs, every one of them, not only the best that the board keeps
+    var showMyRuns by remember { mutableStateOf(false) }
+    var myRunsTick by remember { mutableIntStateOf(0) }
+    val myRuns by produceState<MyRuns.History?>(null, myRunsTick) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            MyRuns.build(BenchmarkHistoryStore(context).all(), BenchmarkRecord.thisDeviceModel())
+        }
+    }
+    BackHandler(enabled = showMyRuns) { showMyRuns = false }
+
     val onPlatform = remember(entries, platform) { if (platform == 0) entries else entries.filter { it.os == platform } }
     val top = onPlatform.firstOrNull()?.totalScore?.coerceAtLeast(1) ?: 1
     val shown = remember(onPlatform, searchText) {
@@ -253,6 +266,7 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean, platform: Int) {
                 }
             )
         }
+        myRuns?.takeIf { it.rows.isNotEmpty() }?.let { h -> item { MyRunsEntry(h) { showMyRuns = true } } }
         when {
             isLoading -> item {
                 Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
@@ -316,6 +330,33 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean, platform: Int) {
             BenchmarkCompareOverlay(pa.entry, pa.rank, pb.entry, pb.rank, isNetworkConnected, onDismiss = { stopComparing() })
         }
     }
+    AnimatedVisibility(
+        visible = showMyRuns,
+        enter = fadeIn(tween(240)) + slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 18 },
+        exit = fadeOut(tween(200)) + slideOutVertically(tween(200)) { it / 18 }
+    ) {
+        MyRunsOverlay(isNetworkConnected, onDismiss = { showMyRuns = false }, onChanged = { myRunsTick++; load() })
+    }
+    }
+}
+
+/** The way into MY RUNS from the board: how many runs this phone has kept, and its best. */
+@Composable
+private fun MyRunsEntry(h: MyRuns.History, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.phaseMeasured.copy(alpha = 0.06f))
+            .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.3f), RoundedCornerShape(14.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("MY RUNS", style = TextStyle(color = Forge.phaseMeasured, fontSize = 11.sp, fontFamily = InstrumentMono,
+                fontWeight = FontWeight.Black, letterSpacing = 1.sp))
+            val runs = if (h.rows.size == 1) "1 run on this phone" else "${h.rows.size} runs on this phone"
+            Text(listOfNotNull(runs, h.best?.let { "best %,d".format(it.score) }).joinToString(" · "),
+                style = TextStyle(color = Forge.ink0.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = InstrumentMono))
+        }
+        Text("›", color = Forge.phaseMeasured, fontSize = 18.sp)
     }
 }
 

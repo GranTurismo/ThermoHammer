@@ -577,7 +577,11 @@ fun RunKindPicker(selected: RunKind, onSelect: (RunKind) -> Unit, modifier: Modi
     }
 }
 
-/** What the benchmark runs, and this phone's best / last score (with a submit for an offline run). */
+/**
+ * The benchmark's card on the home screen: this phone's best / last score (with a submit for an offline run) and MY RUNS
+ * first, then what the benchmark runs as one chip per section. Every test is folded away behind SHOW EVERY TEST, so the
+ * card stays short and RUN BENCHMARK (just above it) is in reach.
+ */
 @Composable
 fun BenchmarkInfoCard(
     rayTracingProblem: String?,
@@ -587,8 +591,10 @@ fun BenchmarkInfoCard(
     canSubmitLast: Boolean,
     lastNeedsConnection: Boolean = false,   // a verified run not yet submitted, and no internet to submit it
     submitting: Boolean,
-    onSubmitLast: () -> Unit
+    onSubmitLast: () -> Unit,
+    onMyRuns: (() -> Unit)? = null           // MY RUNS: every run kept on this phone
 ) {
+    var showTests by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -598,154 +604,7 @@ fun BenchmarkInfoCard(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        for (t in com.example.thermohammer.engine.cpu.CpuTest.entries) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val color = cpuColor()
-                Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("C${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
-                        fontWeight = FontWeight.Black))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("CPU · ${t.title}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                    Text(t.labels.joinToString(" · ").lowercase().replaceFirstChar { it.uppercase() } +
-                        if (t.multiCore) " — on every core" else "",
-                        style = ThermoType.annotation(8f, Forge.ink2), maxLines = 1)
-                }
-                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-            }
-        }
-        for (t in com.example.thermohammer.engine.MemTest.entries) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val color = memColor()
-                Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("M${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
-                        fontWeight = FontWeight.Black))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("MEM · ${t.title}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                    Text(
-                        when (t) {
-                            com.example.thermohammer.engine.MemTest.RAM -> "Read, write and copy on every core · random-access latency"
-                            com.example.thermohammer.engine.MemTest.STORAGE -> "Sequential and random 4 KB reads and writes · temp file, deleted after"
-                            com.example.thermohammer.engine.MemTest.DATABASE -> "SQLite like a messaging app · save, mark read, open chats"
-                        },
-                        style = ThermoType.annotation(8f, Forge.ink2), maxLines = 1)
-                }
-                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-            }
-        }
-        for (t in BenchmarkTest.entries) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val color = benchmarkColor(t)
-                val skipped = t.rayTracing && rayTracingChecked && rayTracingProblem != null
-                Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("${t.number}", style = TextStyle(color = color,
-                        fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.title, style = ThermoType.data(12f, if (skipped) Forge.ink2 else Forge.ink0, FontWeight.Bold))
-                    Text(
-                        when (t) {
-                            BenchmarkTest.LAKE_VALLEY -> "Forest lake in daylight · sun shadows, water reflections"
-                            BenchmarkTest.NEON_CITY -> "Rainy neon city at night · 800+ lights, fog, wet streets"
-                            BenchmarkTest.NEON_CITY_RT -> if (skipped) (if (rayTracingProblem?.startsWith("Skipped") == true)
-                                    "Crashed here last time — skipped (0 points) until the app updates"
-                                else "Needs Vulkan ray tracing — not on this phone (0 points)")
-                                else "Neon City with ray-traced reflections and shadows · Vulkan"
-                        },
-                        style = ThermoType.annotation(8f, if (skipped) Ramp.at(0.5f) else Forge.ink2)
-                    )
-                }
-                Text(if (skipped) "—" else "${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-            }
-        }
-        for (t in UxTest.entries) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val color = uxColor(t)
-                Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("U${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
-                        fontWeight = FontWeight.Black))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                    Text(
-                        when (t) {
-                            UxTest.WEB -> "WebView · page layout, Canvas, CSS and SVG animation, JavaScript"
-                            UxTest.SCROLL -> "Endless social feed built as it scrolls ever faster · no dropped frames"
-                            UxTest.GALLERY -> "12 MP JPEG, WebP and AVIF photos decoded and shown in a web page"
-                            UxTest.PHOTO -> "GPU edits of a 12 MP photo · fisheye, blur, bokeh, sharpen, colour grade"
-                            UxTest.VIDEO -> "4K60 H.264, HEVC 10-bit, VP9, AV1 and 8K30 HEVC, AV1 · decoded flat out"
-                            UxTest.EXPORT -> "A 4K edit exported to H.264, HEVC, AV1 (+ 8K HEVC) · quality checked"
-                            UxTest.QR -> "32 camera frames · ZXing scored, Google ML Kit reported"
-                        },
-                        style = ThermoType.annotation(8f, Forge.ink2)
-                    )
-                }
-                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-            }
-        }
-        for (t in com.example.thermohammer.engine.AiTest.entries) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val color = aiColor()
-                Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("A${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
-                        fontWeight = FontWeight.Black))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                    Text("${t.model} · CPU, GPU and NPU", style = ThermoType.annotation(8f, Forge.ink2))
-                }
-                Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-            }
-        }
-        Text("AI runs open 8-bit models through LiteRT. The NPU counts where the phone has a supported one " +
-            "(most Snapdragon and Dimensity chips from 2021 on); elsewhere it scores 0.",
-            style = ThermoType.annotation(8f, Forge.ink2))
-        for (a in com.example.thermohammer.engine.LlmAccel.entries) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val color = llmColor()
-                Box(
-                    Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("L${a.ordinal + 1}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
-                        fontWeight = FontWeight.Black))
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("LLM · ${a.label}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                    Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Llama 3.2 3B, 4-bit · a 512-token prompt, then the reply token by token"
-                        else "The same model with every layer on the GPU · llama.cpp OpenCL (Adreno) or Vulkan",
-                        style = ThermoType.annotation(8f, Forge.ink2))
-                }
-                Text("${a.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-            }
-        }
-        Text("The LLM runs llama.cpp on a model built from a seed in memory — nothing is downloaded. The faster of the CPU " +
-            "and the GPU counts; it needs a phone with 6 GB of RAM.",
-            style = ThermoType.annotation(8f, Forge.ink2))
         if (best != null || last != null) {
-            HorizontalDivider(color = Forge.hairline)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (best != null) Column(Modifier.weight(1f)) {
                     Text("%,d".format(best.score), style = ThermoType.data(18f, Forge.phaseMeasured, FontWeight.Black))
@@ -770,8 +629,221 @@ fun BenchmarkInfoCard(
                     )
                 }
             }
+            if (onMyRuns != null) {
+                Text(
+                    "MY RUNS · SCORE HISTORY  ›",
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Forge.phaseMeasured.copy(alpha = 0.08f))
+                        .border(1.dp, Forge.phaseMeasured.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onMyRuns).padding(vertical = 9.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = TextStyle(color = Forge.phaseMeasured, fontSize = 9.sp, fontFamily = InstrumentMono,
+                        fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                )
+            }
+            HorizontalDivider(color = Forge.hairline)
+        }
+        BenchmarkSections(rayTracingProblem, rayTracingChecked)
+        Text(
+            if (showTests) "HIDE THE TESTS  ▴" else "SHOW EVERY TEST  ▾",
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { showTests = !showTests }.padding(vertical = 6.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            style = TextStyle(color = Forge.ink1, fontSize = 9.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp)
+        )
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showTests,
+            enter = androidx.compose.animation.expandVertically(tween(250)) + androidx.compose.animation.fadeIn(tween(250)),
+            exit = androidx.compose.animation.shrinkVertically(tween(200)) + androidx.compose.animation.fadeOut(tween(150))
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { BenchmarkTestRows(rayTracingProblem, rayTracingChecked) }
         }
     }
+}
+
+/** One chip per section and how many tests it holds; a line under them when the ray-traced GPU test will score 0. */
+@Composable
+private fun BenchmarkSections(rayTracingProblem: String?, rayTracingChecked: Boolean) {
+    val sections = listOf(
+        Triple("CPU", com.example.thermohammer.engine.cpu.CpuTest.entries.size, cpuColor()),
+        Triple("MEM", MemTest.entries.size, memColor()),
+        Triple("GPU", BenchmarkTest.entries.size, benchmarkColor(null)),
+        Triple("UX", UxTest.entries.size, uxColor(null)),
+        Triple("AI", com.example.thermohammer.engine.AiTest.entries.size, aiColor()),
+        Triple("LLM", com.example.thermohammer.engine.LlmAccel.entries.size, llmColor())
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("WHAT IT RUNS", modifier = Modifier.weight(1f), style = ThermoType.annotation(8f, Forge.ink2))
+        Text("${sections.sumOf { it.second }} TESTS · ${sections.size} SECTIONS", style = ThermoType.annotation(8f, Forge.ink2))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (line in sections.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((label, count, color) in line) Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.08f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                Text(label, style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+                Text(if (count == 1) "1 test" else "$count tests", style = ThermoType.annotation(8f, Forge.ink1))
+            }
+        }
+    }
+    if (rayTracingChecked && rayTracingProblem != null) {
+        Text(
+            if (rayTracingProblem.startsWith("Skipped")) "GPU test 3 (ray tracing) crashed here last time — skipped (0 points) until the app updates"
+            else "GPU test 3 needs Vulkan ray tracing — not on this phone (0 points)",
+            style = ThermoType.annotation(8f, Ramp.at(0.5f))
+        )
+    }
+}
+
+/** Every test of the benchmark with what it does and how long it measures — behind SHOW EVERY TEST. */
+@Composable
+private fun BenchmarkTestRows(rayTracingProblem: String?, rayTracingChecked: Boolean) {
+    for (t in com.example.thermohammer.engine.cpu.CpuTest.entries) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = cpuColor()
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("C${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Black))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("CPU · ${t.title}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                Text(t.labels.joinToString(" · ").lowercase().replaceFirstChar { it.uppercase() } +
+                    if (t.multiCore) " — on every core" else "",
+                    style = ThermoType.annotation(8f, Forge.ink2), maxLines = 1)
+            }
+            Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+        }
+    }
+    for (t in com.example.thermohammer.engine.MemTest.entries) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = memColor()
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("M${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Black))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("MEM · ${t.title}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                Text(
+                    when (t) {
+                        com.example.thermohammer.engine.MemTest.RAM -> "Read, write and copy on every core · random-access latency"
+                        com.example.thermohammer.engine.MemTest.STORAGE -> "Sequential and random 4 KB reads and writes · temp file, deleted after"
+                        com.example.thermohammer.engine.MemTest.DATABASE -> "SQLite like a messaging app · save, mark read, open chats"
+                    },
+                    style = ThermoType.annotation(8f, Forge.ink2), maxLines = 1)
+            }
+            Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+        }
+    }
+    for (t in BenchmarkTest.entries) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = benchmarkColor(t)
+            val skipped = t.rayTracing && rayTracingChecked && rayTracingProblem != null
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("${t.number}", style = TextStyle(color = color,
+                    fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(t.title, style = ThermoType.data(12f, if (skipped) Forge.ink2 else Forge.ink0, FontWeight.Bold))
+                Text(
+                    when (t) {
+                        BenchmarkTest.LAKE_VALLEY -> "Forest lake in daylight · sun shadows, water reflections"
+                        BenchmarkTest.NEON_CITY -> "Rainy neon city at night · 800+ lights, fog, wet streets"
+                        BenchmarkTest.NEON_CITY_RT -> if (skipped) (if (rayTracingProblem?.startsWith("Skipped") == true)
+                                "Crashed here last time — skipped (0 points) until the app updates"
+                            else "Needs Vulkan ray tracing — not on this phone (0 points)")
+                            else "Neon City with ray-traced reflections and shadows · Vulkan"
+                    },
+                    style = ThermoType.annotation(8f, if (skipped) Ramp.at(0.5f) else Forge.ink2)
+                )
+            }
+            Text(if (skipped) "—" else "${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+        }
+    }
+    for (t in UxTest.entries) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = uxColor(t)
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("U${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Black))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                Text(
+                    when (t) {
+                        UxTest.WEB -> "WebView · page layout, Canvas, CSS and SVG animation, JavaScript"
+                        UxTest.SCROLL -> "Endless social feed built as it scrolls ever faster · no dropped frames"
+                        UxTest.GALLERY -> "12 MP JPEG, WebP and AVIF photos decoded and shown in a web page"
+                        UxTest.PHOTO -> "GPU edits of a 12 MP photo · fisheye, blur, bokeh, sharpen, colour grade"
+                        UxTest.VIDEO -> "4K60 H.264, HEVC 10-bit, VP9, AV1 and 8K30 HEVC, AV1 · decoded flat out"
+                        UxTest.EXPORT -> "A 4K edit exported to H.264, HEVC, AV1 (+ 8K HEVC) · quality checked"
+                        UxTest.QR -> "32 camera frames · ZXing scored, Google ML Kit reported"
+                    },
+                    style = ThermoType.annotation(8f, Forge.ink2)
+                )
+            }
+            Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+        }
+    }
+    for (t in com.example.thermohammer.engine.AiTest.entries) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = aiColor()
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("A${t.number}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Black))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                Text("${t.model} · CPU, GPU and NPU", style = ThermoType.annotation(8f, Forge.ink2))
+            }
+            Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+        }
+    }
+    Text("AI runs open 8-bit models through LiteRT. The NPU counts where the phone has a supported one " +
+        "(most Snapdragon and Dimensity chips from 2021 on); elsewhere it scores 0.",
+        style = ThermoType.annotation(8f, Forge.ink2))
+    for (a in com.example.thermohammer.engine.LlmAccel.entries) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = llmColor()
+            Box(
+                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("L${a.ordinal + 1}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
+                    fontWeight = FontWeight.Black))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("LLM · ${a.label}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+                Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Llama 3.2 3B, 4-bit · a 512-token prompt, then the reply token by token"
+                    else "The same model with every layer on the GPU · llama.cpp OpenCL (Adreno) or Vulkan",
+                    style = ThermoType.annotation(8f, Forge.ink2))
+            }
+            Text("${a.seconds}s", style = ThermoType.data(10f, Forge.ink1))
+        }
+    }
+    Text("The LLM runs llama.cpp on a model built from a seed in memory — nothing is downloaded. The faster of the CPU " +
+        "and the GPU counts; it needs a phone with 6 GB of RAM.",
+        style = ThermoType.annotation(8f, Forge.ink2))
 }
 
 @Composable

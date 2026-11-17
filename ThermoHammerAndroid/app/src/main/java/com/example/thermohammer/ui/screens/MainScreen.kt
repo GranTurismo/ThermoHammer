@@ -181,6 +181,7 @@ private fun DiagnosticsScreenWrapper(
     var showSpeedCheck by remember { mutableStateOf(false) }          // FIND MY LOST SPEED
     var presentCard by remember { mutableStateOf<RunCard?>(null) }    // PRESENT: full screen, its own window
     var showCertificate by remember { mutableStateOf(false) }         // the result's VERIFIED HEALTH CERTIFICATE
+    var showMyRuns by remember { mutableStateOf(false) }              // MY RUNS: this phone's benchmark history
 
     // ── GPU benchmark: result card, local history, submission ──
     var showBenchResult by remember { mutableStateOf(false) }
@@ -297,12 +298,13 @@ private fun DiagnosticsScreenWrapper(
     // ── Back stack: overlays → run-guard → double-tap exit ─────────────────────
     val anyOverlay = showPreTest || showSummary || showConnectionRequest || showComparison ||
             showBackgroundAborted || showManualCancelled || showServerInit || showServerError ||
-            showBenchResult || benchErrorMsg != null || showSpeedCheck || showCertificate
+            showBenchResult || benchErrorMsg != null || showSpeedCheck || showCertificate || showMyRuns
 
     BackHandler(enabled = anyOverlay) {
         when {
             showSpeedCheck -> showSpeedCheck = false          // on top of everything; closing stops a check
             showCertificate -> showCertificate = false
+            showMyRuns -> showMyRuns = false
             showBenchResult -> closeBenchResult()
             benchErrorMsg != null -> { benchErrorMsg = null; engine.resetTestResult() }
             showSummary -> closeSummary()
@@ -636,20 +638,9 @@ private fun DiagnosticsScreenWrapper(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     RunKindPicker(selected = selectedKind, onSelect = onKindChange)
-                    if (selectedKind == RunKind.BENCHMARK) {
-                        val best = benchRecords.maxByOrNull { it.score }
-                        val last = benchRecords.lastOrNull()
-                        BenchmarkInfoCard(
-                            rayTracingProblem = rtProblem,
-                            rayTracingChecked = rtChecked,
-                            best = best,
-                            last = last,
-                            canSubmitLast = last != null && !last.submitted && last.validityFlags == 0 && isNetworkConnected,
-                            lastNeedsConnection = last != null && !last.submitted && last.validityFlags == 0 && !isNetworkConnected,
-                            submitting = benchSubmitting && !showBenchResult,
-                            onSubmitLast = { last?.let { submitBenchmark(it) } }
-                        )
-                    } else {
+                    // the stress test's options come before its button; the benchmark has none, so its button sits right
+                    // under the picker, in reach, and what it runs follows below
+                    if (selectedKind == RunKind.STRESS) {
                         DurationPicker(selected = selectedDuration, onSelect = onDurationChange)
                         ModePicker(selected = selectedMode, onSelect = onModeChange)
                         if (selectedMode.usesCpu) {
@@ -667,6 +658,32 @@ private fun DiagnosticsScreenWrapper(
                 onStop = { engine.stopTest() },
                 startLabel = if (selectedKind == RunKind.BENCHMARK) "RUN BENCHMARK" else "INITIATE STRESS TEST"
             )
+            AnimatedVisibility(
+                visible = !state.isRunning && selectedKind == RunKind.BENCHMARK,
+                enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(200))
+            ) {
+                Column {
+                    // this phone's runs only (MyRuns' rules): a backup restored from another phone is neither
+                    // its best nor sent under its name
+                    val mine = remember(benchRecords) {
+                        com.example.thermohammer.data.MyRuns.build(benchRecords, BenchmarkRecord.thisDeviceModel())
+                    }
+                    val best = mine.best
+                    val last = mine.latest
+                    BenchmarkInfoCard(
+                        rayTracingProblem = rtProblem,
+                        rayTracingChecked = rtChecked,
+                        best = best,
+                        last = last,
+                        canSubmitLast = last != null && !last.submitted && last.validityFlags == 0 && isNetworkConnected,
+                        lastNeedsConnection = last != null && !last.submitted && last.validityFlags == 0 && !isNetworkConnected,
+                        submitting = benchSubmitting && !showBenchResult,
+                        onSubmitLast = { last?.let { submitBenchmark(it) } },
+                        onMyRuns = { showMyRuns = true }
+                    )
+                }
+            }
             if (selectedKind == RunKind.STRESS) StabilityChart(
                 points = state.chartPoints,
                 events = state.thermalEvents,
@@ -868,6 +885,17 @@ private fun DiagnosticsScreenWrapper(
                     }
                 )
             }
+        }
+        AnimatedVisibility(showMyRuns, enter = overlayEnter, exit = overlayExit) {
+            com.example.thermohammer.ui.overlays.MyRunsOverlay(
+                isNetworkConnected = isNetworkConnected,
+                onDismiss = { showMyRuns = false },
+                onChanged = {
+                    coroutineScope.launch {
+                        benchRecords = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.current() }
+                    }
+                }
+            )
         }
         AnimatedVisibility(benchErrorMsg != null, enter = overlayEnter, exit = overlayExit) {
             com.example.thermohammer.ui.overlays.BenchmarkErrorOverlay(benchErrorMsg ?: "") {
