@@ -182,6 +182,9 @@ struct ContentView: View {
             }
             // `-askForRating` asks as if a verified, complete run's result was just closed (the limits still apply)
             if ProcessInfo.processInfo.arguments.contains("-askForRating") { askForRating(verified: true, complete: true) }
+            // `-myRuns` opens MY RUNS (with `-benchmarkPicked`, on the benchmark pick, where its button is)
+            if ProcessInfo.processInfo.arguments.contains("-benchmarkPicked") { runBenchmark = true }
+            if ProcessInfo.processInfo.arguments.contains("-myRuns") { overlays.myRuns = true }
         }
     }
 
@@ -230,9 +233,14 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.25), value: bench.phase)
     }
 
-    /** The layers any screen can open (AppOverlays): find my lost speed, the health certificate, a run's presentation. */
+    /** The layers any screen can open (AppOverlays): MY RUNS, find my lost speed, the health certificate, a run's presentation. */
     @ViewBuilder private var appLayer: some View {
         ZStack {
+            if overlays.myRuns {
+                MyRunsView { withAnimation(.easeOut(duration: 0.2)) { overlays.myRuns = false } }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(29)
+            }
             if overlays.lostSpeed {
                 LostSpeedView { withAnimation(.easeOut(duration: 0.2)) { overlays.lostSpeed = false } }
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -249,6 +257,7 @@ struct ContentView: View {
                     .zIndex(31)
             }
         }
+        .animation(.easeOut(duration: 0.25), value: overlays.myRuns)
         .animation(.easeOut(duration: 0.25), value: overlays.lostSpeed)
         .animation(.easeOut(duration: 0.25), value: overlays.certificate != nil)
         .animation(.easeOut(duration: 0.3), value: overlays.present != nil)
@@ -611,6 +620,22 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.3), value: engine.isRunning)
     }
 
+    /** MY RUNS · SCORE HISTORY, under the benchmark pick — once this device has a run of its own to list. */
+    @ViewBuilder private var myRunsButton: some View {
+        if !MyRuns.build(benchHistory.records, deviceModel: LeaderboardService.shared.getDeviceModelName()).rows.isEmpty {
+            Button {
+                ThermoHaptics.tap()
+                withAnimation(.easeOut(duration: 0.25)) { overlays.myRuns = true }
+            } label: {
+                Text("MY RUNS · SCORE HISTORY  ›").font(ThermoFont.mono(9, weight: .black)).tracking(0.5).foregroundColor(Forge.phaseMeasured)
+                    .frame(maxWidth: .infinity).padding(.vertical, 9)
+                    .background(Forge.phaseMeasured.opacity(0.08)).cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Forge.phaseMeasured.opacity(0.35), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     /** Stress test or benchmark, its options, and the button — or, while a test runs, hold to abort. */
     @ViewBuilder private var runControls: some View {
         VStack(spacing: 10) {
@@ -634,6 +659,7 @@ struct ContentView: View {
                 if runBenchmark {
                     Text("WHOLE PHONE · SIX SECTIONS · SAME TESTS AS ANDROID")
                         .font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
+                    myRunsButton
                 }
                 // pickers — animated away during run
                 if !runBenchmark {

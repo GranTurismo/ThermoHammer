@@ -48,7 +48,7 @@ struct BenchmarkResultView: View {
                             .font(ThermoFont.mono(9)).foregroundColor(Ramp.at(0.5)).multilineTextAlignment(.center)
                     }
                     if !result.isVerified {
-                        Text(validityNote(result.validityFlags)).font(ThermoFont.mono(9)).foregroundColor(Ramp.at(0.5)).multilineTextAlignment(.center)
+                        Text(Self.validityNote(result.validityFlags)).font(ThermoFont.mono(9)).foregroundColor(Ramp.at(0.5)).multilineTextAlignment(.center)
                     }
                     HealthCard(result: result, record: record, onFindLostSpeed: { AppOverlays.shared.lostSpeed = true })
                     if let cpu = result.cpu {
@@ -435,7 +435,8 @@ struct BenchmarkResultView: View {
         .padding(.top, 6)
     }
 
-    private func validityNote(_ flags: Int) -> String {
+    /// Why a run isn't verified — the result and MY RUNS say it the same way.
+    static func validityNote(_ flags: Int) -> String {
         var notes: [String] = []
         if flags & BenchFlag.powerEvent != 0 { notes.append("charger connected during the run") }
         if flags & BenchFlag.envCapped != 0 { notes.append("Low Power Mode was on") }
@@ -444,6 +445,6 @@ struct BenchmarkResultView: View {
             notes.append(LeaderboardService.isMac ? "another app was in front during the run, or the Mac was busy"
                          : "the phone was busy with background work")
         }
-        return "Unverified: " + notes.joined(separator: ", ") + "."
+        return notes.isEmpty ? "Unverified." : "Unverified: " + notes.joined(separator: ", ") + "."
     }
 }

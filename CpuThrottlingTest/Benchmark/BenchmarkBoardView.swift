@@ -155,9 +155,10 @@ struct BenchmarkBoardView: View {
 
     private func stopComparing() { comparePair = nil; picking = false; picked = [] }
 
-    /// This device's verified runs that haven't reached the leaderboard yet (made offline, or not submitted).
+    /// This device's verified, complete runs that haven't reached the leaderboard yet (made offline, or not submitted), newest
+    /// first — the ones MY RUNS offers to submit: never a run restored from another model, which would go up under this one's name.
     private var unsubmitted: [BenchmarkRecord] {
-        history.records.filter { $0.version == BenchmarkScore.version && $0.complete && $0.validityFlags == 0 && !$0.submitted }.reversed()
+        MyRuns.build(history.records, deviceModel: LeaderboardService.shared.getDeviceModelName()).rows.filter(\.canSubmit).map(\.record)
     }
 
     /// The chosen platform's phones, highest first: ranks and the score bars are relative to these.
@@ -215,6 +216,7 @@ struct BenchmarkBoardView: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(Forge.ink0.opacity(0.04)).cornerRadius(12)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Forge.ink0.opacity(0.08), lineWidth: 1))
+                MyRunsEntry()
                 if !unsubmitted.isEmpty { unsubmittedSection }
                 if isLoading {
                     ProgressView().tint(Forge.phasePreFlight).padding(40)
@@ -245,6 +247,8 @@ struct BenchmarkBoardView: View {
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .task { await load() }
+        // a run submitted from MY RUNS (or this board) can change the board: fetch it again
+        .onChange(of: history.records.filter(\.submitted).count) { _ in Task { await load() } }
         .overlay {
             if let e = selected {
                 BenchmarkDetailOverlay(entry: e, onCompare: {
@@ -281,8 +285,7 @@ struct BenchmarkBoardView: View {
                             Task {
                                 do {
                                     let res = try await BenchmarkUpload.submitAndRemember(r)
-                                    submitNote = "Submitted · \(res.score.formatted()) points · rank #\(res.rank)"
-                                    await load()
+                                    submitNote = "Submitted · \(res.score.formatted()) points · rank #\(res.rank)"   // the board reloads on the submit (onChange)
                                 } catch { submitNote = error.localizedDescription }
                                 submittingId = nil
                             }

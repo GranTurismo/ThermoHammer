@@ -138,6 +138,7 @@
 		5280562C2D330CD55C34F5B2 /* deepseek2ocr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5EEB94A933CB53D1929C701F /* deepseek2ocr.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		5298AD8955D0F4DA6494DD60 /* BenchmarkUpdateImpact.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1E17F2B612E88E19C906B7 /* BenchmarkUpdateImpact.swift */; };
 		52D16F70EDFBD29250EC917C /* phi3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7FEA3447192CD5B4FC613906 /* phi3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		5401E44DC8D687CBF0BD4890 /* MyRunsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B33D66E87625097239856B57 /* MyRunsView.swift */; };
 		545E56B88B9984A163A8E429 /* nemotron.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1B870B2E24908DB45DC4B5E7 /* nemotron.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		547A387B90AE35F6C119625C /* ggml-metal-device.m in Sources */ = {isa = PBXBuildFile; fileRef = CC5CAC29FFB19CCEC228747B /* ggml-metal-device.m */; settings = {COMPILER_FLAGS = "-O3 -w -fno-objc-arc -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE -DGGML_SCHED_MAX_COPIES=4 -DGGML_USE_CPU -DGGML_USE_METAL -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"; }; };
 		54ECA01C7855EFDEC4DEA266 /* chameleon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 276EC2A962E4616FD72E2725 /* chameleon.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -166,6 +167,7 @@
 		63C003CA3B7F074197046A84 /* llama-kv-cache-dsa.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A65F9B0CAA3EAB64C34BE6E3 /* llama-kv-cache-dsa.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		63C69556DBCDCD8EC8E8C896 /* minicpm3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6B460F439CF939DB5466926C /* minicpm3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		6423A7B97420291981252877 /* Content.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3B8A1AF0FF04521ADA3F262E /* Content.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		64278A5A87810555CB70685F /* MyRuns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7354176627F058B1AB370ADB /* MyRuns.swift */; };
 		642AC07248A4E7E025A0041C /* nemotron-h.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4E3B315C7C911537E615F43B /* nemotron-h.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		64C1D64F3AB9CAD2742871E3 /* PhotoEdit.metal in Sources */ = {isa = PBXBuildFile; fileRef = 2486945E45EBFAE81DDAD4F9 /* PhotoEdit.metal */; };
 		657436EE3E19C44CA65B63F2 /* WhiteRectDetector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
@@ -207,6 +209,7 @@
 		7C04286E055B1820CCD6450F /* Present.metal in Sources */ = {isa = PBXBuildFile; fileRef = DC815853BE3F6387B5857444 /* Present.metal */; };
 		7C88D429CEF8F817CED5FC3F /* bailingmoe3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A4935375A5E971631B429CC /* bailingmoe3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7D30D96192559F475E0EED53 /* unary.metal in Sources */ = {isa = PBXBuildFile; fileRef = 09DA174C9E7AA8496E4235D9 /* unary.metal */; };
+		7D52F1F9337E118785CFA271 /* MyRunsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F7C8899095630C512844BF /* MyRunsTests.swift */; };
 		7D8C5CDD95D8757FBD6A682C /* grovemoe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 16B60FF063F880B956FFD37E /* grovemoe.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7E0EE26DD6C5F5604B7A31FC /* nanbeige.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B66178B505B5B3269FE8A237 /* nanbeige.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7EBB51A05FB20FD5F933E3A4 /* QRVersion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 95D7479CF380E892C159D1F9 /* QRVersion.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
@@ -598,6 +601,7 @@
 		45A41B8D1D74503CD76F1D79 /* ggml-metal-device.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ggml-metal-device.cpp"; sourceTree = "<group>"; };
 		4652DC0083737584274C48D4 /* internlm2.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = internlm2.cpp; sourceTree = "<group>"; };
 		46DED66B60FD4CAF0E74E09C /* BarcodeFormat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BarcodeFormat.h; sourceTree = "<group>"; };
+		46F7C8899095630C512844BF /* MyRunsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyRunsTests.swift; sourceTree = "<group>"; };
 		4729CE69063508C8A7742415 /* SpeedCheckRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedCheckRunner.swift; sourceTree = "<group>"; };
 		47569961C749112F0E5F7CB9 /* eurobert.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = eurobert.cpp; sourceTree = "<group>"; };
 		476B1FA947183F99F4286DAC /* misc.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = misc.metal; sourceTree = "<group>"; };
@@ -689,6 +693,7 @@
 		7199A370E9D41E30D291D4A6 /* exaone-moe.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "exaone-moe.cpp"; sourceTree = "<group>"; };
 		728D6A2595F2A64338D06242 /* qwen2.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = qwen2.cpp; sourceTree = "<group>"; };
 		72EE744BDB03F1EB0E69EF5C /* ShareLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareLinksTests.swift; sourceTree = "<group>"; };
+		7354176627F058B1AB370ADB /* MyRuns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyRuns.swift; sourceTree = "<group>"; };
 		73CA043AF3361EBD6E01083B /* mem.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mem.cpp; sourceTree = "<group>"; };
 		744A4A04B7D2B3499F5E239C /* core.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = core.hpp; sourceTree = "<group>"; };
 		7492042211D189830BD73179 /* Reader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Reader.h; sourceTree = "<group>"; };
@@ -851,6 +856,7 @@
 		B2A6426975F29A8DE0C8DD7F /* BitMatrixCursor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BitMatrixCursor.h; sourceTree = "<group>"; };
 		B31B6515323D458E18D53BBF /* QRErrorCorrectionLevel.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRErrorCorrectionLevel.cpp; sourceTree = "<group>"; };
 		B334A7A6C4FE0F0881FFD741 /* QRDataBlock.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRDataBlock.cpp; sourceTree = "<group>"; };
+		B33D66E87625097239856B57 /* MyRunsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyRunsView.swift; sourceTree = "<group>"; };
 		B389E10D9CE23C0F8D174105 /* GenericGF.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GenericGF.h; sourceTree = "<group>"; };
 		B3BD001E756711DDAA6CC802 /* mul_mv.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = mul_mv.metal; sourceTree = "<group>"; };
 		B421214AFFD0F13F11BF8DA9 /* repack.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = repack.cpp; sourceTree = "<group>"; };
@@ -1732,6 +1738,7 @@
 				7CD3956F225D6E1F09E7D617 /* CertificateTests.swift */,
 				A86DD9349394D6AB02C57E72 /* CsvExportTests.swift */,
 				86E80651D4E2AC9DCEAE3109 /* FontTests.swift */,
+				46F7C8899095630C512844BF /* MyRunsTests.swift */,
 				B60860F76E5EF69500090C78 /* ReviewPolicyTests.swift */,
 				72EE744BDB03F1EB0E69EF5C /* ShareLinksTests.swift */,
 				6BE1B256319A0D7E540E9340 /* SnapshotRenderTests.swift */,
@@ -1851,6 +1858,8 @@
 				0DE14A5DA42D63ADD66D0F40 /* BenchmarkUpload.swift */,
 				362E134F5A19DBEF362D8A76 /* CpuBench.swift */,
 				99A4C04A5775909EF39CEF3B /* MemBench.swift */,
+				7354176627F058B1AB370ADB /* MyRuns.swift */,
+				B33D66E87625097239856B57 /* MyRunsView.swift */,
 				C3DD32FD22D91AF13023A6B2 /* PhoneHealth.swift */,
 				DF4D41A1321DED5E61F46159 /* AI */,
 				35951ADABA48296A8A849296 /* GPU */,
@@ -2033,6 +2042,7 @@
 				687730C5F7B8FC968889FA51 /* CertificateTests.swift in Sources */,
 				2562559D1B96DF0980AC56FA /* CsvExportTests.swift in Sources */,
 				B18E9168086D0D122C39D768 /* FontTests.swift in Sources */,
+				7D52F1F9337E118785CFA271 /* MyRunsTests.swift in Sources */,
 				F570EE97B51B603BD58A6AEE /* ReviewPolicyTests.swift in Sources */,
 				AD8C6E2F076CDC170786D2A2 /* ShareLinksTests.swift in Sources */,
 				42B1723B651A985ACA7329E9 /* SnapshotRenderTests.swift in Sources */,
@@ -2105,6 +2115,8 @@
 				32BDFF88CB6DD0B1893E6BB5 /* LlmStageView.swift in Sources */,
 				0D31AC57DD618E83E66925A9 /* LostSpeedView.swift in Sources */,
 				D3D429FDDCAE629C98561AC4 /* MemBench.swift in Sources */,
+				64278A5A87810555CB70685F /* MyRuns.swift in Sources */,
+				5401E44DC8D687CBF0BD4890 /* MyRunsView.swift in Sources */,
 				F823E5EA3ECE2D1797CDBA85 /* NeonCity.metal in Sources */,
 				ED987C2A5A2BAD33C028E353 /* NeonCityRenderer.swift in Sources */,
 				4C179CB92BF814EEE196747D /* NeonCitySim.swift in Sources */,

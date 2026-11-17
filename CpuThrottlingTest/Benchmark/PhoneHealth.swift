@@ -205,7 +205,9 @@ struct HealthCard: View {
 
     var body: some View {
         let report = PhoneHealth.assess(result, model: model, stats: stats,
-                                        history: history.records.filter { $0.version == BenchmarkScore.version },
+                                        // this model's runs only (a nil model is an older run of this one), as MY RUNS lists them
+                                        history: history.records.filter { $0.version == BenchmarkScore.version
+                                            && ($0.deviceModel == nil || $0.deviceModel == model) },
                                         current: record, osVersion: UIDevice.current.systemVersion)
         let accent: Color = {
             switch report.verdict {

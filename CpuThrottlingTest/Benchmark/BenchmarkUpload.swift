@@ -265,7 +265,7 @@ enum BenchmarkUpload {
     static func gpuName() -> String { MTLCreateSystemDefaultDevice()?.name ?? "" }
 }
 
-/** The phone's benchmark runs (Documents/benchmark_history.json) — the latest 30. */
+/** The phone's benchmark runs (Documents/benchmark_history.json) — the latest 100, which MY RUNS lists. */
 final class BenchmarkHistoryStore: ObservableObject {
     static let shared = BenchmarkHistoryStore()
     @Published private(set) var records: [BenchmarkRecord] = []
@@ -277,7 +277,7 @@ final class BenchmarkHistoryStore: ObservableObject {
 
     var best: BenchmarkRecord? { records.filter { $0.version == BenchmarkScore.version && $0.complete }.max { $0.score < $1.score } }
 
-    func add(_ r: BenchmarkRecord) { records = Array((records + [r]).suffix(30)); save() }
+    func add(_ r: BenchmarkRecord) { records = Array((records + [r]).suffix(MyRuns.kept)); save() }
 
     /// `serverId`: the leaderboard's id for the run (the submit's answer) — what its share link and certificate point at.
     func markSubmitted(_ id: UUID, serverId: Int?) {
