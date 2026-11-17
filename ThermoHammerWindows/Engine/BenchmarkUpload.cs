@@ -208,16 +208,14 @@ public static class BenchmarkUpload
     }
 }
 
-/// <summary>The PC's benchmark runs — the latest 30.</summary>
+/// <summary>The PC's benchmark runs — the latest 100, which MY RUNS lists.</summary>
 public sealed class BenchmarkHistoryStore
 {
     public static readonly BenchmarkHistoryStore Shared = new();
     private const string File = "benchmark_history.json";
     public List<BenchmarkRecord> Records { get; private set; } = AppData.Load<List<BenchmarkRecord>>(File) ?? [];
 
-    public BenchmarkRecord? Best => Records.Where(r => r.Version == BenchmarkScore.Version && r.Complete).MaxBy(r => r.Score);
-
-    public void Add(BenchmarkRecord r) { Records = Records.Append(r).TakeLast(30).ToList(); AppData.Save(File, Records); }
+    public void Add(BenchmarkRecord r) { Records = Records.Append(r).TakeLast(MyRuns.Kept).ToList(); AppData.Save(File, Records); }
 
     private const string DismissedKey = "benchmarkUpdate.dismissed";
     private readonly HashSet<string> dismissed = [.. Settings.Strings(DismissedKey)];

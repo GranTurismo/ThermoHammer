@@ -356,14 +356,14 @@ public sealed class BenchmarkResultView : Grid
         }
     }
 
-    private static string ValidityNote(int flags)
+    internal static string ValidityNote(int flags)
     {
         var notes = new List<string>();
         if ((flags & BenchFlag.PowerEvent) != 0) notes.Add("the charger was plugged or unplugged during the run");
         if ((flags & BenchFlag.EnvCapped) != 0) notes.Add("battery saver or best power efficiency was on");
         if ((flags & (BenchFlag.CooldownTimeout | BenchFlag.WarmStarted)) != 0) notes.Add("started warm");
         if ((flags & BenchFlag.Interference) != 0) notes.Add("another window was in front during the run, or the PC was busy");
-        return "Unverified: " + string.Join(", ", notes) + ".";
+        return notes.Count == 0 ? "Unverified." : "Unverified: " + string.Join(", ", notes) + ".";
     }
 }
 

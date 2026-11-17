@@ -21,7 +21,7 @@ public static class BenchmarkInfoCard
     /// run is verified, not yet submitted, and there's a connection; `lastNeedsConnection`: the same without one.
     /// </summary>
     public static FrameworkElement Build(string? rayTracingProblem, bool rayTracingChecked, BenchmarkRecord? best, BenchmarkRecord? last,
-        bool canSubmitLast, bool lastNeedsConnection, bool submitting, Action onSubmitLast, string? message = null)
+        bool canSubmitLast, bool lastNeedsConnection, bool submitting, Action onSubmitLast, string? message = null, Action? onMyRuns = null)
     {
         var col = Ui.VStack(10);
         foreach (var t in CpuTests.All)
@@ -86,6 +86,10 @@ public static class BenchmarkInfoCard
             foreach (FrameworkElement e in scores.Children) e.VerticalAlignment = VerticalAlignment.Center;
             col.Children.Add(scores);
             if (message != null) col.Children.Add(Ui.Text(message, 9, Forge.Ink1, wrap: true));
+            // MY RUNS: every run kept on this PC
+            if (onMyRuns != null)
+                col.Children.Add(Ui.Button("MY RUNS · SCORE HISTORY  ›", onMyRuns, Forge.PhaseMeasured.WithAlpha(0.08), Forge.PhaseMeasured, 9,
+                    Forge.W.Black, 8, 9, stroke: Forge.PhaseMeasured.WithAlpha(0.35)));
         }
         return Ui.Box(col, Forge.Surface, 14, 14, Forge.Hairline);
     }
@@ -177,9 +181,10 @@ public sealed class BenchmarkInfoPanel : ContentControl
 
     private void Refresh()
     {
-        var store = BenchmarkHistoryStore.Shared;
-        var best = store.Best;
-        var last = store.Records.LastOrDefault(r => r.Version == BenchmarkScore.Version);
+        // this PC's runs as MY RUNS lists them: a run copied from another PC is neither its best nor sent under its name
+        var mine = MyRuns.Build(BenchmarkHistoryStore.Shared.Records, DeviceInfo.Model);
+        var best = mine.Best;
+        var last = mine.Latest;
         bool online = NetworkMonitor.Shared.IsConnected;
         // only a verified, complete run that hasn't gone yet can be submitted from here
         bool unsent = last is { Complete: true, Submitted: false, ValidityFlags: 0 };
@@ -187,7 +192,7 @@ public sealed class BenchmarkInfoPanel : ContentControl
         if (k == key && Content != null) return;
         key = k;
         var card = BenchmarkInfoCard.Build(rayTracingProblem, rayTracingChecked, best, last, unsent && online, unsent && !online, submitting,
-            () => { if (last != null) _ = SubmitLast(last); }, message);
+            () => { if (last != null) _ = SubmitLast(last); }, message, () => MyRunsView.Open(Refresh));
         Content = double.IsInfinity(maxHeight) ? card : new ScrollViewer
         {
             Content = card, MaxHeight = maxHeight, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,

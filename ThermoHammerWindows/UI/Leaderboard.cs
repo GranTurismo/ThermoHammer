@@ -156,8 +156,9 @@ public sealed class BenchmarkBoard : Grid
     /// <summary>This PC's verified runs that haven't reached the leaderboard (made offline, or not submitted).</summary>
     private void Unsubmitted()
     {
-        var runs = BenchmarkHistoryStore.Shared.Records
-            .Where(r => r.Version == BenchmarkScore.Version && r.Complete && r.ValidityFlags == 0 && !r.Submitted).Reverse().ToList();
+        // the runs MY RUNS would offer to submit (current version, made on this PC), complete ones only, newest first
+        var runs = MyRuns.Build(BenchmarkHistoryStore.Shared.Records, DeviceInfo.Model).Rows
+            .Where(x => x.CanSubmit && x.Record.Complete).Select(x => x.Record).ToList();
         if (runs.Count == 0) return;
         var amber = Ramp.At(0.5);
         list.Children.Add(Ui.Text($"YOUR UNSUBMITTED RUNS ({runs.Count})", 11, amber, Forge.W.Black));
@@ -171,6 +172,23 @@ public sealed class BenchmarkBoard : Grid
             list.Children.Add(Ui.Box(row, amber.WithAlpha(0.06), 14, 12, amber.WithAlpha(0.25)));
         }
         if (submitNote != null) list.Children.Add(Ui.Text(submitNote, 9, Forge.Ink1, wrap: true));
+    }
+
+    /// <summary>The way into MY RUNS from the board: how many runs this PC has kept, and its best (nothing when it has none).</summary>
+    private void MyRunsCard()
+    {
+        var h = MyRuns.Build(BenchmarkHistoryStore.Shared.Records, DeviceInfo.Model);
+        if (h.Rows.Count == 0) return;
+        string runs = h.Rows.Count == 1 ? $"1 run on this {ShareLinks.Device}" : $"{h.Rows.Count} runs on this {ShareLinks.Device}";
+        var words = Ui.VStack(2, Ui.Text("MY RUNS", 11, Forge.PhaseMeasured, Forge.W.Black),
+            Ui.Text(h.Best is { } b ? $"{runs} · best {b.Score.N0()}" : runs, 9, Forge.Ink0.WithAlpha(0.5)));
+        var row = Ui.HStack(8, words.Grow(), Ui.Text("›", 18, Forge.PhaseMeasured));
+        row.Stretch = false;
+        foreach (FrameworkElement e in row.Children) e.VerticalAlignment = VerticalAlignment.Center;
+        var card = Ui.Button(row, () => MyRunsView.Open(() => _ = Load()), Forge.PhaseMeasured.WithAlpha(0.06), 14, 12, 10,
+            stroke: Forge.PhaseMeasured.WithAlpha(0.3));
+        card.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        list.Children.Add(card);
     }
 
     private async Task Submit(BenchmarkRecord r)
@@ -195,6 +213,7 @@ public sealed class BenchmarkBoard : Grid
         list.Children.Clear();
         RenderCompareButton();
         if (picking) list.Children.Add(PickHint());
+        MyRunsCard();
         Unsubmitted();
         if (loading) { list.Children.Add(new Spinner(Forge.PhasePreFlight).Align(HorizontalAlignment.Center).Pad(40)); return; }
         if (error.Length > 0)

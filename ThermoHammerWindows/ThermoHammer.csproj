@@ -24,9 +24,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Product>ThermoHammer</Product>
     <Company>GranTurismo</Company>
-    <Version>2.1.6</Version>
+    <Version>2.1.7</Version>
     <!-- the build number, as on the phones (Android versionCode / iOS build) -->
-    <FileVersion>2.1.6.0</FileVersion>
+    <FileVersion>2.1.7.0</FileVersion>
     <!-- the WPF/WebView2 packages ship every UI language's resources; the app is English -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>

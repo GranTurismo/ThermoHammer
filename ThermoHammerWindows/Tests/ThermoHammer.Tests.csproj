@@ -2,7 +2,7 @@
 
   <!--
     Unit tests for the Windows app's pure logic — share links and texts, CSV export, the stress curve, the speed check, the
-    benchmark's update impact and the record's section scores. The app itself is WPF and only builds for Windows, so the tests
+    benchmark's update impact, the record's section scores and MY RUNS' history. The app itself is WPF and only builds for Windows, so the tests
     compile just the engine files with no Windows calls in them (linked below) on plain .NET: `dotnet test` on a Mac works too.
   -->
   <PropertyGroup>
@@ -21,6 +21,7 @@
     <Compile Include="..\Engine\BenchmarkRecord.cs" Link="Engine\BenchmarkRecord.cs" />
     <Compile Include="..\Engine\BenchmarkUpdateImpact.cs" Link="Engine\BenchmarkUpdateImpact.cs" />
     <Compile Include="..\Engine\CrashText.cs" Link="Engine\CrashText.cs" />
+    <Compile Include="..\Engine\MyRuns.cs" Link="Engine\MyRuns.cs" />
     <Compile Include="..\Engine\Native.cs" Link="Engine\Native.cs" />
     <Compile Include="..\Engine\ReviewPolicy.cs" Link="Engine\ReviewPolicy.cs" />
     <Compile Include="..\Engine\RunCsv.cs" Link="Engine\RunCsv.cs" />
