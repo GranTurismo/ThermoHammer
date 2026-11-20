@@ -26,6 +26,7 @@ final class SpeedCheckRunner: ObservableObject {
     private var active = false
     private var stopReason: String?
     private var idleWasDisabled = false
+    private let runActivity = RunActivity()    // a Mac: no App Nap while the check runs
     private var backgroundObserver: NSObjectProtocol?
     private static let savedKey = "speedCheck.saved"
 
@@ -72,6 +73,7 @@ final class SpeedCheckRunner: ObservableObject {
         lock.withLock { active = true; stopReason = nil }
         idleWasDisabled = UIApplication.shared.isIdleTimerDisabled
         UIApplication.shared.isIdleTimerDisabled = true
+        runActivity.begin("ThermoHammer speed check")
         // iOS suspends a backgrounded app: the seconds after that would measure nothing
         backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
                                                                     object: nil, queue: .main) { [weak self] _ in
@@ -184,6 +186,7 @@ final class SpeedCheckRunner: ObservableObject {
             self.lock.withLock { self.active = false }
             self.running = false
             UIApplication.shared.isIdleTimerDisabled = self.idleWasDisabled
+            self.runActivity.end()
             if let o = self.backgroundObserver { NotificationCenter.default.removeObserver(o) }
             self.backgroundObserver = nil
         }

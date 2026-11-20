@@ -98,6 +98,7 @@ targets:
           G="$SRCROOT/BenchCore/third_party/llama.cpp/ggml/src"
           T="$DERIVED_FILE_DIR/ggml-tensor"
           OS=ios26.0; [ "$PLATFORM_NAME" = iphonesimulator ] && OS=ios26.0-simulator
+          [ "${IS_MACCATALYST:-NO}" = YES ] && OS=ios26.0-macabi
           mkdir -p "$T"
           for k in mul_mm fa_tensor; do
             xcrun -sdk "$PLATFORM_NAME" metal -O3 -DGGML_METAL_HAS_TENSOR -mtargetos=$OS -I "$G" -I "$G/ggml-metal" \
@@ -126,6 +127,17 @@ targets:
       CLANG_CXX_LANGUAGE_STANDARD: "c++17"
       # llama.cpp's CPU kernels are built for Arm only: the simulator runs on Apple silicon
       "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+      # The Mac app: Mac Catalyst — the same code compiled natively for macOS on Apple silicon (Arm only, as above),
+      # in place of the iPad app the App Store showed on Macs. One bundle id, so it's the same App Store listing.
+      # Device family stays iPhone + iPad ("Scale Interface to Match iPad"): the desktop layout's sizes are iPad points.
+      SUPPORTS_MACCATALYST: YES
+      DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+      "EXCLUDED_ARCHS[sdk=macosx*]": x86_64
+      # the Mac App Store's sandbox (network for the leaderboard, save panels for exports) — and none of the iPhone's
+      # increased-memory-limit entitlement, which macOS has no use for
+      "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": CpuThrottlingTest/CpuThrottlingTest-Mac.entitlements
+      "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+      INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
       OTHER_LDFLAGS: ["-lz", "-lc++", "-ObjC"]
       ENABLE_USER_SCRIPT_SANDBOXING: NO
       # the Neural Engine models (Benchmark/AI/NeuralEngine) are loaded by name, no generated classes

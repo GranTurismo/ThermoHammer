@@ -37,7 +37,7 @@ final class VideoBench {
     private func samples(_ clip: VideoClip) throws -> ([CMSampleBuffer], CMVideoFormatDescription) {
         guard let url = Bundle.main.url(forResource: clip.asset, withExtension: nil) else { throw GpuError(message: "\(clip.asset) missing") }
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .video).first else { throw GpuError(message: "iOS can't open this container") }
+        guard let track = asset.tracks(withMediaType: .video).first else { throw GpuError(message: "\(LeaderboardService.isMac ? "macOS" : "iOS") can't open this container") }
         let reader = try AVAssetReader(asset: asset)
         let out = AVAssetReaderTrackOutput(track: track, outputSettings: nil)   // compressed, as stored
         out.alwaysCopiesSampleData = false

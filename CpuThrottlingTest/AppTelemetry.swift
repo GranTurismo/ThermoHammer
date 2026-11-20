@@ -31,7 +31,11 @@ enum AppTelemetry {
         FirebaseApp.configure()
         configured = true
 
+        #if targetEnvironment(macCatalyst)
+        let platform = "macos_catalyst"
+        #else
         let platform = LeaderboardService.isMac ? "ipados_on_mac" : "ios"
+        #endif
         let model = LeaderboardService.shared.getDeviceModelName()
         let soc = StressEngine.socModel()
         let ramGb = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1e9).rounded())

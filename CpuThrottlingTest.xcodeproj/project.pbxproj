@@ -171,6 +171,7 @@
 		642AC07248A4E7E025A0041C /* nemotron-h.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4E3B315C7C911537E615F43B /* nemotron-h.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		64C1D64F3AB9CAD2742871E3 /* PhotoEdit.metal in Sources */ = {isa = PBXBuildFile; fileRef = 2486945E45EBFAE81DDAD4F9 /* PhotoEdit.metal */; };
 		657436EE3E19C44CA65B63F2 /* WhiteRectDetector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
+		657EF580C5B258EBAA5E58FB /* RunActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFD30D4A68B4B350829C331 /* RunActivity.swift */; };
 		668C1B8D30EB9BBDBD84A663 /* llama-kv-cache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 176A869F8ABD8D3D43DA7EEF /* llama-kv-cache.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		66C57163F40838F288AC157D /* BenchmarkCompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCBE9815A1B3E8E0CF446A7D /* BenchmarkCompareView.swift */; };
 		687730C5F7B8FC968889FA51 /* CertificateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CD3956F225D6E1F09E7D617 /* CertificateTests.swift */; };
@@ -876,6 +877,7 @@
 		B854B32B15F78B674CA13D2F /* llama-kv-cache-dsa-iswa.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama-kv-cache-dsa-iswa.h"; sourceTree = "<group>"; };
 		B8E9023D796CAE9DF6BB82E3 /* LakeValleyAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LakeValleyAsset.swift; sourceTree = "<group>"; };
 		B926F034391023E104A7AA6E /* mul_mm.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = mul_mm.metal; sourceTree = "<group>"; };
+		B9B667EC28AC7C3B8349A480 /* CpuThrottlingTest-Mac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "CpuThrottlingTest-Mac.entitlements"; sourceTree = "<group>"; };
 		BA298C54552219B38F430207 /* llama-sampler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama-sampler.h"; sourceTree = "<group>"; };
 		BA2AA68DB5802370BFCC2601 /* LakeValley.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = LakeValley.metal; sourceTree = "<group>"; };
 		BB8832B1E868BF3EFC64E339 /* mamba-base.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "mamba-base.cpp"; sourceTree = "<group>"; };
@@ -1005,6 +1007,7 @@
 		FABA5B1E853903B3A244AE28 /* vec.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = vec.h; sourceTree = "<group>"; };
 		FBD39E9555E7CA885E244920 /* BenchmarkDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkDetailView.swift; sourceTree = "<group>"; };
 		FCBE9815A1B3E8E0CF446A7D /* BenchmarkCompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkCompareView.swift; sourceTree = "<group>"; };
+		FCFD30D4A68B4B350829C331 /* RunActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActivity.swift; sourceTree = "<group>"; };
 		FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResultStore.swift; sourceTree = "<group>"; };
 		FDDE3D4C708D7DA24D31B026 /* QRReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QRReader.h; sourceTree = "<group>"; };
 		FEEA76557BED25EF380D49D4 /* TritMatrix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TritMatrix.h; sourceTree = "<group>"; };
@@ -1165,6 +1168,7 @@
 				9608B3D2047ADE4532990BD7 /* ComparisonModels.swift */,
 				8E4099E6624D1B717D9A9E26 /* ComparisonView.swift */,
 				4E61339A94C4606A3CBEE8AF /* ContentView.swift */,
+				B9B667EC28AC7C3B8349A480 /* CpuThrottlingTest-Mac.entitlements */,
 				81C2F8BB8FE39E2F29F964F6 /* CpuThrottlingTest.entitlements */,
 				85E7D334222CDE547C1AB270 /* CpuThrottlingTestApp.swift */,
 				0145D8CB99485ABB0E23DC58 /* ForgeComponents.swift */,
@@ -1176,6 +1180,7 @@
 				10B52B4BBBE4971D7FA97D28 /* NetworkMonitor.swift */,
 				FDB5720D3F7FD20B924F2C48 /* PendingResultStore.swift */,
 				EBB1DD15BBFEE6B5630F2EAB /* ReviewPrompt.swift */,
+				FCFD30D4A68B4B350829C331 /* RunActivity.swift */,
 				1AF49F5F3B8940186267F33B /* RunHistoryStore.swift */,
 				B1B3232B3AD29924355737D0 /* StabilityChart.swift */,
 				1A23C7164E359A5C71C59AEC /* StressCurve.swift */,
@@ -2003,7 +2008,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nG=\"$SRCROOT/BenchCore/third_party/llama.cpp/ggml/src\"\nT=\"$DERIVED_FILE_DIR/ggml-tensor\"\nOS=ios26.0; [ \"$PLATFORM_NAME\" = iphonesimulator ] && OS=ios26.0-simulator\nmkdir -p \"$T\"\nfor k in mul_mm fa_tensor; do\n  xcrun -sdk \"$PLATFORM_NAME\" metal -O3 -DGGML_METAL_HAS_TENSOR -mtargetos=$OS -I \"$G\" -I \"$G/ggml-metal\" \\\n    -c \"$G/ggml-metal/kernels/$k.metal\" -o \"$T/$k.air\"\ndone\nxcrun -sdk \"$PLATFORM_NAME\" metallib \"$T/mul_mm.air\" \"$T/fa_tensor.air\" \\\n  -o \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/ggml-tensor.metallib\"\n";
+			shellScript = "set -e\nG=\"$SRCROOT/BenchCore/third_party/llama.cpp/ggml/src\"\nT=\"$DERIVED_FILE_DIR/ggml-tensor\"\nOS=ios26.0; [ \"$PLATFORM_NAME\" = iphonesimulator ] && OS=ios26.0-simulator\n[ \"${IS_MACCATALYST:-NO}\" = YES ] && OS=ios26.0-macabi\nmkdir -p \"$T\"\nfor k in mul_mm fa_tensor; do\n  xcrun -sdk \"$PLATFORM_NAME\" metal -O3 -DGGML_METAL_HAS_TENSOR -mtargetos=$OS -I \"$G\" -I \"$G/ggml-metal\" \\\n    -c \"$G/ggml-metal/kernels/$k.metal\" -o \"$T/$k.air\"\ndone\nxcrun -sdk \"$PLATFORM_NAME\" metallib \"$T/mul_mm.air\" \"$T/fa_tensor.air\" \\\n  -o \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/ggml-tensor.metallib\"\n";
 		};
 		38E3909229168D3751109F69 /* Upload Crashlytics dSYMs */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2147,6 +2152,7 @@
 				837A547E4FE6564E62067939 /* ReedSolomonEncoder.cpp in Sources */,
 				1CCB273594A963BB93BADDA6 /* ResultPoint.cpp in Sources */,
 				373D46F4C7F7837D2522A802 /* ReviewPrompt.swift in Sources */,
+				657EF580C5B258EBAA5E58FB /* RunActivity.swift in Sources */,
 				D0EBDDD016B904BF73B1198E /* RunHistoryStore.swift in Sources */,
 				550C603FA4259E7B2C9E9F49 /* ShareCard.swift in Sources */,
 				0098073FDCD545F09F8719F5 /* ShareLinks.swift in Sources */,
@@ -2459,13 +2465,17 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_ENTITLEMENTS = CpuThrottlingTest/CpuThrottlingTest.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "CpuThrottlingTest/CpuThrottlingTest-Mac.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
 				CURRENT_PROJECT_VERSION = 45;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = C58ABB3474;
+				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"Vendor/TensorFlowLiteC\"",
@@ -2478,6 +2488,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIAppFonts = (
 					Fonts/jetbrainsmono_regular.ttf,
 					Fonts/jetbrainsmono_medium.ttf,
@@ -2514,6 +2525,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "CpuThrottlingTest/Benchmark/BenchCore-Bridging.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -2631,13 +2643,17 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_ENTITLEMENTS = CpuThrottlingTest/CpuThrottlingTest.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "CpuThrottlingTest/CpuThrottlingTest-Mac.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
 				CURRENT_PROJECT_VERSION = 45;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = C58ABB3474;
+				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"Vendor/TensorFlowLiteC\"",
@@ -2650,6 +2666,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = ThermoHammer;
 				INFOPLIST_KEY_CFBundleName = ThermoHammer;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIAppFonts = (
 					Fonts/jetbrainsmono_regular.ttf,
 					Fonts/jetbrainsmono_medium.ttf,
@@ -2686,6 +2703,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.granturismo.thermohammer;
 				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "CpuThrottlingTest/Benchmark/BenchCore-Bridging.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

@@ -53,6 +53,7 @@ final class BenchmarkEngine: ObservableObject {
     @Published private(set) var llmReply: [Int] = []    // the reply being written, token ids
     @Published private(set) var llmPrompts = 0          // prompts read so far on this accelerator
     @Published private(set) var inBackground = false  // on a Mac: another app is in front of the run
+    private let runActivity = RunActivity()           // a Mac: no App Nap while the run is on
     @Published private(set) var result: BenchmarkResult?
     @Published private(set) var error: String?
     @Published private(set) var record: BenchmarkRecord?
@@ -132,6 +133,7 @@ final class BenchmarkEngine: ObservableObject {
         phase = .preparing
         watchFront()
         UIApplication.shared.isIdleTimerDisabled = true
+        runActivity.begin("ThermoHammer benchmark")
         let t = Thread { [weak self] in self?.runAll() }
         t.qualityOfService = .userInitiated
         t.stackSize = 8 << 20
@@ -325,6 +327,7 @@ final class BenchmarkEngine: ObservableObject {
         let record = r.map(BenchmarkRecord.init)
         ui {
             UIApplication.shared.isIdleTimerDisabled = false
+            self.runActivity.end()
             self.cpuTest = nil; self.memTest = nil; self.gpuTest = nil; self.uxTest = nil; self.webPage = nil
             self.videoFrame = nil; self.qrFrame = nil; self.qrFound = nil; self.stageTitle = ""
             self.aiTest = nil; self.aiAccel = nil; self.aiVisual = nil

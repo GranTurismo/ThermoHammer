@@ -255,6 +255,7 @@ final class StressEngine: ObservableObject {
     private var counters: [SafeCounter] = []
     private var workerMachThreads: [thread_act_t] = []
     private var keepAlive = false
+    private let runActivity = RunActivity()    // a Mac: no App Nap while the test runs
 
     private var loopTask: Task<Void, Never>? = nil
     private var thermalCancel: AnyCancellable?
@@ -481,6 +482,7 @@ final class StressEngine: ObservableObject {
             threading: threadingType == .single ? "single" : "multi"
         )
         UIApplication.shared.isIdleTimerDisabled = true
+        runActivity.begin("ThermoHammer stress test")
         loopTask = Task.detached(priority: .userInitiated) { [weak self] in
             await self?.runSession()
         }
@@ -508,6 +510,7 @@ final class StressEngine: ObservableObject {
         keepAlive = false
         loopTask?.cancel()
         DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = false }
+        runActivity.end()
         if state.phase != .idle { state.phase = .idle }
     }
 
@@ -789,6 +792,7 @@ final class StressEngine: ObservableObject {
             self.isRunning = false
             self.state.phase = .idle
             UIApplication.shared.isIdleTimerDisabled = false
+            self.runActivity.end()
         }
         _ = lastSched; _ = lastLoad; _ = lastTs
     }
@@ -809,6 +813,7 @@ final class StressEngine: ObservableObject {
             self.isRunning = false
             self.state.phase = .idle
             UIApplication.shared.isIdleTimerDisabled = false
+            self.runActivity.end()
         }
     }
 

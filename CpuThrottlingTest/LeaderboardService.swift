@@ -162,8 +162,15 @@ class LeaderboardService {
         return v
     }
     
-    /// The app also runs, unchanged, on Apple-silicon Macs ("Designed for iPad"): there it reports itself as a Mac.
-    static var isMac: Bool { ProcessInfo.processInfo.isiOSAppOnMac }
+    /// On a Mac — the Mac Catalyst build, or the iPad app on an Apple-silicon Mac ("Designed for iPad", which
+    /// isiOSAppOnMac alone covers; a Catalyst app says false there): it reports itself as a Mac.
+    static var isMac: Bool {
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return ProcessInfo.processInfo.isiOSAppOnMac
+        #endif
+    }
     /// OsPlatform on the server: 1 iOS, 2 Android, 3 macOS (4 Windows is the Windows app's).
     static var osPlatform: Int { isMac ? 3 : 1 }
     static func osLabel(_ os: Int, _ version: String) -> String {
