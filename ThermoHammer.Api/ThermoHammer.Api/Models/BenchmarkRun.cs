@@ -479,6 +479,33 @@ public static class BenchmarkScoring
 
     private static string F2(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Every number a run measured, to spot the same run sent a second time (a second tap on Submit): two real runs never
+    /// agree on all of them. The hash differs on every send (a new session key), and the OS and app version are read when
+    /// the run is sent, not when it ran, so neither is part of it.
+    /// </summary>
+    public static string Measurements(BenchmarkRun r) => string.Join("|",
+        F2(r.Test1Fps), F2(r.Test1LowFps), F2(r.Test2Fps), F2(r.Test2LowFps), F2(r.Test3Fps), F2(r.Test3LowFps),
+        r.RayTracing ? "1" : "0", F2(r.WebLayout), F2(r.WebCanvas), F2(r.WebCss), F2(r.WebSvg), F2(r.WebJs), F2(r.QrRate),
+        F2(r.MlKitQrRate ?? 0), F2(r.CpuMath), F2(r.CpuData), F2(r.CpuCrypto), F2(r.CpuMulti), F2(r.ScrollSpeed),
+        F2(r.ScrollDropped), F2(r.GalleryJpeg), F2(r.GalleryWebp), F2(r.GalleryAvif), F2(r.PhotoEdit), F2(r.VideoAvc),
+        F2(r.VideoHevc), F2(r.VideoVp9), F2(r.VideoAv1), F2(r.Video8kHevc), F2(r.Video8kAv1),
+        r.VideoHardware.ToString(CultureInfo.InvariantCulture), F2(r.ExportAvc), F2(r.ExportHevc), F2(r.ExportAv1),
+        F2(r.Export8kHevc), F2(r.ExportAvcPsnr), F2(r.ExportHevcPsnr), F2(r.ExportAv1Psnr), F2(r.Export8kHevcPsnr),
+        r.ExportHardware.ToString(CultureInfo.InvariantCulture), F2(r.AiClassifyCpu), F2(r.AiClassifyGpu), F2(r.AiClassifyNpu),
+        F2(r.AiDetectCpu), F2(r.AiDetectGpu), F2(r.AiDetectNpu), F2(r.AiSegmentCpu), F2(r.AiSegmentGpu), F2(r.AiSegmentNpu),
+        F2(r.AiUpscaleCpu), F2(r.AiUpscaleGpu), F2(r.AiUpscaleNpu), F2(r.AiDepthCpu), F2(r.AiDepthGpu), F2(r.AiDepthNpu),
+        F2(r.AiSoundCpu), F2(r.AiSoundGpu), F2(r.AiSoundNpu), F2(r.MemRead), F2(r.MemWrite), F2(r.MemCopy), F2(r.MemLatency),
+        F2(r.StorageSeqRead), F2(r.StorageSeqWrite), F2(r.StorageRandomRead), F2(r.StorageRandomWrite),
+        r.StorageDirect ? "1" : "0", F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery), F2(r.LlmPrefillCpu), F2(r.LlmDecodeCpu),
+        F2(r.LlmPrefillGpu), F2(r.LlmDecodeGpu), F2(r.LlmFreeGb));
+
+    /// <summary>True when <paramref name="b"/> is <paramref name="a"/> sent again: the same model, platform, benchmark version and measurements.</summary>
+    public static bool SameRun(BenchmarkRun a, BenchmarkRun b) =>
+        a.BenchmarkVersion == b.BenchmarkVersion && a.Os == b.Os
+        && string.Equals(a.DeviceModel, b.DeviceModel, StringComparison.OrdinalIgnoreCase)
+        && Measurements(a) == Measurements(b);
+
     /// <summary>Why a request can't be stored, or null when it is plausible.</summary>
     public static string? Problem(BenchmarkRequest r)
     {
