@@ -126,7 +126,7 @@ public sealed class BenchmarkStage : Grid
         }
         else if (engine.LlmAccel is { } la)
         {
-            title.Text = $"LLM TEST {(int)la + 1}/{LlmAccels.All.Length} · {la.Label()} · LLAMA 3.2 3B";
+            title.Text = $"LLM TEST {(int)la + 1}/{LlmAccels.All.Length} · {la.Label()} · GEMMA 3 1B";
             detail.Text = engine.LlmDetail;
         }
         else

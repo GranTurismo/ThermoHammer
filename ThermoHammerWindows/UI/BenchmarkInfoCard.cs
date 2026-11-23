@@ -62,10 +62,10 @@ public static class BenchmarkInfoCard
                 : "The NPU counts where this PC has one its runtime supports; elsewhere it scores 0."), 8, Forge.Ink2, wrap: true));
         foreach (var a in LlmAccels.All)
             col.Children.Add(Row($"L{(int)a + 1}", BenchColor.Llm, $"LLM · {a.Label()}", a == LlmAccel.Cpu
-                ? "Llama 3.2 3B, 4-bit · a 512-token prompt, then the reply token by token"
+                ? "Gemma 3 1B, 4-bit · a 512-token prompt, then the reply token by token"
                 : "The same model with every layer on the GPU · llama.cpp Vulkan", $"{a.Seconds()}s"));
-        col.Children.Add(Ui.Text("The LLM runs llama.cpp on a model built from a seed in memory — nothing is downloaded. The faster of the CPU " +
-            "and the GPU counts; it needs a PC with 6 GB of RAM.", 8, Forge.Ink2, wrap: true));
+        col.Children.Add(Ui.Text("The LLM runs llama.cpp on a model built from a seed in memory — nothing is downloaded. The CPU, the GPU and " +
+            "the NPU each count a third; Windows has no LLM engine for the NPU yet, so its third is 0. It needs a PC with 4 GB of RAM.", 8, Forge.Ink2, wrap: true));
 
         if (best != null || last != null)
         {
