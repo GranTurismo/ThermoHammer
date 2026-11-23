@@ -342,6 +342,14 @@ class MixedTest(WorldTest):
         self.assertIn("5,900 points against 7,200", note)
         self.assertNotIn("now stands at", note)
 
+    def test_terms_page(self):
+        terms = self.page("/terms/")
+        self.assertIn("https://ai.google.dev/gemma/terms", terms)
+        self.assertIn("https://ai.google.dev/gemma/prohibited_use_policy", terms)
+        self.assertIn("provided as is", terms)
+        self.assertIn('href="/terms/"', self.page("/"))
+        self.assertIn("https://example.test/terms/", text(self.builder, "sitemap.xml"))
+
 
 if __name__ == "__main__":
     unittest.main()

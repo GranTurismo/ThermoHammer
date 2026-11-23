@@ -154,6 +154,7 @@ class Builder:
         self._compare(site)
         self._how(site)
         self._notes(site)
+        self._terms()
         self._misc(site)
         return {"pages": sum(1 for f in self.files if f.endswith(".html")), "files": len(self.files)}
 
@@ -515,6 +516,14 @@ class Builder:
             "/notes/", "notes.html.j2", priority="0.5", title="Lab notes | ThermoHammer",
             description="Things the leaderboard taught us: short write-ups with the runs to check them against.",
             crumbs=[("Lab notes", "/notes/")], notes=notes)
+
+    def _terms(self) -> None:
+        ai_models = [name.split(" · ")[0] for _, _, name in content.CATALOG["ai"]["tests"]]
+        self.page(
+            "/terms/", "terms.html.j2", priority="0.3", title="Terms of use | ThermoHammer",
+            description="ThermoHammer is free and provided as is. The leaderboard may refuse or remove runs. The LLM test "
+                        "runs Google's Gemma 3 1B, provided under the Gemma Terms of Use.",
+            crumbs=[("Terms of use", "/terms/")], ai_models=ai_models)
 
     # ── everything else ──────────────────────────────────────────────────────────────────────────────────────────────
 
