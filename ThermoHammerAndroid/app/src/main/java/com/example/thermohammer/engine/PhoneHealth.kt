@@ -55,7 +55,8 @@ object PhoneHealth {
             r.ai?.let { a ->
                 put("ai.cpu", a.accelScore(AiAccel.CPU)); put("ai.gpu", a.accelScore(AiAccel.GPU)); put("ai.npu", a.accelScore(AiAccel.NPU))
             }
-            r.llm?.let { l -> put("llm.prefill", l.prefillPoints); put("llm.decode", l.decodePoints) }
+            // version 5: each engine's points (rule B) — the server's BenchmarkScoring.Parts names them the same
+            r.llm?.let { l -> put("llm.cpu", l.points(LlmAccel.CPU)); put("llm.gpu", l.points(LlmAccel.GPU)); put("llm.npu", l.npuPoints) }
         }
     }
 

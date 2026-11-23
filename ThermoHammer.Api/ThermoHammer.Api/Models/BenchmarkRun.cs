@@ -136,8 +136,16 @@ public class BenchmarkRun
     public double LlmDecodeGpu { get; set; }
     public string? LlmGpu { get; set; }      // the GPU it ran on (reported)
     public double LlmFreeGb { get; set; }    // memory the app could take when the test began (reported)
-    public int LlmPrefillScore { get; set; }
+    // version 5: the NPU — Gemma 3 1B through LiteRT-LM (Android) — tokens/s (0 = none, failed or a wrong answer), and
+    // the engine and model file it ran
+    public double LlmPrefillNpu { get; set; }
+    public double LlmDecodeNpu { get; set; }
+    public string? LlmNpu { get; set; }
+    public int LlmPrefillScore { get; set; } // the best engine's points at each phase (shown; version 4: what was scored)
     public int LlmDecodeScore { get; set; }
+    public int LlmCpuScore { get; set; }     // version 5: each engine's points, a third of the section each
+    public int LlmGpuScore { get; set; }
+    public int LlmNpuScore { get; set; }
     public int LlmScore { get; set; }
     public int TotalScore { get; set; }
     public int ValidityFlags { get; set; }   // ValidityFlag bits from the app; 0 = clean run
@@ -232,6 +240,9 @@ public class BenchmarkRequest
     public double LlmDecodeGpu { get; set; }
     public string? LlmGpu { get; set; }
     public double LlmFreeGb { get; set; }
+    public double LlmPrefillNpu { get; set; }
+    public double LlmDecodeNpu { get; set; }
+    public string? LlmNpu { get; set; }
     public int ValidityFlags { get; set; }
     public string? AppVersion { get; set; }
 }
@@ -301,44 +312,53 @@ public class OsVersionStats
 public static class BenchmarkScoring
 {
     /// <summary>Scene/scoring version the server accepts — matches BenchmarkScore.VERSION in the app.</summary>
-    public const int CurrentVersion = 4;
-    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9, 2026-10-25/26) scores 6000 on each test —
-    // they must match engine/Benchmark.kt in the app.
-    public const double Test1Weight = 46.3;  // Lake Valley:  129.5 fps → 6000 points
-    public const double Test2Weight = 228;   // Neon City:     26.3 fps → 6000 points
-    public const double Test3Weight = 448;   // Neon City RT:  13.4 fps → 6000 points
+    public const int CurrentVersion = 5;
+    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode scores 6000 on each test — the
+    // median of each measurement over its runs of 2026-11-23 (scoring version 5). They must match engine/Benchmark.kt in
+    // the app (BenchmarkModels.swift and BenchmarkModels.cs repeat them); BenchmarkMappingTests pins them.
+    public const double Test1Weight = 46.21; // Lake Valley:  129.85 fps → 6000 points
+    public const double Test2Weight = 207.0; // Neon City:     28.98 fps → 6000 points
+    public const double Test3Weight = 424.9; // Neon City RT:  14.12 fps → 6000 points
 
     // UX references, 6000 points each
-    public const double RefLayout = 1320, RefCanvas = 2730, RefCss = 1980, RefSvg = 3130, RefJs = 2160;
-    public const double RefScroll = 66600;   // feed px/s held
-    public const double RefJpeg = 122, RefWebp = 99, RefAvif = 103;   // gallery MP/s per format
-    public const double RefPhoto = 397;      // MP/s through the editing chain
-    public const double RefVideo = 298;      // 4K frames/s, mean of the codecs
-    // PROVISIONAL until the Honor's version-4 report (as in the app): 8K = a quarter of the 4K rate; export ≈ a
-    // hardware encoder's 4K rate with AV1 missing
-    public const double RefVideo8k = 74.5;   // 8K frames/s, mean of HEVC and AV1
-    public const double RefExport = 100;     // encoded 4K frames/s, mean of H.264, HEVC, AV1
-    public const double RefExport8k = 30;    // encoded 8K frames/s, HEVC
+    public const double RefLayout = 3061, RefCanvas = 4818, RefCss = 3061, RefSvg = 4898, RefJs = 4002;
+    public const double RefScroll = 66560;   // feed px/s held
+    public const double RefJpeg = 229.3, RefWebp = 167.8, RefAvif = 173.6;   // gallery MP/s per format
+    public const double RefPhoto = 350;      // MP/s through the editing chain
+    public const double RefVideo = 296;      // 4K frames/s, mean of the codecs
+    public const double RefVideo8k = 83.1;   // 8K frames/s, mean of HEVC (91.1) and AV1 (75.0)
+    // export: one of its 4K hardware encoders' rate (it has no AV1 encoder: two thirds of the 4K part); 8K = a quarter
+    public const double RefExport = 136.3;   // encoded 4K frames/s per encoder, mean of H.264, HEVC, AV1
+    public const double RefExport8k = 34.1;  // encoded 8K frames/s, HEVC
     public const double MinExportPsnr = 26;  // dB: below it the export is broken and its speed doesn't count
-    public const double QrWeight = 10.67;    // zxing-cpp decodes/s → points (562/s → 6000)
+    public const double QrWeight = 5.122;    // zxing-cpp decodes/s → points (1,171.5/s → 6000)
 
     // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), 6000 points each
-    public const double RefCpuMath = 1469, RefCpuData = 647, RefCpuCrypto = 580, RefCpuMulti = 5003;
+    public const double RefCpuMath = 3039, RefCpuData = 1533, RefCpuCrypto = 1184, RefCpuMulti = 8884;
     public const double MaxFps = 5000;
 
     // AI references: inferences/s worth 6000 points per model (classify, detect, segment, upscale, depth, sound)
-    // and accelerator (NPU through Qualcomm QNN).
-    public static readonly double[] RefAiCpu = [330, 18.2, 4.71, 2.65, 42, 2890];
-    public static readonly double[] RefAiGpu = [658, 85.5, 33.1, 92.8, 182, 1470];
-    public static readonly double[] RefAiNpu = [1690, 473, 229, 774, 993, 2100];
+    // and accelerator (GPU through LiteRT's OpenGL backend, NPU through Qualcomm QNN).
+    public static readonly double[] RefAiCpu = [543.6, 28.67, 7.73, 4.59, 64.5, 3968];
+    public static readonly double[] RefAiGpu = [280.7, 36.7, 16.6, 38.8, 74.2, 582];
+    public static readonly double[] RefAiNpu = [1726, 485, 214.6, 689.3, 986, 2154];
 
     // MEM references, 6000 points each
-    public const double RefMemRead = 57.8, RefMemWrite = 28.4, RefMemCopy = 18.7, RefMemLatency = 245;  // GB/s, ns
-    public const double RefSeqRead = 1750, RefSeqWrite = 1300, RefRandomRead = 29000, RefRandomWrite = 13400; // MB/s, IOPS
-    public const double RefDbInsert = 9700, RefDbUpdate = 36000, RefDbQuery = 20300;                  // per second
+    public const double RefMemRead = 63.5, RefMemWrite = 28.3, RefMemCopy = 19.7, RefMemLatency = 134;  // GB/s, ns
+    public const double RefSeqRead = 1780, RefSeqWrite = 1309, RefRandomRead = 24700, RefRandomWrite = 13380; // MB/s, IOPS
+    public const double RefDbInsert = 15700, RefDbUpdate = 389000, RefDbQuery = 43800;                 // per second, warmed up
 
-    // LLM references, tokens/s worth 6000 points — the Snapdragon 8 Elite's faster path (its GPU)
-    public const double RefLlmPrefill = 362.7, RefLlmDecode = 17.23;
+    // LLM references (version 5, rule B): Gemma 3 1B tokens/s worth 6000 points on each engine — llama.cpp on the CPU
+    // and the GPU, LiteRT-LM on the NPU — prompt (prefill) and reply (decode)
+    public const double RefLlmCpuPrefill = 160, RefLlmCpuDecode = 55;
+    public const double RefLlmGpuPrefill = 890, RefLlmGpuDecode = 32;
+    public const double RefLlmNpuPrefill = 5450, RefLlmNpuDecode = 52;
+
+    /// <summary>
+    /// The Android chips Google builds Gemma 3 1B for at 4 bits (Build.SOC_MODEL, lower case) — the app's NpuModels.CHIPS.
+    /// Play delivers their model with the app, so a run from one of them without an NPU engine line is incomplete.
+    /// </summary>
+    public static readonly HashSet<string> NpuLlmChips = ["sm8550", "sm8650", "sm8750", "sm8850", "mt6989", "mt6991", "mt6993"];
 
     /// <summary>
     /// A clean run: none of the app's validity flags — no charger, no battery saver, started cool, nothing else
@@ -455,11 +475,14 @@ public static class BenchmarkScoring
     public static int LlmPoints(double tokensPerS, double reference) =>
         (int)Math.Round(6000 * Math.Max(tokensPerS, 0) / reference, MidpointRounding.AwayFromZero);
 
-    /// <summary>
-    /// Geometric mean of prefill and decode, each the faster of the CPU and the GPU (0 if either is 0) —
-    /// LlmScore.overall in the app.
-    /// </summary>
-    public static int Llm(int prefill, int decode) => Ux(prefill, decode);
+    /// <summary>One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0 — LlmScore.engine.</summary>
+    public static int LlmEngine(double prefill, double decode, double refPrefill, double refDecode) =>
+        !(prefill > 0) || !(decode > 0) ? 0
+            : (int)Math.Round(6000 * Math.Sqrt(prefill / refPrefill * (decode / refDecode)), MidpointRounding.AwayFromZero);
+
+    /// <summary>Version 5's rule B: the CPU, the GPU and the NPU each a third; an engine that can't run the task counts 0 — LlmScore.overall.</summary>
+    public static int Llm(int cpu, int gpu, int npu) =>
+        (int)Math.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0) + Math.Max(npu, 0)) / 3.0, MidpointRounding.AwayFromZero);
 
     /// <summary>The string the app HMACs with the session key (BenchmarkPayload.canonical()).</summary>
     public static string Canonical(BenchmarkRequest r) => string.Join("|",
@@ -475,7 +498,8 @@ public static class BenchmarkScoring
         r.AiNpuRuntime ?? "", F2(r.MemRead), F2(r.MemWrite), F2(r.MemCopy), F2(r.MemLatency), F2(r.StorageSeqRead),
         F2(r.StorageSeqWrite), F2(r.StorageRandomRead), F2(r.StorageRandomWrite), r.StorageDirect ? "1" : "0",
         F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery), F2(r.LlmPrefillCpu), F2(r.LlmDecodeCpu), F2(r.LlmPrefillGpu),
-        F2(r.LlmDecodeGpu), r.LlmGpu ?? "", F2(r.LlmFreeGb), r.ValidityFlags.ToString(CultureInfo.InvariantCulture));
+        F2(r.LlmDecodeGpu), r.LlmGpu ?? "", F2(r.LlmFreeGb), F2(r.LlmPrefillNpu), F2(r.LlmDecodeNpu), r.LlmNpu ?? "",
+        r.ValidityFlags.ToString(CultureInfo.InvariantCulture));
 
     private static string F2(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
 
@@ -498,7 +522,7 @@ public static class BenchmarkScoring
         F2(r.AiSoundCpu), F2(r.AiSoundGpu), F2(r.AiSoundNpu), F2(r.MemRead), F2(r.MemWrite), F2(r.MemCopy), F2(r.MemLatency),
         F2(r.StorageSeqRead), F2(r.StorageSeqWrite), F2(r.StorageRandomRead), F2(r.StorageRandomWrite),
         r.StorageDirect ? "1" : "0", F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery), F2(r.LlmPrefillCpu), F2(r.LlmDecodeCpu),
-        F2(r.LlmPrefillGpu), F2(r.LlmDecodeGpu), F2(r.LlmFreeGb));
+        F2(r.LlmPrefillGpu), F2(r.LlmDecodeGpu), F2(r.LlmFreeGb), F2(r.LlmPrefillNpu), F2(r.LlmDecodeNpu));
 
     /// <summary>True when <paramref name="b"/> is <paramref name="a"/> sent again: the same model, platform, benchmark version and measurements.</summary>
     public static bool SameRun(BenchmarkRun a, BenchmarkRun b) =>
@@ -509,6 +533,9 @@ public static class BenchmarkScoring
     /// <summary>Why a request can't be stored, or null when it is plausible.</summary>
     public static string? Problem(BenchmarkRequest r)
     {
+        // an older app scores the old way: its runs would sit on a board they can't be compared with
+        if (r.BenchmarkVersion < CurrentVersion)
+            return "The leaderboard moved to a new scoring version. Update ThermoHammer and run the benchmark again to submit.";
         if (r.BenchmarkVersion != CurrentVersion) return $"Unsupported benchmark version {r.BenchmarkVersion}";
         // only verified runs: started cool, nothing else running, no charger change or power saving (the apps don't offer the rest)
         if (r.ValidityFlags != 0) return "Only verified runs are accepted";
@@ -555,6 +582,13 @@ public static class BenchmarkScoring
         if (llm.Any(v => !(v >= 0 && v < 1e5)) || !(r.LlmDecodeCpu is >= 0 and < 1e4) || !(r.LlmDecodeGpu is >= 0 and < 1e4))
             return "Implausible LLM result";
         if (!(r.LlmFreeGb is >= 0 and < 1024)) return "Implausible free memory";
+        if (!(r.LlmPrefillNpu is >= 0 and < 1e5) || !(r.LlmDecodeNpu is >= 0 and < 1e4)) return "Implausible LLM result";
+        if (r.LlmPrefillNpu > 0 != r.LlmDecodeNpu > 0) return "Implausible LLM result";
+        // a phone whose chip has a Gemma NPU model gets it from Play: without the NPU engine's line the run is incomplete
+        // (the app flags it too) — scored, it would look like a phone without an NPU
+        if (r.Os == OsPlatform.Android && NpuLlmChips.Contains((r.SocModel ?? "").Trim().ToLowerInvariant())
+            && string.IsNullOrWhiteSpace(r.LlmNpu))
+            return "This run is missing the LLM test's NPU part. Let Google Play finish downloading ThermoHammer's NPU model, then run the benchmark again.";
         return r.ValidityFlags < 0 ? "Invalid flags" : null;
     }
 
@@ -580,9 +614,15 @@ public static class BenchmarkScoring
         int storageScore = StoragePoints(r.StorageSeqRead, r.StorageSeqWrite, r.StorageRandomRead, r.StorageRandomWrite);
         int dbScore = DbPoints(r.DbInsert, r.DbUpdate, r.DbQuery);
         int mem = Mem(ramScore, storageScore, dbScore);
-        int llmPrefill = LlmPoints(Math.Max(r.LlmPrefillCpu, r.LlmPrefillGpu), RefLlmPrefill);
-        int llmDecode = LlmPoints(Math.Max(r.LlmDecodeCpu, r.LlmDecodeGpu), RefLlmDecode);
-        int llm = Llm(llmPrefill, llmDecode);
+        int llmCpu = LlmEngine(r.LlmPrefillCpu, r.LlmDecodeCpu, RefLlmCpuPrefill, RefLlmCpuDecode);
+        int llmGpu = LlmEngine(r.LlmPrefillGpu, r.LlmDecodeGpu, RefLlmGpuPrefill, RefLlmGpuDecode);
+        int llmNpu = LlmEngine(r.LlmPrefillNpu, r.LlmDecodeNpu, RefLlmNpuPrefill, RefLlmNpuDecode);
+        int llm = Llm(llmCpu, llmGpu, llmNpu);
+        // shown: the best engine's points at each phase, against that engine's reference (LlmResult.prefillPoints)
+        int llmPrefill = Math.Max(Math.Max(llmCpu > 0 ? LlmPoints(r.LlmPrefillCpu, RefLlmCpuPrefill) : 0,
+            llmGpu > 0 ? LlmPoints(r.LlmPrefillGpu, RefLlmGpuPrefill) : 0), llmNpu > 0 ? LlmPoints(r.LlmPrefillNpu, RefLlmNpuPrefill) : 0);
+        int llmDecode = Math.Max(Math.Max(llmCpu > 0 ? LlmPoints(r.LlmDecodeCpu, RefLlmCpuDecode) : 0,
+            llmGpu > 0 ? LlmPoints(r.LlmDecodeGpu, RefLlmGpuDecode) : 0), llmNpu > 0 ? LlmPoints(r.LlmDecodeNpu, RefLlmNpuDecode) : 0);
         return new BenchmarkRun
         {
             SessionId = r.SessionId,
@@ -694,8 +734,14 @@ public static class BenchmarkScoring
             LlmDecodeGpu = r.LlmDecodeGpu,
             LlmGpu = Clip(r.LlmGpu),
             LlmFreeGb = r.LlmFreeGb,
+            LlmPrefillNpu = r.LlmPrefillNpu,
+            LlmDecodeNpu = r.LlmDecodeNpu,
+            LlmNpu = Clip(r.LlmNpu),
             LlmPrefillScore = llmPrefill,
             LlmDecodeScore = llmDecode,
+            LlmCpuScore = llmCpu,
+            LlmGpuScore = llmGpu,
+            LlmNpuScore = llmNpu,
             LlmScore = llm,
             TotalScore = cpu + mem + gpu + ux + ai + llm,
             ValidityFlags = r.ValidityFlags
@@ -728,8 +774,9 @@ public static class BenchmarkScoring
         ["ai.cpu"] = r.AiCpuScore,
         ["ai.gpu"] = r.AiGpuScore,
         ["ai.npu"] = r.AiNpuScore,
-        ["llm.prefill"] = r.LlmPrefillScore,
-        ["llm.decode"] = r.LlmDecodeScore,
+        ["llm.cpu"] = r.LlmCpuScore,
+        ["llm.gpu"] = r.LlmGpuScore,
+        ["llm.npu"] = r.LlmNpuScore,
     };
 
     /// <summary>Linear-interpolated quantile of sorted values.</summary>

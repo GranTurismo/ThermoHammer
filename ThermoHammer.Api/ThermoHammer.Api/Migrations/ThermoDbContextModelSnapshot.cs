@@ -196,10 +196,16 @@ namespace ThermoHammer.Api.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("LlmCpuScore")
+                        .HasColumnType("int");
+
                     b.Property<double>("LlmDecodeCpu")
                         .HasColumnType("float");
 
                     b.Property<double>("LlmDecodeGpu")
+                        .HasColumnType("float");
+
+                    b.Property<double>("LlmDecodeNpu")
                         .HasColumnType("float");
 
                     b.Property<int>("LlmDecodeScore")
@@ -211,10 +217,22 @@ namespace ThermoHammer.Api.Migrations
                     b.Property<string>("LlmGpu")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("LlmGpuScore")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LlmNpu")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("LlmNpuScore")
+                        .HasColumnType("int");
+
                     b.Property<double>("LlmPrefillCpu")
                         .HasColumnType("float");
 
                     b.Property<double>("LlmPrefillGpu")
+                        .HasColumnType("float");
+
+                    b.Property<double>("LlmPrefillNpu")
                         .HasColumnType("float");
 
                     b.Property<int>("LlmPrefillScore")

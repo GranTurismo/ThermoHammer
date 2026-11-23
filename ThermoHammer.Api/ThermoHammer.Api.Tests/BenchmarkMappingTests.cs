@@ -16,7 +16,7 @@ public class BenchmarkMappingTests
         {
             SessionId = 7,
             Hash = "",
-            BenchmarkVersion = 4,
+            BenchmarkVersion = 5,
             DeviceManufacturer = "Honor",
             DeviceModel = "Honor 600 Pro",
             Os = OsPlatform.Android,
@@ -95,18 +95,20 @@ public class BenchmarkMappingTests
     public void CanonicalStringMatchesTheApp()
     {
         // Same expectation as BenchmarkScoreTest.`canonical string is what the server re-derives` in the app.
-        Assert.Equal("bench|4|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
+        Assert.Equal("bench|5|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
                      "180.00|1400.50|700.00|900.00|912.34|75.20|0.00|61.50|40.25|58.00|301.75|" +
                      "9100.50|3.40|61.20|38.75|0.00|118.30|241.50|180.25|0.00|33.10|64.50|0.00|19|" +
                      "150.25|140.00|0.00|31.50|39.87|41.20|0.00|40.05|11|" +
                      "301.50|640.25|4100.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|Qualcomm QNN|" +
                      "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|" +
-                     "0.00|0.00|0.00|0.00||0.00|0",
+                     "0.00|0.00|0.00|0.00||0.00|0.00|0.00||0",
             BenchmarkScoring.Canonical(Request()));
-        Assert.EndsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|0", BenchmarkScoring.Canonical(Request(r =>
+        Assert.EndsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|" +
+                        "5723.51|52.86|LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750|0", BenchmarkScoring.Canonical(Request(r =>
         {
             (r.LlmPrefillCpu, r.LlmDecodeCpu, r.LlmPrefillGpu, r.LlmDecodeGpu) = (118.4, 21.35, 402, 19.1);
             (r.LlmGpu, r.LlmFreeGb) = ("QUALCOMM Adreno(TM) 830", 9.42);
+            (r.LlmPrefillNpu, r.LlmDecodeNpu, r.LlmNpu) = (5723.51, 52.86, "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750");
         })));
     }
 
@@ -135,11 +137,12 @@ public class BenchmarkMappingTests
         // a second real run never matches every number
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.CpuMulti = 301.76).ToDao()));
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.LlmFreeGb = 9.43).ToDao()));
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => (r.LlmPrefillNpu, r.LlmDecodeNpu) = (5723.51, 52.86)).ToDao()));
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.ExportHevc = 0).ToDao()));
         // the same numbers from another model, platform or benchmark version aren't this run
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.DeviceModel = "Honor 400").ToDao()));
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.Os = OsPlatform.iOS).ToDao()));
-        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.BenchmarkVersion = 5).ToDao()));
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.BenchmarkVersion = 4).ToDao()));
     }
 
     [Fact]
@@ -333,22 +336,85 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
-    public void LlmTakesTheFasterOfCpuAndGpuForPrefillAndDecode()
+    public void LlmCountsCpuGpuAndNpuAThirdEach()
     {
-        // Same expectations as BenchmarkScoreTest.`LLM takes the faster …` in the app.
-        var reference = Request(r => { r.LlmPrefillGpu = BenchmarkScoring.RefLlmPrefill; r.LlmDecodeCpu = BenchmarkScoring.RefLlmDecode;
-            r.LlmPrefillCpu = BenchmarkScoring.RefLlmPrefill / 3; r.LlmDecodeGpu = BenchmarkScoring.RefLlmDecode / 2; }).ToDao();
-        Assert.Equal(6000, reference.LlmPrefillScore);
-        Assert.Equal(6000, reference.LlmDecodeScore);
-        Assert.Equal(6000, reference.LlmScore);
+        // Same expectations as BenchmarkScoreTest.`LLM version 5 - each engine against its own reference, each a third`.
+        var reference = Request(r =>
+        {
+            (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode);
+            (r.LlmPrefillGpu, r.LlmDecodeGpu) = (BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode);
+            (r.LlmPrefillNpu, r.LlmDecodeNpu) = (BenchmarkScoring.RefLlmNpuPrefill, BenchmarkScoring.RefLlmNpuDecode);
+        }).ToDao();
+        Assert.Equal((6000, 6000, 6000, 6000), (reference.LlmCpuScore, reference.LlmGpuScore, reference.LlmNpuScore, reference.LlmScore));
         Assert.Equal(reference.CpuScore + reference.MemScore + reference.Score + reference.UxScore + reference.AiScore + 6000,
             reference.TotalScore);
-        // a phone whose GPU can't run it: the CPU's numbers count
-        var cpuOnly = Request(r => { r.LlmPrefillCpu = BenchmarkScoring.RefLlmPrefill * 4 / 3; r.LlmDecodeCpu = BenchmarkScoring.RefLlmDecode / 3; }).ToDao();
-        Assert.Equal(4000, cpuOnly.LlmScore);                 // geomean of 8000 and 2000
+        // a phone with no NPU model and a GPU llama.cpp can't use (the Xiaomi 11T): its CPU's third alone
+        var cpuOnly = Request(r => (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill * 4, BenchmarkScoring.RefLlmCpuDecode)).ToDao();
+        Assert.Equal(12000, cpuOnly.LlmCpuScore);              // sqrt(4 × 1) × 6000
+        Assert.Equal(4000, cpuOnly.LlmScore);                  // a third of it
         Assert.Equal(0, Request(r => r.LlmPrefillCpu = 120).ToDao().LlmScore);   // no reply: 0
         Assert.Equal(0, Request().ToDao().LlmScore);
+        // shown: the best engine's points at each phase
+        Assert.Equal((6000, 6000), (reference.LlmPrefillScore, reference.LlmDecodeScore));
         Assert.Equal("QUALCOMM Adreno(TM) 830", Request(r => r.LlmGpu = "  QUALCOMM Adreno(TM) 830 ").ToDao().LlmGpu);
+        Assert.Equal("LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750",
+            Request(r => r.LlmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750").ToDao().LlmNpu);
+    }
+
+    [Fact]
+    public void AChipWithAnNpuModelMustSendItsNpuPart()
+    {
+        // the Honor (SM8750) without the NPU engine's line: Play hadn't delivered the model — incomplete
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.SocModel = "SM8750")));
+        // with it (even when it answered wrongly and scores 0) the run is complete
+        Assert.Null(BenchmarkScoring.Problem(Request(r => { r.SocModel = "SM8750"; r.LlmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750"; })));
+        // a chip Google builds no model for (the Xiaomi 11T's Dimensity 1200), or no chip name at all: nothing to send
+        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = "MT6893")));
+        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = null)));
+        // a prompt rate without a reply rate is no result
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.LlmPrefillNpu = 5000)));
+    }
+
+    [Fact]
+    public void AnOlderAppIsToldToUpdate()
+    {
+        var why = BenchmarkScoring.Problem(Request(r => r.BenchmarkVersion = 4));
+        Assert.NotNull(why);
+        Assert.Contains("Update ThermoHammer", why);
+    }
+
+    /// <summary>
+    /// The reference phone (Honor VKP-NX9, Snapdragon 8 Elite, Performance mode): the median of each measurement over its
+    /// runs of 2026-11-23 scores 6000 on every test — the same numbers as BenchmarkScoreTest.`the reference phone's
+    /// medians score 6000 on every test` in the app, so the server's references can't drift from the apps'.
+    /// </summary>
+    [Fact]
+    public void TheReferencePhonesMediansScore6000OnEveryTest()
+    {
+        static void Near(int points, string what) => Assert.True(points is >= 5970 and <= 6030, $"{what} scored {points}");
+        Near(BenchmarkScoring.CpuPoints(3039.31, BenchmarkScoring.RefCpuMath), "math");
+        Near(BenchmarkScoring.CpuPoints(1533.32, BenchmarkScoring.RefCpuData), "data");
+        Near(BenchmarkScoring.CpuPoints(1184.12, BenchmarkScoring.RefCpuCrypto), "crypto");
+        Near(BenchmarkScoring.CpuPoints(8884.08, BenchmarkScoring.RefCpuMulti), "multi");
+        Near(BenchmarkScoring.RamPoints(63.51, 28.26, 19.71, 133.94), "RAM");
+        Near(BenchmarkScoring.StoragePoints(1780, 1309, 24722, 13375), "storage");
+        Near(BenchmarkScoring.DbPoints(15700, 389000, 43800), "database");
+        Near(BenchmarkScoring.Points(129.85, BenchmarkScoring.Test1Weight), "Lake Valley");
+        Near(BenchmarkScoring.Points(28.98, BenchmarkScoring.Test2Weight), "Neon City");
+        Near(BenchmarkScoring.Points(14.12, BenchmarkScoring.Test3Weight), "Neon City RT");
+        Near(BenchmarkScoring.WebPoints(3061, 4818, 3061, 4898, 4001.7), "web");
+        Near(BenchmarkScoring.ScrollPoints(66558), "scroll");
+        Near(BenchmarkScoring.GalleryPoints(229.26, 167.78, 173.55), "gallery");
+        Near(BenchmarkScoring.PhotoPoints(349.95), "photo");
+        Near(BenchmarkScoring.VideoPoints(269.0, 331.4, 309.6, 274.2, 91.13, 75.02), "video");
+        Near(BenchmarkScoring.QrPoints(1171.51), "QR");
+        Assert.Equal(3000, BenchmarkScoring.ExportPoints(136.3, 136.3, 0, 0));   // two of three 4K encoders, no 8K
+        Near(BenchmarkScoring.AiAccel([543.63, 28.67, 7.73, 4.59, 64.54, 3967.59], BenchmarkScoring.RefAiCpu), "AI CPU");
+        Near(BenchmarkScoring.AiAccel([280.7, 36.7, 16.6, 38.8, 74.2, 582.0], BenchmarkScoring.RefAiGpu), "AI GPU");
+        Near(BenchmarkScoring.AiAccel([1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38], BenchmarkScoring.RefAiNpu), "AI NPU");
+        Near(BenchmarkScoring.LlmEngine(160, 55, BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode), "LLM CPU");
+        Near(BenchmarkScoring.LlmEngine(890, 32, BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode), "LLM GPU");
+        Near(BenchmarkScoring.LlmEngine(5450, 52, BenchmarkScoring.RefLlmNpuPrefill, BenchmarkScoring.RefLlmNpuDecode), "LLM NPU");
     }
 
     [Theory]
@@ -390,12 +456,12 @@ public class BenchmarkMappingTests
     }
 
     [Theory]
-    [InlineData(5, 120, 100, 30, 25)]                         // future scene version
-    [InlineData(3, 120, 100, 30, 25)]                         // the old version (before 8K playback and export)
-    [InlineData(4, 0, 0, 30, 25)]                             // no frames
-    [InlineData(4, 9000, 100, 30, 25)]                        // beyond any phone
-    [InlineData(4, 120, 200, 30, 25)]                         // 1% low above the average
-    [InlineData(4, 120, 100, 30, 40)]                         // 1% low above the average, Test 2
+    [InlineData(6, 120, 100, 30, 25)]                         // future scene version
+    [InlineData(4, 120, 100, 30, 25)]                         // the old version (before the version 5 scoring)
+    [InlineData(5, 0, 0, 30, 25)]                             // no frames
+    [InlineData(5, 9000, 100, 30, 25)]                        // beyond any phone
+    [InlineData(5, 120, 200, 30, 25)]                         // 1% low above the average
+    [InlineData(5, 120, 100, 30, 40)]                         // 1% low above the average, Test 2
     public void ImplausibleRunsAreRejected(int version, double f1, double l1, double f2, double l2)
     {
         var r = Request(x =>
@@ -418,7 +484,7 @@ public class BenchmarkMappingTests
         Assert.Equal((int)Math.Round((totals[1] + totals[2]) / 2.0, MidpointRounding.AwayFromZero), stats.Total.Median);
         Assert.True(stats.Total.P25 <= stats.Total.Median && stats.Total.Median <= stats.Total.P75);
         Assert.Equal(6, stats.Sections.Count);
-        Assert.Equal(22, stats.Parts.Count);
+        Assert.Equal(23, stats.Parts.Count);                   // version 5: the LLM as three engines (llm.cpu, llm.gpu, llm.npu)
         Assert.Equal(BenchmarkScoring.Points(115, BenchmarkScoring.Test1Weight), stats.Parts["gpu.lake"]);   // median of 4 fps
         Assert.Equal("16", stats.ByOsVersion[0].OsVersion);
         Assert.Equal(3, stats.ByOsVersion[0].Runs);
@@ -516,7 +582,8 @@ public class BenchmarkMappingTests
         Assert.Null(DetailRowOf(d, "ux", "Video playback", "4K60 VP9").Number);
         Assert.Null(DetailRowOf(d, "ux", "Video export", "4K60 AV1").Number);
         Assert.Null(DetailRowOf(d, "ux", "QR scanning", "ML Kit").Number);
-        Assert.Null(DetailRowOf(d, "llm", "Prompt (prefill)", "CPU").Number);
+        Assert.Null(DetailRowOf(d, "llm", "CPU", "Prompt").Number);
+        Assert.Null(DetailRowOf(d, "llm", "NPU", "Prompt").Number);
 
         // text-only rows and context have no direction
         Assert.Null(DetailRowOf(d, "mem", "Storage", "Reads").Number);

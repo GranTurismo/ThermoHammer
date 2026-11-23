@@ -173,16 +173,39 @@ public static class BenchmarkDetail
         static IEnumerable<DetailRow> Models(double[] ips) => ips.Select((v, i) => Row(AiModels[i], Rate(v, "inferences/s"), Pos(v)));
     }
 
-    private static DetailSection Llm(BenchmarkRun r) => new()
+    /// <summary>
+    /// Version 5: one group per engine (rule B, each a third) — Gemma 3 1B through llama.cpp on the CPU and the GPU, and
+    /// through LiteRT-LM on the NPU. Older runs show their prompt and reply groups as they were scored.
+    /// </summary>
+    private static DetailSection Llm(BenchmarkRun r)
     {
-        Key = "llm", Title = "LLM", Score = r.LlmScore,
-        Groups =
+        var run = Group("Run", null, Row("GPU used", string.IsNullOrEmpty(r.LlmGpu) ? "none" : r.LlmGpu),
+            Row("Free memory at start", N(r.LlmFreeGb, 1) + " GB", Pos(r.LlmFreeGb), better: null));   // context, not performance
+        if (r.BenchmarkVersion < 5)
+            return new DetailSection
+            {
+                Key = "llm", Title = "LLM", Score = r.LlmScore,
+                Groups =
+                {
+                    Group("Prompt (prefill)", r.LlmPrefillScore, Row("CPU", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("GPU", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu))),
+                    Group("Reply (decode)", r.LlmDecodeScore, Row("CPU", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu)), Row("GPU", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
+                    run,
+                }
+            };
+        var npu = Group("NPU", r.LlmNpuScore, Row("Prompt", Tok(r.LlmPrefillNpu), Pos(r.LlmPrefillNpu)), Row("Reply", Tok(r.LlmDecodeNpu), Pos(r.LlmDecodeNpu)));
+        npu.Rows.Insert(0, Row("Engine", string.IsNullOrEmpty(r.LlmNpu) ? "no NPU model for this chip" : r.LlmNpu));
+        return new DetailSection
         {
-            Group("Prompt (prefill)", r.LlmPrefillScore, Row("CPU", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("GPU", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu))),
-            Group("Reply (decode)", r.LlmDecodeScore, Row("CPU", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu)), Row("GPU", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
-            Group("Run", null, Row("GPU used", string.IsNullOrEmpty(r.LlmGpu) ? "none" : r.LlmGpu), Row("Free memory at start", N(r.LlmFreeGb, 1) + " GB", Pos(r.LlmFreeGb), better: null)),   // context, not performance
-        }
-    };
+            Key = "llm", Title = "LLM", Score = r.LlmScore,
+            Groups =
+            {
+                Group("CPU", r.LlmCpuScore, Row("Prompt", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("Reply", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu))),
+                Group("GPU", r.LlmGpuScore, Row("Prompt", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu)), Row("Reply", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
+                npu,
+                run,
+            }
+        };
+    }
 
     private static DetailGroup Group(string title, int? points, params DetailRow[] rows) => new() { Title = title, Points = points, Rows = rows.ToList() };
     private const string Higher = "higher", Lower = "lower";
