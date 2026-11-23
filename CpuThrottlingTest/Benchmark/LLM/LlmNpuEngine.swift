@@ -54,7 +54,7 @@ enum LlmNpuEngine {
         }
         guard let dir = LlmNpuModel.readyDirectory else {
             LlmNpuModel.shared.start()            // for the next run: it downloads once, over Wi-Fi
-            return notRun("its model (Gemma 3 1B for the Neural Engine, ~0.7 GB) isn't on this device yet — it downloads "
+            return notRun("its model (Gemma 3 1B for the Neural Engine, ~1 GB) isn't on this device yet — it downloads "
                           + "once over Wi-Fi; this run can't be submitted", missing: true)
         }
         let r = await AneLlm.run(modelDir: dir, progress: progress)

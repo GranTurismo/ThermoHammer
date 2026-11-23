@@ -451,8 +451,8 @@ final class StressEngine: ObservableObject {
             let detail: String
             switch state {
             case _ where ready: detail = "Gemma 3 1B for the Neural Engine ready"
-            case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~0.7 GB — wait, or this run can't be submitted"
-            case .waitingForWifi: detail = "waiting for Wi-Fi (~0.7 GB) — or this run can't be submitted"
+            case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~1 GB — wait, or this run can't be submitted"
+            case .waitingForWifi: detail = "waiting for Wi-Fi (~1 GB) — or this run can't be submitted"
             case .failed(let why): detail = "download failed (\(why.prefix(60))) — this run can't be submitted"
             default: detail = "not downloaded yet — this run can't be submitted"
             }

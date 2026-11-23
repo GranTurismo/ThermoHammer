@@ -4,7 +4,7 @@ import AppleArchive
 import System
 
 /**
- * The Neural Engine LLM's model (scoring version 5, AneLlm): Gemma 3 1B for Core ML at 4 bits, ~0.7 GB, downloaded once
+ * The Neural Engine LLM's model (scoring version 5, AneLlm): Gemma 3 1B for Core ML at 4 bits, ~1 GB, downloaded once
  * from ThermoHammer's own site — over Wi-Fi only, checked against its SHA-256, unpacked (Apple Archive) into Application
  * Support and kept out of the iCloud backup. The benchmark asks `readyDirectory`; without it the run is incomplete
  * (ValidityFlag.npuModelMissing) where the phone could run the model, the same rule as Android's Play-delivered files.
@@ -18,8 +18,8 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
     /** The archive's name doubles as its version: a new conversion gets a new name, never a changed file. */
     static let archiveName = "gemma3-1b-it-lut4-ctx1280-v1.aar"
     static let downloadURL = URL(string: "https://thermohammer.gtgroup.dev/models/\(archiveName)")!
-    static let sha256 = "__SHA256__"
-    static let sizeBytes: Int64 = 0
+    static let sha256 = "af5e93c140f1a3b991b50062776b49626094213630a995f78c33b8d610e4ad2c"
+    static let sizeBytes: Int64 = 996_866_911
 
     enum State: Equatable {
         case unknown
@@ -74,7 +74,7 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
             if Self.readyDirectory != nil { publish(.ready); prepareIfNeeded(); return }
             guard task == nil else { return }
             let config = URLSessionConfiguration.default
-            // Wi-Fi (or Ethernet on a Mac) only: 0.7 GB on someone's data plan isn't ours to spend
+            // Wi-Fi (or Ethernet on a Mac) only: 1 GB on someone's data plan isn't ours to spend
             config.allowsExpensiveNetworkAccess = false
             config.allowsConstrainedNetworkAccess = false
             config.waitsForConnectivity = true
