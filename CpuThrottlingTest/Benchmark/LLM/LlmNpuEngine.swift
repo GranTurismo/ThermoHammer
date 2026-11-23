@@ -40,7 +40,21 @@ enum LlmNpuEngine {
      * puts a line such as "NPU · ANEMLL · PREFILL · 512-TOKEN PROMPT" and how far it is (0…1) on the stage, from any
      * thread. When the user stops the benchmark the task is cancelled (`Task.isCancelled`): return soon after that.
      */
+    /** Whether the model was downloaded and compiled when this benchmark started (noteRunStart): only then does it run. */
+    private static let readyLock = NSLock()
+    nonisolated(unsafe) private static var readyAtRunStart = false
+
+    /**
+     * BenchmarkEngine.start: the NPU part runs only if the model was ready when the run began. A download, its unpacking
+     * or the minutes-long compile finishing mid-run would otherwise have loaded the phone during tests that still count.
+     */
+    static func noteRunStart() {
+        readyLock.withLock { readyAtRunStart = LlmNpuModel.isReadyForBenchmark }
+    }
+
     static func run(progress: @escaping (String, Double) -> Void) async -> LlmNpuRun {
+        // after a stop, nothing more reaches the stage (the next run may be on it already)
+        let progress: (String, Double) -> Void = { label, f in if !Task.isCancelled { progress(label, f) } }
         func notRun(_ why: String, missing: Bool = false) -> LlmNpuRun {
             progress("NPU · NOT RUN", 1)
             return LlmNpuRun(prefill: 0, decode: 0, right: false, model: nil, error: why,
@@ -52,10 +66,12 @@ enum LlmNpuEngine {
         guard #available(iOS 18.0, macOS 15.0, *) else {
             return notRun("the Neural Engine engine needs iOS 18 or later (Core ML's model state)")
         }
-        guard let dir = LlmNpuModel.readyDirectory else {
-            LlmNpuModel.shared.start()            // for the next run: it downloads once, over Wi-Fi
-            return notRun("its model (Gemma 3 1B for the Neural Engine, ~1 GB) isn't on this device yet — it downloads "
-                          + "once over Wi-Fi; this run can't be submitted", missing: true)
+        // a Neural Engine that can't hold the model (A14/M1, Intel Macs, or two failed compiles): the hardware's limit, 0
+        if let why = LlmNpuModel.cannotRunReason { return notRun(why) }
+        guard readyLock.withLock({ readyAtRunStart }), let dir = LlmNpuModel.readyDirectory else {
+            LlmNpuModel.shared.start()            // for the next run: it downloads once over Wi-Fi, then compiles once
+            return notRun("its model (Gemma 3 1B for the Neural Engine, ~1 GB) wasn't ready on this device when the run "
+                          + "started — it downloads once over Wi-Fi, then compiles once; this run can't be submitted", missing: true)
         }
         let r = await AneLlm.run(modelDir: dir, progress: progress)
         return LlmNpuRun(prefill: r.prefill, decode: r.decode, right: r.right, model: r.model, error: r.error, lines: r.lines)

@@ -130,6 +130,7 @@ final class BenchmarkEngine: ObservableObject {
         guard !isRunning else { return }
         UIDevice.current.isBatteryMonitoringEnabled = true
         lock.withLock { active = true }
+        LlmNpuEngine.noteRunStart()          // the LLM's NPU part runs only if its model was ready now
         result = nil; error = nil; record = nil; cpuTest = nil; memTest = nil; cpuProgress = nil; memProgress = nil
         phase = .preparing
         watchFront()

@@ -445,19 +445,24 @@ final class StressEngine: ObservableObject {
         #if !targetEnvironment(simulator)
         if benchmark, #available(iOS 18.0, macOS 15.0, *) {
             let model = LlmNpuModel.shared
-            if LlmNpuModel.readyDirectory == nil { model.start() }
+            model.start()                                   // harmless when it's ready or already on its way
             let state = await MainActor.run { model.state }
-            let ready = LlmNpuModel.readyDirectory != nil
+            let ready = LlmNpuModel.isReadyForBenchmark
+            let cannot = LlmNpuModel.cannotRunReason
             let detail: String
-            switch state {
-            case _ where ready: detail = "Gemma 3 1B for the Neural Engine ready"
-            case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~1 GB — wait, or this run can't be submitted"
-            case .waitingForWifi: detail = "waiting for Wi-Fi (~1 GB) — or this run can't be submitted"
-            case .failed(let why): detail = "download failed (\(why.prefix(60))) — this run can't be submitted"
-            default: detail = "not downloaded yet — this run can't be submitted"
+            if let cannot { detail = "not on this device: \(cannot) — the NPU part counts 0" }
+            else if ready { detail = "Gemma 3 1B for the Neural Engine ready" }
+            else {
+                switch state {
+                case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~1 GB — wait, or this run can't be submitted"
+                case .waitingForWifi: detail = "waiting for Wi-Fi (~1 GB) — or this run can't be submitted"
+                case .preparing: detail = "compiling for the Neural Engine (once, a few minutes) — wait, or this run can't be submitted"
+                case .failed(let why): detail = "\(why.prefix(70)) — it tries again soon; this run can't be submitted"
+                default: detail = "not downloaded yet — this run can't be submitted"
+                }
             }
-            gates.append(GateResult(id: "npumodel", title: "LLM NPU MODEL", blocking: false, passed: ready, detail: detail))
-            if !ready { hints |= BenchFlag.npuModelMissing }
+            gates.append(GateResult(id: "npumodel", title: "LLM NPU MODEL", blocking: false, passed: ready || cannot != nil, detail: detail))
+            if !ready && cannot == nil { hints |= BenchFlag.npuModelMissing }
         }
         #endif
 

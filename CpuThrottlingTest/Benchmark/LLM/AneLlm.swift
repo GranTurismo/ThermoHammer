@@ -120,13 +120,17 @@ enum AneLlm {
             return run
         }
         let load = CFAbsoluteTimeGetCurrent() - t0
+        // stopped by the user: nothing more on the Neural Engine (each step below checks again)
+        if Task.isCancelled { run.error = "stopped"; return run }
         run.lines.append(String(format: "%@ · Apple Neural Engine (Core ML) · load %.1f s", head, load))
 
         do {
-            // one short untimed pass: the first prediction sets up the Neural Engine's buffers
+            // one untimed pass of the same shape — the whole prompt and a few tokens past position 512, where the reply
+            // switches to the sliding-window ("rotate") functions — so no first use of anything lands in the timing
             progress("NPU · NEURAL ENGINE · GEMMA 3 1B · WARM-UP", 0.15)
-            _ = try await manager.generateResponse(initialTokens: Array(prompt.prefix(batchSize)), temperature: 0, maxTokens: 4,
+            _ = try await manager.generateResponse(initialTokens: prompt, temperature: 0, maxTokens: 4,
                                                    eosTokens: [], tokenizer: tokenizer)
+            if Task.isCancelled { run.error = "stopped"; return run }
             progress("NPU · NEURAL ENGINE · GEMMA 3 1B · SPEED", 0.3)
             let s0 = CFAbsoluteTimeGetCurrent()
             let (tokens, prefillTime, _) = try await manager.generateResponse(initialTokens: prompt, temperature: 0,
@@ -143,6 +147,7 @@ enum AneLlm {
             run.lines.append("  speed · failed: \(why(error))")
         }
 
+        if Task.isCancelled { run.error = run.error ?? "stopped"; return run }
         progress("NPU · NEURAL ENGINE · GEMMA 3 1B · ANSWER CHECK", 0.75)
         do {
             let (tokens, _, _) = try await manager.generateResponse(initialTokens: question, temperature: 0, maxTokens: 16,

@@ -411,6 +411,7 @@
 		F13F1F2E1EEBAF9D3696EAEB /* llama-hparams.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC17754F6C50E2246EE0F8DF /* llama-hparams.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		F15A925BC72F941D40FDB04F /* granite-moe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = FF39A9545D9C8C60B32EDA0F /* granite-moe.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		F20F60645D79CC8830869A6A /* minimax-m2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 91E7FA7F1300F8581764F39E /* minimax-m2.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		F221647C73A486675CC4EEFF /* NeuralEngineGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3889316696C5E681F915E59F /* NeuralEngineGate.swift */; };
 		F2572DCA84CEBF53774F3C14 /* muse-spark.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 76AD3D773ADBEE608EB544F7 /* muse-spark.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		F3991BDFBDA7629AF18B8B61 /* step35.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5EAE569315F2F9308BBE012D /* step35.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		F3D82800A1E29EBEFBEBE88C /* GridSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93BBDBDF1608168284DCA9AD /* GridSampler.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
@@ -575,6 +576,7 @@
 		37269BE9BD3CA4FDB7E4520B /* reduce.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = reduce.metal; sourceTree = "<group>"; };
 		3837FE7B80CC17B038622D8A /* llama-memory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama-memory.h"; sourceTree = "<group>"; };
 		3870E9176FBD9A15ABB91D71 /* AiInputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiInputs.swift; sourceTree = "<group>"; };
+		3889316696C5E681F915E59F /* NeuralEngineGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuralEngineGate.swift; sourceTree = "<group>"; };
 		38CE9A27271879A6992B8DDF /* DecoderResult.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DecoderResult.h; sourceTree = "<group>"; };
 		39D4217F7226653CB6CDB1AF /* jina-bert-v3.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "jina-bert-v3.cpp"; sourceTree = "<group>"; };
 		3A83DC6C6354ADEE2396C95F /* ResultPoint.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ResultPoint.cpp; sourceTree = "<group>"; };
@@ -1338,6 +1340,7 @@
 				B53D59253137547A79DBF54B /* LlmNpuModel.swift */,
 				A9DE89921CAFD9285BFC8BBF /* LlmSection.swift */,
 				126EB8D99B5411CAEF65DE3C /* LlmStageView.swift */,
+				3889316696C5E681F915E59F /* NeuralEngineGate.swift */,
 				214556ED35B003B08D958F8E /* ANEMLL */,
 			);
 			path = LLM;
@@ -2182,6 +2185,7 @@
 				4C179CB92BF814EEE196747D /* NeonCitySim.swift in Sources */,
 				854936A37549CE03C18A4BD7 /* NeonLightGrid.swift in Sources */,
 				16C2FB538E1824283D5E11CC /* NetworkMonitor.swift in Sources */,
+				F221647C73A486675CC4EEFF /* NeuralEngineGate.swift in Sources */,
 				47E986032A246D224C3A3819 /* PendingResultStore.swift in Sources */,
 				A260978CF589950122FABF67 /* PerspectiveTransform.cpp in Sources */,
 				0D67905962A7B5394D151D9E /* PhoneHealth.swift in Sources */,

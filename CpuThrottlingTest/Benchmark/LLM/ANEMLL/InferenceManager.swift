@@ -1658,19 +1658,9 @@ private typealias Float16 = Float
                 dataType: .float16
             )
             
-            // Fill with -inf by default
-            for i in 0..<batchCausalMask.count {
-                batchCausalMask[i] = NSNumber(value: Float(-Float.infinity))
-            }
-            
-            // Set causal attention pattern
-            for i in 0..<batchSize {
-                for j in 0..<contextLength {  // Use full contextLength
-                    if j <= (batchPos + i) {
-                        batchCausalMask[[0, 0, i, j] as [NSNumber]] = NSNumber(value: Float(0.0))
-                    }
-                }
-            }
+            // ThermoHammer: the causal pattern written straight into the Float16 buffer (thFillCausalMask) — the per-cell
+            // NSNumber loop here took more of the timed prompt than the Neural Engine did (0.10 of 0.19 s on an M5)
+            thFillCausalMask(batchCausalMask, rows: batchSize, firstPosition: batchPos, columns: contextLength)
             
             // Run embeddings with prefill backing
             let embedInput = try MLDictionaryFeatureProvider(dictionary: ["input_ids": batchInput])
@@ -1888,19 +1878,9 @@ private typealias Float16 = Float
                 dataType: .float16
             )
 
-            // Fill with -inf by default
-            for i in 0..<batchCausalMask.count {
-                batchCausalMask[i] = NSNumber(value: Float(-Float.infinity))
-            }
-
-            // Set causal attention pattern
-            for i in 0..<batchSize {
-                for j in 0..<contextLength {
-                    if j <= (batchPos + i) {
-                        batchCausalMask[[0, 0, i, j] as [NSNumber]] = NSNumber(value: Float(0.0))
-                    }
-                }
-            }
+            // ThermoHammer: the causal pattern written straight into the Float16 buffer (thFillCausalMask) — the per-cell
+            // NSNumber loop here took more of the timed prompt than the Neural Engine did (0.10 of 0.19 s on an M5)
+            thFillCausalMask(batchCausalMask, rows: batchSize, firstPosition: batchPos, columns: contextLength)
 
             // Create current_pos as tensor
             let currentPosArray = try MLMultiArray(shape: [1], dataType: .int32)
@@ -2018,11 +1998,7 @@ private typealias Float16 = Float
                 shape: [1, 1, 1, NSNumber(value: contextLength)],
                 dataType: .float16
             )
-            for j in 0..<contextLength {
-                singleMask[[0, 0, 0, j] as [NSNumber]] = j <= batchPos
-                    ? NSNumber(value: Float(0.0))
-                    : NSNumber(value: Float(-Float.infinity))
-            }
+            thFillCausalMask(singleMask, rows: 1, firstPosition: batchPos, columns: contextLength)   // ThermoHammer, as above
 
             // Current position
             let currentPosArray = try MLMultiArray(shape: [1], dataType: .int32)
@@ -3740,4 +3716,20 @@ public enum InferenceError: Error {
     case missingLogits
     case inferenceError(String)
     case windowShiftError(String)
+}
+
+/**
+ * ThermoHammer: a [1, 1, rows, columns] Float16 causal mask, row i open (0) up to column firstPosition + i and closed
+ * (-inf) after — what ANEMLL's per-cell NSNumber loops wrote, written through the buffer's pointer (as its own
+ * getCausalMask does).
+ */
+fileprivate func thFillCausalMask(_ mask: MLMultiArray, rows: Int, firstPosition: Int, columns: Int) {
+    let ptr = mask.dataPointer.assumingMemoryBound(to: Float16.self)
+    let negInf = Float16(-Float.infinity), zero = Float16(0.0)
+    for i in 0..<rows {
+        let row = ptr + i * columns
+        let open = min(max(firstPosition + i + 1, 0), columns)        // columns 0…firstPosition+i
+        for j in 0..<open { row[j] = zero }
+        for j in open..<columns { row[j] = negInf }
+    }
 }

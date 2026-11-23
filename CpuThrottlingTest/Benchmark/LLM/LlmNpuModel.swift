@@ -27,10 +27,12 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
 
     enum State: Equatable {
         case unknown
-        case ready
+        case ready                     // downloaded and compiled for this device's Neural Engine
         case downloading(Double)       // 0…1
         case waitingForWifi
-        case failed(String)
+        case preparing                 // downloaded; compiling for the Neural Engine (once, minutes)
+        case failed(String)            // the download or its check failed; tried again after a pause
+        case cannotRun(String)         // this device's Neural Engine can't run it: the NPU third counts 0
     }
 
     @Published private(set) var state: State = .unknown
@@ -38,6 +40,10 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
     private let queue = DispatchQueue(label: "llm-npu-model")
     private var session: URLSession?
     private var task: URLSessionDownloadTask?
+    /** A download that stopped picks up from here (URLSession's resume data), after a pause (`retryAfter`). */
+    private var resumeData: Data?
+    private var lastFailureAt: Date?
+    private static let retryAfter: TimeInterval = 600
 
     /** Where the unpacked model lives: Application Support/npu-llm/<model name>/. */
     static var directory: URL {
@@ -47,36 +53,88 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
     private static var marker: URL { directory.appendingPathComponent(".complete-\(archiveName)") }
     /** Written once the model has been compiled for this device's Neural Engine (AneLlm.prepare). */
     private static var preparedMarker: URL { directory.appendingPathComponent(".prepared") }
+    /** Compile attempts so far (written before each, so one the app died in counts too). */
+    private static var attemptsFile: URL { directory.appendingPathComponent(".prepare-attempts") }
+    /** Why this device's Neural Engine couldn't compile it (after two attempts): it counts 0 from then on. */
+    private static var unsupportedMarker: URL { directory.appendingPathComponent(".unsupported") }
+    private static let maxAttempts = 2
 
     /** The model's folder once it's complete on the device, else nil. */
     static var readyDirectory: URL? { FileManager.default.fileExists(atPath: marker.path) ? directory : nil }
+    /** Downloaded and compiled: what a benchmark needs at its start to run the NPU part. */
+    static var isReadyForBenchmark: Bool {
+        readyDirectory != nil && FileManager.default.fileExists(atPath: preparedMarker.path)
+    }
+    /** Why the NPU part can't run on this device at all (it counts 0), or nil. */
+    static var cannotRunReason: String? {
+        if let limit = NeuralEngineGate.hardwareLimit { return limit }
+        if let why = try? String(contentsOf: unsupportedMarker, encoding: .utf8) {
+            return "the Neural Engine couldn't compile the model (\(why.prefix(80)))"
+        }
+        return nil
+    }
 
     override init() {
         super.init()
-        state = Self.readyDirectory != nil ? .ready : .unknown
+        if let why = Self.cannotRunReason { state = .cannotRun(why) }
+        else if Self.isReadyForBenchmark { state = .ready }
+        else if Self.readyDirectory != nil { state = .preparing }
     }
 
     private var preparing = false
 
     /**
      * Compiles the model for this device's Neural Engine in the background, once (it takes minutes the first time), so
-     * the benchmark's own load takes seconds. A device whose Neural Engine can't load it (A14, M1) just fails here too.
+     * the benchmark's own load takes seconds. Two failed attempts — an error, or the app dying in one — mean this device
+     * can't: it counts 0 from then on. Runs on `queue`.
      */
     private func prepareIfNeeded() {
-        guard #available(iOS 18.0, macOS 15.0, *), let dir = Self.readyDirectory,
-              !FileManager.default.fileExists(atPath: Self.preparedMarker.path), !preparing else { return }
+        guard #available(iOS 18.0, macOS 15.0, *), let dir = Self.readyDirectory, !Self.isReadyForBenchmark,
+              Self.cannotRunReason == nil, !preparing else { return }
+        let attempts = Int((try? String(contentsOf: Self.attemptsFile, encoding: .utf8)) ?? "") ?? 0
+        if attempts >= Self.maxAttempts {
+            try? "it failed or stopped the app \(attempts) times".write(to: Self.unsupportedMarker, atomically: true, encoding: .utf8)
+            publish(.cannotRun(Self.cannotRunReason ?? "it couldn't compile"))
+            return
+        }
+        try? String(attempts + 1).write(to: Self.attemptsFile, atomically: true, encoding: .utf8)
         preparing = true
+        publish(.preparing)
         Task.detached(priority: .utility) { [self] in
-            if case .success = await AneLlm.prepare(modelDir: dir) { try? Data().write(to: Self.preparedMarker) }
-            queue.async { self.preparing = false }
+            let outcome = await AneLlm.prepare(modelDir: dir)
+            queue.async { [self] in
+                preparing = false
+                switch outcome {
+                case .success:
+                    try? Data().write(to: Self.preparedMarker)
+                    try? FileManager.default.removeItem(at: Self.attemptsFile)
+                    publish(.ready)
+                case .failure(let error):
+                    if attempts + 1 >= Self.maxAttempts {
+                        try? String(String(describing: error).prefix(200)).write(to: Self.unsupportedMarker, atomically: true, encoding: .utf8)
+                        publish(.cannotRun(Self.cannotRunReason ?? "it couldn't compile"))
+                    } else {
+                        publish(.failed("compiling for the Neural Engine failed; it tries once more at the next launch"))
+                    }
+                }
+            }
         }
     }
 
-    /** Starts the download if the model isn't here and none is running, or prepares it if it is. Harmless to call again. */
+    /**
+     * Gets the model ready: downloads it if it isn't here (resuming a stopped download, never sooner than `retryAfter`
+     * after a failure), or compiles it if it hasn't been. Harmless to call again — the checklist calls it every 1.5 s.
+     */
     func start() {
         queue.async { [self] in
-            if Self.readyDirectory != nil { publish(.ready); prepareIfNeeded(); return }
+            if let why = Self.cannotRunReason { publish(.cannotRun(why)); return }
+            if Self.readyDirectory != nil {
+                if Self.isReadyForBenchmark { publish(.ready) } else { prepareIfNeeded() }
+                return
+            }
             guard task == nil else { return }
+            if let at = lastFailureAt, Date().timeIntervalSince(at) < Self.retryAfter { return }
+            Self.removeStaging()
             let config = URLSessionConfiguration.default
             // Wi-Fi (or Ethernet on a Mac) only: 1 GB on someone's data plan isn't ours to spend
             config.allowsExpensiveNetworkAccess = false
@@ -85,7 +143,8 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
             config.timeoutIntervalForResource = 6 * 3600
             let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
             self.session = session
-            let task = session.downloadTask(with: Self.downloadURL)
+            let task = resumeData.map { session.downloadTask(withResumeData: $0) } ?? session.downloadTask(with: Self.downloadURL)
+            resumeData = nil
             self.task = task
             publish(.downloading(0))
             task.resume()
@@ -93,6 +152,15 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
     }
 
     private func publish(_ s: State) { DispatchQueue.main.async { self.state = s } }
+
+    /** Half-unpacked folders of an install the app died in (each ~1 GB). */
+    private static func removeStaging() {
+        let parent = directory.deletingLastPathComponent()
+        for item in (try? FileManager.default.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil)) ?? []
+        where item.lastPathComponent.hasPrefix(".staging-") {
+            try? FileManager.default.removeItem(at: item)
+        }
+    }
 
     // MARK: URLSessionDownloadDelegate
 
@@ -108,26 +176,33 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         // the file at `location` is gone once this returns: check and unpack it here
-        let outcome: State
+        var failure: String?
         do {
             if let http = downloadTask.response as? HTTPURLResponse, http.statusCode != 200 {
                 throw Failure("the server answered \(http.statusCode)")
             }
             try Self.install(archive: location)
-            outcome = .ready
         } catch {
-            outcome = .failed(String(describing: error))
+            failure = String(describing: error)
         }
         queue.async { [self] in
-            self.task = nil; session.finishTasksAndInvalidate(); self.session = nil; publish(outcome)
-            if outcome == .ready { prepareIfNeeded() }
+            self.task = nil; session.finishTasksAndInvalidate(); self.session = nil
+            if let failure {
+                lastFailureAt = Date()
+                publish(.failed(failure))
+            } else {
+                prepareIfNeeded()
+            }
         }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let error else { return }
+        let resume = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data
         queue.async { [self] in
             self.task = nil; session.invalidateAndCancel(); self.session = nil
+            resumeData = resume
+            lastFailureAt = Date()
             publish(.failed(error.localizedDescription))
         }
     }
@@ -143,6 +218,8 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
         let fm = FileManager.default
         let parent = directory.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        var noBackup = URLResourceValues(); noBackup.isExcludedFromBackup = true
+        var parentURL = parent; try? parentURL.setResourceValues(noBackup)       // staging and model: never in iCloud
         let staging = parent.appendingPathComponent(".staging-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: staging) }
