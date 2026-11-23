@@ -70,3 +70,6 @@ ThermoHammerWindows/msix/out/
 
 # the Windows app's GA4 Measurement Protocol secret (ThermoHammerWindows/Engine/Ga4Config.cs says how to make it)
 ThermoHammerWindows/Engine/Ga4Secrets.cs
+
+# Gemma NPU model files (ThermoHammerAndroid/ai/gemma_npu): licence-gated, ~0.7–1 GB each, linked in locally
+ThermoHammerAndroid/ai/gemma_npu/src/main/assets/

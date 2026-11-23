@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -31,16 +30,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Test builds only: an LLM on the phone's NPU through Google's LiteRT-LM — the first step of the scoring-version-5 plan
- * (BENCHMARK_V5_PLAN.md): the LLM test's NPU engine, a third of its score (LlmResult.npuPoints).
+ * The LLM test's NPU engine (scoring version 5, BENCHMARK_V5_PLAN.md): Gemma 3 1B on the phone's NPU through Google's
+ * LiteRT-LM — a third of the LLM score (LlmResult.npuPoints).
  *
  * The model is Google's own per-chip build, Gemma3-1B-IT_q4_ekv1280_<soc>.litertlm (4-bit, a 1,280-token context; the
- * same model and precision for Snapdragon 8 Elite `sm8750` and Dimensity 9500 `mt6993`), from
- * huggingface.co/litert-community/Gemma3-1B-IT behind Gemma's licence: it isn't in the app. It goes into [modelDir] —
- * opened with "ThermoHammer Bench" from the phone's Files app (NpuModelImportActivity) or copied there by adb.
+ * same model and precision on every supported Snapdragon and Dimensity), delivered by Play as an AI pack (NpuModels).
  *
  * Speed: LiteRT-LM's own benchmark with the LLM test's task size, a 512-token prompt and a 32-token reply.
- * Answer: one fixed question, greedy (top-k 1), whose reply must name the expected word.
+ * Answer: one fixed question, greedy (top-k 1), whose reply must name the expected word; a wrong one scores 0.
  *
  * LiteRT-LM 0.19 loads NPU dispatch libraries with the versioned dispatch ABI, which LiteRT 2.4's have and the scored
  * AI test's 2.3 ones don't: 2.4's come as assets (build.gradle.kts) and go into a folder of their own, linked to the QNN
@@ -55,7 +52,9 @@ object NpuLlmProbe {
     const val MSG_DONE = 3       // service → app: "lines", the report lines
     /** How long one step (loading the model on the NPU, the benchmark, the answer) may take before it counts as hung. */
     private const val STEP_TIMEOUT_MS = 240_000L
-    private const val HEAD = "LLM NPU · LiteRT-LM 0.19.1"
+    /** The engine and its version, as the run records it (BenchmarkRecord.llmNpu): an update can move NPU scores. */
+    const val ENGINE = "LiteRT-LM 0.19.1"
+    private const val HEAD = "LLM NPU · $ENGINE"
 
     /**
      * [run] in the probe's own process; `onStep` on the main thread. Its report lines, or one saying the process
@@ -63,6 +62,17 @@ object NpuLlmProbe {
      */
     suspend fun runIsolated(context: Context, onStep: (String, Float) -> Unit): LlmNpuRun = withContext(Dispatchers.Main.immediate) {
         fun failed(why: String) = LlmNpuRun(0.0, 0.0, false, error = why, lines = listOf("$HEAD · $why"))
+        // the model is found here, in the app's process (Play's AI pack), and handed to the engine's process
+        val soc = NpuModels.soc()
+        val model = NpuModels.modelFile(context)
+        if (model == null) {
+            val why = if (NpuModels.supported(soc))
+                "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone — Google Play " +
+                    "downloads it after the install; this run can't be submitted"
+            else "not run: Google builds no Gemma 3 1B NPU model for this chip (${soc.ifBlank { "unknown" }}) — counts 0"
+            return@withContext LlmNpuRun(0.0, 0.0, false, error = why.removePrefix("not run: "), lines = listOf("$HEAD · $why"),
+                missingModel = NpuModels.supported(soc))
+        }
         val done = CompletableDeferred<LlmNpuRun>()
         var step = "starting"
         var watchdog: Job? = null
@@ -82,7 +92,8 @@ object NpuLlmProbe {
         })
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-                runCatching { Messenger(binder).send(Message.obtain(null, MSG_RUN).apply { replyTo = replies }) }
+                runCatching { Messenger(binder).send(Message.obtain(null, MSG_RUN).apply {
+                    replyTo = replies; data = Bundle().apply { putString("model", model.path) } }) }
                     .onFailure { done.complete(failed("not run: ${it.message ?: it.javaClass.simpleName}")) }
                 arm()
             }
@@ -109,14 +120,7 @@ object NpuLlmProbe {
     private const val DECODE = 32
     private const val QUESTION = "What is the capital of France? Answer with one word."
     private const val EXPECTED = "paris"
-    /** A per-chip build's name: sm8750, mt6993, Google_Tensor_G5 … */
-    private val CHIP_BUILD = Regex("(sm|mt)\\d{4}|tensor", RegexOption.IGNORE_CASE)
 
-    /** Where the model file goes: the app's own folder on shared storage (adb can write it; no permission needed). */
-    fun modelDir(context: Context): File =
-        File(context.getExternalFilesDir(null) ?: context.filesDir, "npu-llm").apply { mkdirs() }
-
-    private fun soc(): String = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL.lowercase() else ""
 
     private fun vendor(soc: String): String? = when {
         soc.startsWith("sm") -> "Qualcomm"
@@ -160,36 +164,27 @@ object NpuLlmProbe {
             .distinct().takeLast(max)
     }.getOrElse { listOf("couldn't read its log: ${it.message ?: it.javaClass.simpleName}") }
 
-    /** `onStep(label, fraction)` for the stage. Never throws (a native crash is the caller's marker's business). */
+    /**
+     * `model`: the file NpuModels found (null: look for it here — the adb hook of test builds). `onStep(label, fraction)`
+     * for the stage. Never throws (a native crash is the caller's marker's business).
+     */
     @OptIn(ExperimentalApi::class)          // LiteRT-LM's benchmark(): what times the prompt and the reply
-    fun run(context: Context, isActive: () -> Boolean, onStep: (String, Float) -> Unit): LlmNpuRun {
+    fun run(context: Context, modelPath: String?, isActive: () -> Boolean, onStep: (String, Float) -> Unit): LlmNpuRun {
         fun notRun(line: String) = LlmNpuRun(0.0, 0.0, false, error = line.substringAfter(" · not run: ", line), lines = listOf(line))
         val head = HEAD
-        val soc = soc()
-        val vendor = vendor(soc)
-        val dir = modelDir(context)
-        val files = dir.listFiles().orEmpty().filter { it.name.endsWith(".litertlm") }
-        // a chip with an NPU path takes its own chip's build; any other phone (the emulator) can run a generic model on
-        // the CPU instead — a smoke test that LiteRT-LM loads and runs in this build at all
-        val model = (if (vendor != null) files.filter { soc in it.name.lowercase() }
-            else files.filterNot { CHIP_BUILD.containsMatchIn(it.name) }).maxByOrNull { it.lastModified() }
-            ?: return notRun(if (vendor == null) "$head · not run: no NPU path for the chip '${soc.ifBlank { "?" }}'"
-                else "$head · not run: no model file for $soc in $dir — Gemma3-1B-IT_q4_ekv1280_$soc.litertlm " +
-                    "from huggingface.co/litert-community/Gemma3-1B-IT, opened with ThermoHammer Bench")
-        val backend: Backend
-        val where: String
-        if (vendor != null) {
-            val (libs, libsNote) = try { libraryDir(context, vendor) } catch (e: Exception) {
-                return notRun("$head · not run: the NPU libraries couldn't be prepared: ${e.why()}")
-            }
-            backend = Backend.NPU(libs.path); where = "$vendor NPU · $libsNote"
-        } else {
-            backend = Backend.CPU(); where = "CPU (no NPU path for the chip '${soc.ifBlank { "?" }}': a smoke test, not an NPU result)"
+        val soc = NpuModels.soc()
+        val vendor = vendor(soc) ?: return notRun("$head · not run: no NPU path for the chip '${soc.ifBlank { "?" }}'")
+        val model = (modelPath?.let(::File) ?: NpuModels.modelFile(context))?.takeIf { it.isFile }
+            ?: return notRun("$head · not run: no model file for $soc (${NpuModels.fileName(soc)})")
+        val (libs, libsNote) = try { libraryDir(context, vendor) } catch (e: Exception) {
+            return notRun("$head · not run: the NPU libraries couldn't be prepared: ${e.why()}")
         }
+        val backend: Backend = Backend.NPU(libs.path)
+        val where = "$vendor NPU · $libsNote"
         val lines = ArrayList<String>()
         lines += "$head · ${model.name} (${model.length() / 1_000_000} MB) · $where"
 
-        onStep("${if (vendor != null) "NPU" else "CPU"} · LITERT-LM · GEMMA 3 1B · SPEED", 0.1f)
+        onStep("NPU · LITERT-LM · GEMMA 3 1B · SPEED", 0.1f)
         var prefill = 0.0
         var decode = 0.0
         var right = false
@@ -207,7 +202,7 @@ object NpuLlmProbe {
         }
         if (!isActive()) return LlmNpuRun(prefill, decode, false, model.name, error ?: "stopped", lines)
 
-        onStep("${if (vendor != null) "NPU" else "CPU"} · LITERT-LM · GEMMA 3 1B · ANSWER CHECK", 0.7f)
+        onStep("NPU · LITERT-LM · GEMMA 3 1B · ANSWER CHECK", 0.7f)
         try {
             Engine(EngineConfig(modelPath = model.path, backend = backend, cacheDir = context.cacheDir.path)).use { engine ->
                 engine.initialize()
@@ -227,8 +222,6 @@ object NpuLlmProbe {
         }
         // a failure's real reason is in the log, not in LiteRT-LM's one line
         if (lines.any { "· failed:" in it }) ownLog().forEach { lines += "  log · $it" }
-        // a CPU smoke test (no NPU path for the chip) is never an NPU result
-        if (vendor == null) return LlmNpuRun(0.0, 0.0, false, model.name, "no NPU path for this chip", lines)
         return LlmNpuRun(prefill, decode, right, model.name, error, lines)
     }
 }
@@ -240,7 +233,7 @@ class NpuLlmProbeService : Service() {
         Messenger(Handler(worker.looper) { msg ->
             if (msg.what == NpuLlmProbe.MSG_RUN) {
                 val reply = msg.replyTo
-                val r = NpuLlmProbe.run(this, { true }) { label, fraction ->
+                val r = NpuLlmProbe.run(this, msg.data?.getString("model"), { true }) { label, fraction ->
                     runCatching {
                         reply?.send(Message.obtain(null, NpuLlmProbe.MSG_STEP).apply {
                             data = Bundle().apply { putString("step", label); putFloat("fraction", fraction) }
@@ -275,7 +268,7 @@ class NpuLlmProbeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RUN) Handler(worker.looper).post {
             // error level: some phones (Honor) keep nothing below it from an app
-            NpuLlmProbe.run(this, { true }) { label, _ -> android.util.Log.e("NpuLlmProbe", "step: $label") }
+            NpuLlmProbe.run(this, null, { true }) { label, _ -> android.util.Log.e("NpuLlmProbe", "step: $label") }
                 .lines.forEach { android.util.Log.e("NpuLlmProbe", it) }
             android.util.Log.e("NpuLlmProbe", "done")
             exit()

@@ -295,7 +295,7 @@ private fun DiagnosticsScreenWrapper(
             // silently so fixed gates flip green in place without flicker.
             if (preflightReport == null) preflightChecking = true
             try {
-                preflightReport = engine.runPreflight()
+                preflightReport = engine.runPreflight(benchmark = selectedKind == RunKind.BENCHMARK)
             } catch (_: Exception) { /* keep last good report */ }
             preflightChecking = false
             kotlinx.coroutines.delay(1500)

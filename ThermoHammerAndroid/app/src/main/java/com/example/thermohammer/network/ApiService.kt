@@ -185,6 +185,11 @@ data class BenchmarkPayload(
     @SerializedName("llmDecodeGpu") val llmDecodeGpu: Double,
     @SerializedName("llmGpu") val llmGpu: String?,                 // the GPU it ran on (reported)
     @SerializedName("llmFreeGb") val llmFreeGb: Double,            // memory the app could take (reported)
+    // version 5: the NPU (LiteRT-LM, Gemma 3 1B): tokens/s (0 = no model for the chip, failed, or a wrong answer), and the
+    // engine and model file it ran — the server requires one on the chips it knows a model for
+    @SerializedName("llmPrefillNpu") val llmPrefillNpu: Double = 0.0,
+    @SerializedName("llmDecodeNpu") val llmDecodeNpu: Double = 0.0,
+    @SerializedName("llmNpu") val llmNpu: String? = null,
     @SerializedName("validityFlags") val validityFlags: Int,
     @SerializedName("appVersion") val appVersion: String? = null
 ) {
@@ -200,6 +205,7 @@ data class BenchmarkPayload(
         f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
         f2(storageRandomRead), f2(storageRandomWrite), if (storageDirect) 1 else 0, f2(dbInsert), f2(dbUpdate), f2(dbQuery),
         f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu ?: "", f2(llmFreeGb),
+        f2(llmPrefillNpu), f2(llmDecodeNpu), llmNpu ?: "",
         validityFlags).joinToString("|")
 
     companion object {

@@ -745,7 +745,9 @@ internal fun validityNote(flags: Int): String {
         if (flags and ValidityFlag.ENV_CAPPED != 0) add("battery saver was on")
         if (flags and (ValidityFlag.COOLDOWN_TIMEOUT or ValidityFlag.WARM_STARTED) != 0) add("started warm")   // as PhoneHealth
         if (flags and ValidityFlag.INTERFERENCE != 0) add("the phone was busy with background work")
-        if (flags and ValidityFlag.TEST_PROBES != 0) add("a version 5 test build (its scoring is not the leaderboard's yet)")
+        if (flags and ValidityFlag.TEST_PROBES != 0) add("a test build (its runs never go to the leaderboard)")
+        if (flags and ValidityFlag.NPU_MODEL_MISSING != 0)
+            add("the LLM test's NPU model wasn't on the phone yet (Google Play downloads it after the install) — run again once it is")
     }
     return if (notes.isEmpty()) "Unverified." else "Unverified: " + notes.joinToString(", ") + "."
 }

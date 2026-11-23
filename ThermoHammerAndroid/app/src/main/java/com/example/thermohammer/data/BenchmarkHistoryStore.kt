@@ -108,6 +108,8 @@ data class BenchmarkRecord(
     val llmPrefillNpu: Double = 0.0,      // version 5: the NPU through LiteRT-LM (0 = none, failed or answered wrongly)
     val llmDecodeNpu: Double = 0.0,
     val llmGpu: String? = null,
+    /** Version 5: the NPU engine and the model file it ran ("LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750"); null when none was found. */
+    val llmNpu: String? = null,
     val llmFreeGb: Double = 0.0,
     val qrRate: Double = 0.0,             // ZXing decodes/s
     val mlkitRate: Double? = null,        // ML Kit scans/s (reported, not scored)
@@ -169,6 +171,7 @@ data class BenchmarkRecord(
                 llmPrefillNpu = llm?.npu?.takeIf { it.right && it.error == null }?.prefill ?: 0.0,
                 llmDecodeNpu = llm?.npu?.takeIf { it.right && it.error == null }?.decode ?: 0.0,
                 llmGpu = llm?.gpuName, llmFreeGb = llm?.freeGb ?: 0.0,
+                llmNpu = llm?.npu?.model?.let { "${com.example.thermohammer.engine.llm.NpuLlmProbe.ENGINE} · ${it.removeSuffix(".litertlm")}" },
                 test1Fps = t1.avgFps, test1LowFps = t1.lowFps, test1Points = t1.points,
                 test2Fps = t2.avgFps, test2LowFps = t2.lowFps, test2Points = t2.points,
                 test3Fps = t3.avgFps, test3LowFps = t3.lowFps, test3Points = t3.points, rayTracing = t3.supported,

@@ -741,6 +741,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         } else null
         if (!_state.value.isRunning) return
         val llm = llamaRuns.copy(npu = npuRun)
+        // a supported chip without its model can't give the NPU third: incomplete, never submitted as "no NPU"
+        if (npuRun?.missingModel == true) flags = flags or ValidityFlag.NPU_MODEL_MISSING
         val npuLlm = listOfNotNull("LLM settle · $settled", llmGpuCool?.let { "LLM settle · before the GPU test · $it" },
             npuCool?.let { "LLM settle · before the NPU test · $it" }) + npuRun?.lines.orEmpty()
         // a test build's run never goes to the live leaderboard (its scoring is version 5's, the server's isn't yet)
@@ -1604,7 +1606,10 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     // ── Pre-flight gates (blocking) ──────────────────────────────────────────
 
-    suspend fun runPreflight(): PreflightReport = withContext(Dispatchers.IO) {
+    /** Play was asked to fetch the NPU model this session (runPreflight): afterwards its progress is only read. */
+    @Volatile private var npuFetchAsked = false
+
+    suspend fun runPreflight(benchmark: Boolean = false): PreflightReport = withContext(Dispatchers.IO) {
         val gates = mutableListOf<GateResult>()
         var hints = 0
 
@@ -1694,6 +1699,31 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             detail = if (glVer >= 0x30000) "OpenGL ES ${glVer shr 16}.${glVer and 0xFFFF} — 3D benchmark available"
                      else "GLES 3.x unavailable — GPU 3D mode will not run"
         )
+
+        // The LLM test's NPU model (version 5), on the chips Google builds one for: Play downloads it after the install.
+        // Never blocking — a run without it is incomplete (can't be submitted), and the checklist says so before it starts.
+        if (benchmark && com.example.thermohammer.engine.llm.NpuModels.supported()) {
+            val models = com.example.thermohammer.engine.llm.NpuModels
+            // ask Play once per app session to fetch it, if it isn't coming already; afterwards just read its progress
+            val status = models.status(appContext, fetch = !npuFetchAsked).also { npuFetchAsked = true }
+            val size = "~%,d MB".format(models.sizeMb())
+            val chip = models.soc().uppercase()
+            gates += GateResult(
+                "npumodel", "LLM NPU MODEL", blocking = false,
+                passed = status is com.example.thermohammer.engine.llm.NpuModels.Status.Ready,
+                detail = when (status) {
+                    is com.example.thermohammer.engine.llm.NpuModels.Status.Ready -> "Gemma 3 1B for $chip ready"
+                    is com.example.thermohammer.engine.llm.NpuModels.Status.Downloading ->
+                        "Downloading ${status.percent}% of $size — wait, or this run can't be submitted"
+                    com.example.thermohammer.engine.llm.NpuModels.Status.WaitingForWifi ->
+                        "Waiting for Wi-Fi ($size) — connect, or this run can't be submitted"
+                    is com.example.thermohammer.engine.llm.NpuModels.Status.Unavailable ->
+                        "Not on the phone: ${status.why} — this run can't be submitted"
+                    com.example.thermohammer.engine.llm.NpuModels.Status.NotNeeded -> "Not needed on this chip"
+                }
+            )
+            if (status !is com.example.thermohammer.engine.llm.NpuModels.Status.Ready) hints = hints or ValidityFlag.NPU_MODEL_MISSING
+        }
 
         val canRun = gates.filter { it.blocking }.all { it.passed }
         PreflightReport(gates, canRun, hints)

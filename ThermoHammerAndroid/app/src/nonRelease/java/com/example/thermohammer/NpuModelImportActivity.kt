@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Test builds only: "Open with ThermoHammer Bench" (or Share) for a LiteRT-LM model file — copied into the NPU LLM
- * probe's folder (NpuLlmProbe.modelDir). A file that isn't a .litertlm is refused. No UI beyond a toast.
+ * engine's test folder (NpuModels.testDir). A file that isn't a .litertlm is refused. No UI beyond a toast.
  */
 class NpuModelImportActivity : Activity() {
 
@@ -95,7 +95,7 @@ class NpuModelImportActivity : Activity() {
             finish(); return
         }
         Toast.makeText(this, "Copying $name for the NPU test…", Toast.LENGTH_LONG).show()
-        val dir = NpuLlmProbe.modelDir(this)
+        val dir = com.example.thermohammer.engine.llm.NpuModels.testDir(this)
         val app = applicationContext
         thread(name = "npu-model-import") {
             val message = try {

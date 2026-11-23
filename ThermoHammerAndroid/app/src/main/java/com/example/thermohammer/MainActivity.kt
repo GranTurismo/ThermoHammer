@@ -40,6 +40,11 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
             intent.getStringExtra("benchFrom")?.let { engine.startBenchmark(it) }
 
+        // The LLM test's NPU model (version 5): Play downloads it after the install (fast-follow); asking again here
+        // restarts a download that stopped, so it's on the phone by the first benchmark. Nothing on other chips.
+        if (savedInstanceState == null && com.example.thermohammer.engine.llm.NpuModels.supported())
+            lifecycleScope.launch { com.example.thermohammer.engine.llm.NpuModels.status(applicationContext, fetch = true) }
+
         // Prevent screen sleep/lock during CPU stress diagnostic runs
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

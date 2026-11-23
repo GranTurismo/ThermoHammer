@@ -215,7 +215,7 @@ class BenchmarkScoreTest {
     @Test
     fun `canonical string is what the server re-derives`() {
         val p = BenchmarkPayload(
-            sessionId = 7, hash = "", benchmarkVersion = 4, deviceManufacturer = "Honor", deviceModel = "Honor 600 Pro",
+            sessionId = 7, hash = "", benchmarkVersion = 5, deviceManufacturer = "Honor", deviceModel = "Honor 600 Pro",
             osVersion = "16", gpuName = "Adreno (TM) 830", test1Fps = BenchmarkPayload.round2(123.456),
             test1LowFps = 98.0, test2Fps = BenchmarkPayload.round2(29.994), test2LowFps = 24.5,
             test3Fps = 21.5, test3LowFps = 17.25, rayTracing = true,
@@ -233,16 +233,18 @@ class BenchmarkScoreTest {
             llmPrefillCpu = 0.0, llmDecodeCpu = 0.0, llmPrefillGpu = 0.0, llmDecodeGpu = 0.0, llmGpu = null, llmFreeGb = 0.0,
             validityFlags = 0
         )
-        assertEquals("bench|4|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
+        assertEquals("bench|5|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
             "180.00|1400.50|700.00|900.00|912.34|75.20|0.00|61.50|40.25|58.00|301.75|" +
             "9100.50|3.40|61.20|38.75|0.00|118.30|241.50|180.25|0.00|33.10|64.50|0.00|19|" +
             "150.25|140.00|0.00|31.50|39.87|41.20|0.00|40.05|11|" +
             "301.50|640.25|4100.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|Qualcomm QNN|" +
             "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|" +
-            "0.00|0.00|0.00|0.00||0.00|0", p.canonical())
+            "0.00|0.00|0.00|0.00||0.00|0.00|0.00||0", p.canonical())
         val llm = p.copy(llmPrefillCpu = 118.4, llmDecodeCpu = 21.35, llmPrefillGpu = 402.0, llmDecodeGpu = 19.1,
-            llmGpu = "QUALCOMM Adreno(TM) 830", llmFreeGb = 9.42)
-        assertTrue(llm.canonical().endsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|0"))
+            llmGpu = "QUALCOMM Adreno(TM) 830", llmFreeGb = 9.42, llmPrefillNpu = 5723.514, llmDecodeNpu = 52.86,
+            llmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750")
+        assertTrue(llm.canonical().endsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|" +
+            "5723.51|52.86|LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750|0"))
     }
 
     @Test

@@ -563,7 +563,9 @@ data class LlmResult(
  * reply must name the expected word. `lines`: what it reported, for the report.
  */
 data class LlmNpuRun(val prefill: Double, val decode: Double, val right: Boolean, val model: String? = null,
-                     val error: String? = null, val lines: List<String> = emptyList())
+                     val error: String? = null, val lines: List<String> = emptyList(),
+                     /** A supported chip ran without its model file (NpuModels): the run is incomplete, not "no NPU". */
+                     val missingModel: Boolean = false)
 
 object LlmScore {
     // Version 5: Gemma 3 1B (4-bit) on each engine — llama.cpp on the CPU and the GPU (seeded weights, the model's exact

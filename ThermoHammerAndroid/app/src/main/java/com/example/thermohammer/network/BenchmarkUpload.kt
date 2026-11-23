@@ -102,6 +102,9 @@ object BenchmarkUpload {
             llmDecodeGpu = BenchmarkPayload.round2(record.llmDecodeGpu),
             llmGpu = record.llmGpu,
             llmFreeGb = BenchmarkPayload.round2(record.llmFreeGb),
+            llmPrefillNpu = BenchmarkPayload.round2(record.llmPrefillNpu),
+            llmDecodeNpu = BenchmarkPayload.round2(record.llmDecodeNpu),
+            llmNpu = record.llmNpu,
             validityFlags = record.validityFlags,
             appVersion = appVersion
         )
