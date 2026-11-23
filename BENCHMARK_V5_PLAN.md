@@ -344,7 +344,7 @@ Nothing below has run. Steps 1–4 can happen in any order; step 5 is the switch
    - Upload to **internal testing** first and install from Play on the Honor. That's the only real test of AI pack delivery.
    - Then production with **managed publishing** (held until step 5).
 3. **iPhone/Mac:**
-   - Put the model on the server: `ThermoHammerWeb/deploy/upload_model.sh <scratchpad>/anepack/gemma3-1b-it-lut4-ctx1280-v1.aar` (997 MB, SHA-256 `af5e93c1…`).
+   - Put the model on the server: `ThermoHammerWeb/deploy/upload_model.sh ~/Downloads/gemma3-1b-it-lut4-ctx1280-v1.aar` (997 MB, SHA-256 `af5e93c1…`).
    - Run `deploy/deploy.sh`; thweb gets the `models` volume and route.
    - Check `curl -I https://thermohammer.gtgroup.dev/models/gemma3-1b-it-lut4-ctx1280-v1.aar` → 200.
    - **The iPhone app must not go live before the model is online:** without it, every run on a capable device is incomplete.
