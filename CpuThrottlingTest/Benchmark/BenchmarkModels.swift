@@ -152,7 +152,7 @@ enum MemTest: Int, CaseIterable {
 
     var number: Int { rawValue }
     var title: String { ["", "RAM", "STORAGE", "DATABASE"][rawValue] }
-    var seconds: Int { [0, 10, 12, 8][rawValue] }
+    var seconds: Int { [0, 10, 12, 14][rawValue] }      // the database's steps each warm up untimed first (MemBench.warmUp)
     var labels: [String] {
         switch self {
         case .ram: return ["READ", "WRITE", "COPY", "LATENCY"]
