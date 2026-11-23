@@ -71,6 +71,20 @@ CATALOG = {
     },
 }
 
+# What 6,000 points per section stood for, by scoring version (BenchmarkScoring.CurrentVersion on the server). A new
+# version restarts the board; runs of an earlier one stay on their pages, measured against their own reference.
+REFERENCES = {
+    4: "a Snapdragon 8 Elite phone as it ships, in Balanced mode",
+    5: "a Snapdragon 8 Elite phone (HONOR 600 Pro) in its Performance power mode",
+}
+
+
+def reference(version: int) -> str:
+    """The reference of a scoring version, or of the latest one before it this file knows."""
+    known = [v for v in REFERENCES if v <= version] or [min(REFERENCES)]
+    return REFERENCES[max(known)]
+
+
 # The stress test's phases, as the apps' timeline names them.
 PHASES = [
     ("Pre-flight", "Checks the device is fit to test: not charging, not in a power-saving mode, not already hot."),
@@ -84,7 +98,7 @@ PHASES = [
 
 def faq(site) -> list[tuple[str, str]]:
     """Questions and answers for the home page (also given to search engines as structured data). Plain text only."""
-    return [
+    qa = [
         ("Is ThermoHammer free?",
          "Yes. It is free on Google Play, the App Store and the Microsoft Store, with no account and no ads."),
         ("Is a stress test safe for my phone?",
@@ -92,9 +106,9 @@ def faq(site) -> list[tuple[str, str]]:
          "export does. The operating system stays in charge of every temperature limit; ThermoHammer only measures what "
          "the device does to protect itself. It will get warm, which is the point, and you can stop at any time."),
         ("What does the score mean?",
-         "Each of the six sections is scored against one reference: a Snapdragon 8 Elite phone, as it ships, gets 6,000 "
-         "points per section and 36,000 in total. A section score of 12,000 means about twice that phone's measured speed "
-         "in that section. The total is the six sections added up."),
+         f"Each of the six sections is scored against one reference, {reference(site.version)}: it gets 6,000 points "
+         "per section and 36,000 in total. A section score of 12,000 means about twice that phone's measured speed in "
+         "that section. The total is the six sections added up."),
         ("What is stability?",
          "The share of its full speed a device delivers over a sustained, full-load run. 95% means it barely slowed "
          "down. 50% means half of the speed was gone."),
@@ -117,6 +131,13 @@ def faq(site) -> list[tuple[str, str]]:
          "keeps the best verified run per model; in the app, Phone Health compares your runs with other units of the same "
          "model and with your own earlier runs."),
     ]
+    if site.earlier_versions:       # the board restarted on a new scoring version: say why, next to what a score means
+        qa.insert(3, ("Why did the leaderboard start over?",
+                      f"Scoring version {site.version} measures every device against a new reference, "
+                      f"{reference(site.version)}, so its points can't be compared with earlier ones and the board "
+                      f"restarted with it. Runs scored before stay on their device's page, marked with their version. "
+                      f"Run the benchmark again to put your device on today's board."))
+    return qa
 
 for _section in CATALOG.values():
     _section.setdefault("note", "")

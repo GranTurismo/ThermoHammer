@@ -85,3 +85,14 @@ class Api:
     def model_stats(self, model: str, os_id: int, manufacturer: str, ttl: float = 0.0):
         q = urllib.parse.urlencode({"model": model, "os": os_id, "manufacturer": manufacturer})
         return self.get(f"/benchmark/model?{q}", ttl=ttl)
+
+    # ── what the generator remembers between builds (not API answers): the highest run id seen, and so on ───────────
+
+    def recall(self, name: str):
+        try:
+            return json.loads((self.dir / f"memo-{name}.json").read_text())
+        except (OSError, ValueError):
+            return None
+
+    def remember(self, name: str, value) -> None:
+        (self.dir / f"memo-{name}.json").write_text(json.dumps(value))

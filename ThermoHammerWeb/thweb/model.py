@@ -232,6 +232,8 @@ class BenchRun:
     scores: dict[str, int]                 # section key → points
     sections: list[dict]                   # the API's detail: key, title, score, groups[title, points, rows[label, value]]
     device: "Device | None" = None
+    benchmark_version: int = 0             # the scoring version it was scored with (BenchmarkScoring.CurrentVersion then)
+    current: bool = True                   # scored with the board's version; an earlier run is never ranked or compared
 
     def ratio(self, key: str) -> float:
         return self.scores.get(key, 0) / REFERENCE
@@ -256,7 +258,7 @@ def bench_run_from_detail(d: dict) -> BenchRun:
     return BenchRun(
         id=d["id"], created=parse_time(d.get("createdAt")), app_version=d.get("appVersion") or "",
         os_version=d.get("osVersion") or "", os_build=d.get("osBuild") or "", total=int(d.get("totalScore") or 0),
-        scores=scores, sections=d.get("sections", []))
+        scores=scores, sections=d.get("sections", []), benchmark_version=int(d.get("benchmarkVersion") or 0))
 
 
 # ── devices ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -276,8 +278,9 @@ class Device:
     # benchmark
     board: dict | None = None      # this device's row on the benchmark board (its best verified run)
     best: BenchRun | None = None
-    bench_runs: list[BenchRun] = field(default_factory=list)
-    stats: dict | None = None      # the API's statistics over this model's runs
+    bench_runs: list[BenchRun] = field(default_factory=list)       # scored with the board's version, newest first
+    earlier_runs: list[BenchRun] = field(default_factory=list)     # scored with an earlier version: shown, never ranked
+    stats: dict | None = None      # the API's statistics over this model's runs (the board's version only)
     rank: int | None = None
     platform_rank: int | None = None
     # stress
@@ -309,6 +312,23 @@ class Device:
     @property
     def has_stress(self) -> bool:
         return self.headline is not None
+
+    @property
+    def has_bench_runs(self) -> bool:
+        """Any verified benchmark run at all, on the board's version or an earlier one."""
+        return bool(self.best or self.bench_runs or self.earlier_runs)
+
+    @property
+    def all_runs(self) -> list[BenchRun]:
+        return self.bench_runs + self.earlier_runs
+
+    @property
+    def earlier_by_version(self) -> list[tuple[int, list[BenchRun]]]:
+        """Runs scored with earlier versions, one group per version, the latest version first."""
+        groups: dict[int, list[BenchRun]] = {}
+        for r in self.earlier_runs:
+            groups.setdefault(r.benchmark_version, []).append(r)
+        return sorted(groups.items(), key=lambda g: g[0], reverse=True)
 
     @property
     def total(self) -> int:
@@ -343,7 +363,10 @@ class Device:
 
     def health(self, run: BenchRun) -> dict | None:
         """Phone Health on the website: one run against the median of this model's verified runs, with the apps'
-        thresholds (PhoneHealth.kt). None when there are too few runs to say."""
+        thresholds (PhoneHealth.kt). None when there are too few runs to say, and for a run of an earlier scoring
+        version: the model's statistics cover the board's version only."""
+        if not run.current:
+            return None
         stats = self.stats or {}
         median = (stats.get("total") or {}).get("median") or 0
         runs = int(stats.get("runs") or 0)
@@ -367,8 +390,9 @@ class Device:
 
     @property
     def os_history(self) -> list[dict]:
-        """Benchmark runs grouped by OS version, oldest first: what each update did to this model's score.
-        Each change against the previous version says whether both sides have enough runs to mean much."""
+        """Benchmark runs (the board's scoring version only) grouped by OS version, oldest first: what each update did
+        to this model's score. Each change against the previous version says whether both sides have enough runs to
+        mean much."""
         groups: dict[str, list[BenchRun]] = {}
         for r in self.bench_runs:
             if r.os_version:
@@ -579,6 +603,9 @@ class Site:
     all_stress_runs: dict[int, StressRun] = field(default_factory=dict)
     section_leaders: list[dict] = field(default_factory=list)
     fingerprint: str = ""
+    version: int = 0                    # the scoring version the benchmark board is on (see current_version)
+    version_since: datetime | None = None   # when the board started on it, as far as the site has seen
+    earlier_versions: list[int] = field(default_factory=list)   # versions of the runs kept from before, latest first
 
     def pair(self, a: Device, b: Device) -> Comparison | None:
         first, second = sorted((a, b), key=lambda d: d.slug)
@@ -612,6 +639,27 @@ class Site:
         return out
 
 
+MISSES_TO_STOP = 6        # run ids in a row that answer 404 beyond the highest id seen: the end of the runs
+
+
+def current_version(board_versions: list[int], run_versions: list[int]) -> int:
+    """The scoring version the benchmark board is on: the highest version among its runs.
+
+    The server lists only runs of its current version on the board, while every verified run stays readable by id.
+    So an empty board with runs on record means the board has started over on a newer version than any of them (the
+    next one); with no runs at all there is no version to speak of (0).
+    """
+    if board_versions:
+        return max(board_versions)
+    newest = max(run_versions, default=0)
+    return newest + 1 if newest else 0
+
+
+def run_date(run: BenchRun) -> datetime:
+    """A run's date for sorting; a run without one counts as the oldest."""
+    return run.created or datetime.min.replace(tzinfo=timezone.utc)
+
+
 def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Site:
     aliases = load_table(data_dir / "device_aliases.tsv")
     soc_names = load_table(data_dir / "soc_names.tsv")
@@ -629,23 +677,43 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
                                   manufacturer=(manufacturer or "").strip(), os_id=os_id)
         return devices[key]
 
-    # ── benchmark: the board, then every verified run by id (ids are dense; the board only names each model's best) ──
+    # ── benchmark: every verified run by id, then the board ──────────────────────────────────────────────────────────
+    # Ids are dense, and the board names only each model's best run of the current scoring version: right after a new
+    # version it is empty, while every earlier run keeps its page. So the walk never depends on the board. Ids up to the
+    # highest one seen (on the board, or by an earlier build) are known ground and cached; beyond it every id is asked
+    # fresh, until MISSES_TO_STOP of them in a row answer 404.
     runs: dict[int, BenchRun] = {}
     details: dict[int, dict] = {}
     top_id = max((r["id"] for r in board_rows), default=0)
+    known_top = max(top_id, int(api.recall("benchmark-top") or 0))
     misses = 0
     run_id = 1
-    while board_rows and misses < 6:
-        known_gap = run_id < top_id
-        d = api.benchmark_run(run_id, ttl=6 * 3600 if known_gap or run_id == top_id else 0,
-                              keep_missing=known_gap)
+    while misses < MISSES_TO_STOP:
+        known = run_id <= known_top
+        d = api.benchmark_run(run_id, ttl=6 * 3600 if known else 0, keep_missing=run_id < known_top)
         if d is None:
-            misses = misses + 1 if run_id > top_id else misses
+            misses = misses + 1 if run_id > known_top else misses
         else:
             misses = 0
             details[run_id] = d
             runs[run_id] = bench_run_from_detail(d)
         run_id += 1
+    for row in board_rows:
+        if row["id"] not in runs:                  # the board is ahead of the cache: ask for it directly
+            d = api.benchmark_run(row["id"], ttl=0)
+            if d:
+                runs[row["id"]] = bench_run_from_detail(d)
+                details[row["id"]] = d
+    if runs:
+        api.remember("benchmark-top", max(known_top, max(runs)))
+
+    version = current_version([runs[r["id"]].benchmark_version for r in board_rows if r["id"] in runs],
+                              [r.benchmark_version for r in runs.values()])
+    for r in runs.values():
+        r.current = r.benchmark_version == version
+    # The server lists the current version only; a row of another version would put two scales on one board.
+    board_rows = [row for row in board_rows if row["id"] not in runs or runs[row["id"]].current]
+
     for rank, row in enumerate(board_rows, start=1):
         dev = device_for(row["deviceManufacturer"], row["deviceModel"], row["os"])
         dev.board, dev.rank = row, rank
@@ -653,11 +721,6 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
         dev.soc_name = soc_names.get(dev.soc.lower(), "")
         dev.gpu = clean_gpu(row.get("gpuName"))
         dev.best = runs.get(row["id"])
-        if dev.best is None:                       # the board is ahead of the cache: ask for it directly
-            d = api.benchmark_run(row["id"], ttl=0)
-            if d:
-                dev.best = runs[row["id"]] = bench_run_from_detail(d)
-                details[row["id"]] = d
         if row.get("osVersion") and row["osVersion"] not in dev.os_versions:
             dev.os_versions.append(row["osVersion"])
         try:
@@ -665,12 +728,29 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
         except Exception as e:          # statistics are an extra: a page without them is still right
             log(f"  no model statistics for {dev.name}: {e}")
     for run_id, d in details.items():
-        dev = devices.get(f"{d['os']}:{display_name(d['deviceManufacturer'], d['deviceModel']).lower()}")
-        if dev:
-            dev.bench_runs.append(runs[run_id])
-            runs[run_id].device = dev
+        # every run gets its device, on the board or not, so a link to the run or to the device keeps working
+        dev = device_for(d["deviceManufacturer"], d["deviceModel"], d["os"])
+        (dev.bench_runs if runs[run_id].current else dev.earlier_runs).append(runs[run_id])
+        runs[run_id].device = dev
     for dev in devices.values():
-        dev.bench_runs.sort(key=lambda r: (r.created or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        dev.bench_runs.sort(key=run_date, reverse=True)
+        dev.earlier_runs.sort(key=run_date, reverse=True)
+        if not dev.board and dev.all_runs:         # off the board: what the device is, from its latest run
+            latest = details[max(dev.all_runs, key=run_date).id]
+            dev.soc = (latest.get("socModel") or "").strip()
+            dev.soc_name = soc_names.get(dev.soc.lower(), "")
+            dev.gpu = clean_gpu(latest.get("gpuName"))
+            if latest.get("osVersion"):
+                dev.os_versions.append(latest["osVersion"])
+
+    # when the board started on its version: remembered from the build that first saw it, else its first run
+    seen = api.recall("benchmark-version") or {}
+    version_since = parse_time(seen.get("since")) if seen.get("version") == version else None
+    if version and version_since is None:
+        firsts = [r.created for r in runs.values() if r.current and r.created]
+        version_since = min(firsts) if firsts else datetime.now(timezone.utc)
+        api.remember("benchmark-version", {"version": version, "since": version_since.isoformat()})
+    earlier_versions = sorted({r.benchmark_version for r in runs.values() if not r.current}, reverse=True)
 
     # ── stress runs ──────────────────────────────────────────────────────────────────────────────────────────────────
     all_stress: dict[int, StressRun] = {}
@@ -694,8 +774,9 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
         dev.headline = (standard or dev.stress_runs or [None])[0]
 
     # ── slugs: stable, readable, unique ──────────────────────────────────────────────────────────────────────────────
+    # Benchmarked devices first, whatever version their runs are: a device that drops off the board keeps its slug.
     taken: dict[str, Device] = {}
-    for dev in sorted(devices.values(), key=lambda d: (not d.has_bench, d.key)):
+    for dev in sorted(devices.values(), key=lambda d: (not d.has_bench_runs, d.key)):
         base = slugify(dev.title) or slugify(dev.name) or "device"
         slug = base
         if slug in taken:
@@ -753,4 +834,5 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
     return Site(devices=sorted(devices.values(), key=lambda d: d.title.lower()), board=board, stress_board=stress_board,
                 stress_runs=stress_sorted, pairs=pairs, built=datetime.now(timezone.utc), stats=stats,
                 by_slug={d.slug: d for d in devices.values()}, all_bench_runs=runs, all_stress_runs=all_stress,
-                section_leaders=leaders, fingerprint=fingerprint)
+                section_leaders=leaders, fingerprint=fingerprint, version=version, version_since=version_since,
+                earlier_versions=earlier_versions)

@@ -19,11 +19,17 @@
     <b>{{ d.total | num }}</b>
     <i>#{{ d.rank }} of {{ site.board | length }} on the board{% if d.platform_rank and (site.board | selectattr('os_id', 'equalto', d.os_id) | list | length) > 1 %} · #{{ d.platform_rank }} on {{ d.platform }}{% endif %}</i>
   </div>
-  {% else %}
+  {% elif d.has_stress %}
   <div class="dev-total" style="--c:{{ r.color }}">
     <small>Speed held under load</small>
     <b>{{ r.stability | pct }}</b>
     <i>{% if d.stress_rank %}#{{ d.stress_rank }} of {{ site.stress_board | selectattr('stress_rank') | list | length }} · {% endif %}{{ r.label }}</i>
+  </div>
+  {% else %}
+  <div class="dev-total">
+    <small>Benchmark · version {{ site.version }}</small>
+    <b>–</b>
+    <i>Not on the board yet</i>
   </div>
   {% endif %}
 </section>
@@ -48,7 +54,7 @@
         </li>
         {% endfor %}
       </ul>
-      <p class="keyline"><span><i></i>6,000 points: a Snapdragon 8 Elite phone, as it ships</span></p>
+      <p class="keyline"><span><i></i>6,000 points: {{ reference_text(d.best.benchmark_version) }}</span></p>
       <p class="fine" style="margin-top:14px">Strongest: <b>{{ d.strongest.label }}</b> at {{ d.strongest.ratio | times }} the reference.{% if d.weakest and d.weakest.key != d.strongest.key %} Weakest: <b>{{ d.weakest.label }}</b> at {{ d.weakest.ratio | times }}.{% endif %}</p>
     </div>
   </div>
@@ -128,6 +134,10 @@
     </div>
   </div>
   {% endif %}
+  {% elif d.has_bench_runs %}
+  <div class="block callout">
+    <b>Not on the current board yet.</b>{% if d.earlier_runs %} The benchmark runs of this {{ d.noun }} were scored with version {{ d.earlier_by_version | map(attribute=0) | join(' and ') }}, before the board restarted with version {{ site.version }}{% if site.version_since %} on {{ site.version_since | day }}{% endif %}, and aren't comparable with today's scores.{% endif %} Run the benchmark again to put it {{ 'back ' if d.earlier_runs else '' }}on the board.
+  </div>
   {% endif %}
 
   {% if d.has_stress %}
@@ -179,6 +189,23 @@
   </div>
   {% endif %}
 
+  {% if not d.has_bench and d.bench_runs %}
+  <div class="block">
+    <h2>Verified runs</h2>
+    <div class="panel scroll-x">
+      <table class="runs">
+        <thead><tr><th>Run</th><th>Date</th><th>App</th><th>OS</th><th class="r">Total</th></tr></thead>
+        <tbody>
+          {% for run in d.bench_runs %}<tr><td><a class="link" href="{{ url('/run/' ~ run.id ~ '/') }}">#{{ run.id }}</a></td><td>{{ run.created | day }}</td><td>{{ run.app_version }}</td><td>{{ run.os_version }}</td><td class="r"><b>{{ run.total | num }}</b></td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% for version, runs in d.earlier_by_version %}
+  {{ m.earlier_runs(version, runs) }}
+  {% endfor %}
+
   {% if neighbours %}
   <div class="block">
     <h2>Compare it</h2>
@@ -194,8 +221,10 @@
     <p class="share-label">Share this result</p>
     {% if d.has_bench %}
     {{ m.share(d.title ~ ' scores ' ~ (d.total | num) ~ ' on ThermoHammer', d.title ~ ' scores ' ~ (d.total | num) ~ ' on the ThermoHammer benchmark.') }}
-    {% else %}
+    {% elif d.has_stress %}
     {{ m.share(d.title ~ ' holds ' ~ (r.stability | pct) ~ ' of its speed under load', d.title ~ ' holds ' ~ (r.stability | pct) ~ ' of its speed in the ThermoHammer stress test.') }}
+    {% else %}
+    {{ m.share(d.title ~ ' on ThermoHammer', d.title ~ ': verified ThermoHammer benchmark runs.') }}
     {% endif %}
   </div>
 </section>

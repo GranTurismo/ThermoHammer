@@ -18,10 +18,10 @@
       <h2>{{ brand }} <small>{{ devices | length }}</small></h2>
       <div class="devgrid">
         {% for d in devices %}
-        <a class="devcard" href="{{ url('/devices/' ~ d.slug ~ '/') }}" data-row data-name="{{ (d.title ~ ' ' ~ d.name ~ ' ' ~ d.manufacturer ~ ' ' ~ d.chip) | lower }}"{% if not d.has_bench %} style="--c:{{ d.headline.color }}"{% endif %}>
+        <a class="devcard" href="{{ url('/devices/' ~ d.slug ~ '/') }}" data-row data-name="{{ (d.title ~ ' ' ~ d.name ~ ' ' ~ d.manufacturer ~ ' ' ~ d.chip) | lower }}"{% if not d.has_bench and d.has_stress %} style="--c:{{ d.headline.color }}"{% endif %}>
           <b>{{ d.title }}</b>
-          <small>{{ d.platform }}{% if d.soc_name %} · {{ d.soc_name }}{% endif %}{% if d.has_bench and d.has_stress %} · benchmark + stress{% elif d.has_bench %} · benchmark{% else %} · stress test{% endif %}</small>
-          {% if d.has_bench %}<i>{{ d.total | num }}<small>points</small></i>{% else %}<i>{{ d.headline.stability | pct }}<small>held</small></i>{% endif %}
+          <small>{{ d.platform }}{% if d.soc_name %} · {{ d.soc_name }}{% endif %}{% if d.has_bench and d.has_stress %} · benchmark + stress{% elif d.has_bench %} · benchmark{% elif d.has_stress %} · stress test{% else %} · earlier runs only{% endif %}</small>
+          {% if d.has_bench %}<i>{{ d.total | num }}<small>points</small></i>{% elif d.has_stress %}<i>{{ d.headline.stability | pct }}<small>held</small></i>{% else %}<i>–<small>not on the board</small></i>{% endif %}
         </a>
         {% endfor %}
       </div>

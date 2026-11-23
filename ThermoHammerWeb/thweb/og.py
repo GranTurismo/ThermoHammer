@@ -151,9 +151,12 @@ class Cards:
         r = dev.headline
         key = [dev.title, dev.chip, dev.gpu, dev.os_text, dev.total, dev.rank, len(site.board),
                [s["points"] for s in dev.section_list], (r.id, round(r.stability, 1)) if r else None]
+        off_board = not dev.has_bench and not r        # benchmark runs of an earlier scoring version only
+        if off_board:
+            key.append(["off-board", site.version, sorted({x.benchmark_version for x in dev.earlier_runs}), len(dev.earlier_runs)])
 
         def draw() -> Image.Image:
-            img, d = self.canvas("Benchmark" if dev.has_bench else "Throttling test")
+            img, d = self.canvas("Benchmark" if dev.has_bench or off_board else "Throttling test")
             name, size = self.fit(d, dev.title, "sans", 1080, 68, 40)
             self.text(d, (60, 148), name, "sans", size, INK0)
             sub = " · ".join(x for x in (dev.chip if dev.os_id != 4 else "", dev.gpu, dev.os_text) if x) or dev.platform
@@ -183,6 +186,15 @@ class Cards:
                 if r.has_curve:
                     self.rect(d, (640, 300, 1140, 560), outline=HAIR, radius=14)
                     self.curve(d, r, (664, 322, 1116, 538))
+            else:
+                self.text(d, (60, 318), f"SCORING VERSION {site.version}", "mono", 18, INK2, spacing=0.14)
+                self.text(d, (60, 352), "Not on the board yet", "sans", 56, INK0)
+                versions = " AND ".join(str(v) for v in sorted({x.benchmark_version for x in dev.earlier_runs}))
+                runs = len(dev.earlier_runs)
+                if versions:
+                    self.text(d, (60, 450), f"{runs} EARLIER RUN{'S' if runs != 1 else ''} · SCORED WITH VERSION {versions}",
+                              "mono", 20, INK1, spacing=0.1)
+                self.text(d, (60, 510), "RUN THE BENCHMARK AGAIN", "monob", 22, TEAL, spacing=0.08)
             return img
 
         return self._save(f"device-{dev.slug}", key, draw)
@@ -192,9 +204,11 @@ class Cards:
         dev = run.device
         key = ["run", run.id, dev.title, run.os_text, run.total, [s["points"] for s in run.section_list],
                run.created.isoformat() if run.created else None]
+        if not run.current:
+            key.append(["version", run.benchmark_version])
 
         def draw() -> Image.Image:
-            img, d = self.canvas(f"Run #{run.id}")
+            img, d = self.canvas(f"Run #{run.id}" if run.current else f"Run #{run.id} · version {run.benchmark_version}")
             name, size = self.fit(d, dev.title, "sans", 1080, 64, 40)
             self.text(d, (60, 148), name, "sans", size, INK0)
             when = f"{run.created.day} {run.created.strftime('%b %Y')}" if run.created else ""
@@ -203,7 +217,11 @@ class Cards:
             self.text(d, (60, 148 + size + 16), sub, "mono", sub_size, INK1)
             self.text(d, (60, 318), "BENCHMARK SCORE", "mono", 18, INK2, spacing=0.14)
             self.text(d, (56, 344), f"{run.total:,}", "monob", 118, INK0)
-            self.text(d, (60, 510), f"CAN YOUR {dev.noun.upper()} BEAT THIS?", "monob", 22, TEAL, spacing=0.08)
+            if run.current:
+                self.text(d, (60, 510), f"CAN YOUR {dev.noun.upper()} BEAT THIS?", "monob", 22, TEAL, spacing=0.08)
+            else:
+                self.text(d, (60, 510), f"SCORING VERSION {run.benchmark_version} · NOT ON TODAY'S BOARD", "mono", 20, INK1,
+                          spacing=0.08)
             top = max(12000, max((s["points"] for s in run.section_list), default=1))
             y = 318
             for s in run.section_list:
@@ -296,6 +314,8 @@ class Cards:
     def board(self, site: Site) -> Path:
         rows = [(d.rank, d.title, d.total) for d in site.board[:5]]
         key = ["board", rows]
+        if not rows:
+            key.append(["empty", site.version, site.earlier_versions, site.version_since.isoformat() if site.version_since else None])
 
         def draw() -> Image.Image:
             img, d = self.canvas("Leaderboard")
@@ -310,6 +330,14 @@ class Cards:
                 self.rect(d, (720, y + 14, 720 + max(10, 260 * total / top), y + 30), fill=ramp_rgb(0.78 - 0.5 * total / top), radius=8)
                 self.text(d, (W - 60, y + 22), f"{total:,}", "monob", 26, INK0, "rm")
                 y += 64
+            if not rows:
+                if site.earlier_versions:
+                    since = site.version_since
+                    when = f" ON {since.day} {since.strftime('%b %Y').upper()}" if since else ""
+                    self.text(d, (60, 250), f"RESTARTED WITH SCORING VERSION {site.version}{when}", "mono", 22, INK1,
+                              spacing=0.08)
+                self.text(d, (60, 300), "Be among the first.", "sans", 64, TEAL)
+                self.text(d, (60, 400), "RUN THE BENCHMARK · SUBMIT A CLEAN RUN", "mono", 20, INK2, spacing=0.1)
             return img
 
         return self._save("board", key, draw)

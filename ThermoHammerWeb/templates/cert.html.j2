@@ -26,6 +26,15 @@
             {% endif %}{% endfor %}
           </tbody>
         </table>
+        {% elif not run.current %}
+        <div class="cert-verdict v-unknown">
+          <b>{{ run.total | num }}</b>
+          <span>points, verified · scoring version {{ run.benchmark_version }}</span>
+          <small>Scored with {{ 'the previous' if run.benchmark_version == site.version - 1 else 'an earlier' }} scoring: version {{ run.benchmark_version }}, when 6,000 points per section was {{ reference_text(run.benchmark_version) }}. Today's board uses version {{ site.version }}, so this run isn't comparable with it or with a typical {{ d.title }} on it. The score itself is real; for a current certificate, run the benchmark again.</small>
+        </div>
+        <table class="cert-table">
+          <tbody>{% for s in run.section_list %}{% if s.points %}<tr style="--c:{{ s.color }}"><td><b>{{ s.label }}</b></td><td class="r">{{ s.points | num }}</td></tr>{% endif %}{% endfor %}</tbody>
+        </table>
         {% else %}
         <div class="cert-verdict v-unknown">
           <b>{{ run.total | num }}</b>

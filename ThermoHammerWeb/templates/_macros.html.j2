@@ -134,3 +134,40 @@
   {{ store_buttons() }}
 </div>
 {% endmacro %}
+
+{# A run scored with an earlier scoring version: what its points meant then, and why it isn't on today's board. #}
+{% macro earlier_note(run) %}
+<div class="block callout">
+  <b>Scored with {{ 'the previous' if run.benchmark_version == site.version - 1 else 'an earlier' }} scoring, version {{ run.benchmark_version }}.</b> Back then, 6,000 points per section was {{ reference_text(run.benchmark_version) }}. The board now uses version {{ site.version }}, measured against {{ reference_text(site.version) }}, so this run isn't comparable with today's scores and isn't on the board.
+</div>
+{% endmacro %}
+
+{# What an empty benchmark board says: it restarted on a new scoring version, or nobody has run it yet. #}
+{% macro board_empty() %}
+{% if site.earlier_versions %}<b>The board restarted with scoring version {{ site.version }}{% if site.version_since %} on {{ site.version_since | day }}{% endif %}.</b> Be among the first: <a class="link" href="#get">run the benchmark</a>.{% else %}<b>No verified benchmark runs yet.</b> Be the first: <a class="link" href="#get">run the benchmark</a>.{% endif %}
+{% endmacro %}
+
+{# Runs of one earlier scoring version, as a table of their own: never on the same scale as today's runs. #}
+{% macro earlier_runs(version, runs) %}
+<div class="block" id="version-{{ version }}">
+  <h2>Earlier runs, scored with version {{ version }}</h2>
+  <p class="sec-lede">Not comparable with today's board: version {{ version }} measured every device against {{ reference_text(version) }}. They stay here so links to them keep working.</p>
+  <div class="panel scroll-x">
+    <table class="runs">
+      <thead><tr><th>Run</th><th>Date</th><th>App</th><th>OS</th>{% for key, short, label, field, color in SECTIONS %}<th class="r" style="color:{{ color }}">{{ short }}</th>{% endfor %}<th class="r">Total</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td><a class="link" href="{{ url('/run/' ~ run.id ~ '/') }}">#{{ run.id }}</a></td>
+          <td>{{ run.created | day }}</td>
+          <td>{{ run.app_version }}</td>
+          <td>{{ run.os_version }}</td>
+          {% for key, short, label, field, color in SECTIONS %}<td class="r">{{ run.scores.get(key, 0) | num }}</td>{% endfor %}
+          <td class="r"><b>{{ run.total | num }}</b></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}

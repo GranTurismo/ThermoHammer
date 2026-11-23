@@ -7,10 +7,17 @@
     <a href="{{ url('/leaderboard/throttling/') }}">Stress test</a>
   </div>
   <h1>Benchmark leaderboard</h1>
-  <p class="lede">All six sections, one total, and each device's best verified run. Phones and PCs sit on the same scale: 6,000 points per section is a Snapdragon 8 Elite phone as it ships.</p>
+  <p class="lede">All six sections, one total, and each device's best verified run. Phones and PCs sit on the same scale: 6,000 points per section is {{ reference_text(site.version) }}.</p>
+  {% if site.earlier_versions and site.board %}<p class="fine">Scoring version {{ site.version }}{% if site.version_since %} since {{ site.version_since | day }}{% endif %}: the board started over with it. Runs scored with version {{ site.earlier_versions | join(' or ') }} stay on each device's page, marked, and aren't ranked here.</p>{% endif %}
 </section>
 
 <section class="wrap page-body" data-board="bench">
+  {% if not site.board %}
+  <div class="block callout board-empty">
+    {{ m.board_empty() }}
+    {% if site.earlier_versions %}<p>Version {{ site.version }} measures every device against a new reference, {{ reference_text(site.version) }}, so earlier scores aren't comparable and the board started over. Runs scored before stay on each <a class="link" href="{{ url('/devices/') }}">device's page</a>, marked with their version. Every clean run from now on adds a row here.</p>{% endif %}
+  </div>
+  {% else %}
   <div class="filters">
     <label class="search">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -62,6 +69,7 @@
   <div class="block callout">
     <b>{{ site.board | length }} devices so far.</b> The benchmark board is new, and every clean run adds a row. If your phone isn't here, it only takes one run to put it on the map.
   </div>
+  {% endif %}
 </section>
 {{ m.cta_band('Put your device on the board.', 'Run the benchmark, submit a clean run, and it appears here with every number.') }}
 {% endblock %}

@@ -15,8 +15,8 @@
 
 <section class="wrap page-body narrow">
   <div class="prose">
-    {% if note.rival and note.first %}
-    <p>The {{ dev.title }} runs a {{ dev.soc_name or dev.soc }}. On our own leaderboard it was losing the CPU section to a {{ note.rival.title }}{% if note.rival.soc_name %} and its {{ note.rival.soc_name }}{% endif %}: {{ note.first.scores.cpu | num }} points against {{ note.rival.best.scores.cpu | num }}. That is the wrong way round, and when a benchmark says something that surprising, the first suspect is the benchmark.</p>
+    {% if note.rival_run and note.first %}
+    <p>The {{ dev.title }} runs a {{ dev.soc_name or dev.soc }}. On our own leaderboard it was losing the CPU section to a {{ note.rival.title }}{% if note.rival.soc_name %} and its {{ note.rival.soc_name }}{% endif %}: {{ note.first.scores.cpu | num }} points against {{ note.rival_run.scores.cpu | num }}. That is the wrong way round, and when a benchmark says something that surprising, the first suspect is the benchmark.</p>
 
     <h2>Not the build, not the heat</h2>
     <p>That first run had come from a test build of the app, so we ran it again with the released version. Same phone, same answer: {{ bal.scores.cpu | num }} for the CPU, within 1% of the first run. Heat wasn't it either, because a benchmark run only counts if the phone starts cool.</p>
@@ -59,7 +59,7 @@
 
     <h2>What it means</h2>
     <p>The benchmark was right both times. In Balanced mode this phone hands apps about half of what its processor can do, and that is the phone most owners have, because it is how it ships.</p>
-    <p>So we changed nothing then. <b>Update, scoring version 5:</b> the reference is now this phone in Performance mode, the speed its chip is built for, and the board started over with it. The runs on this page were scored the old way, when 6,000 points per section was the phone as it ships, in Balanced mode. The leaderboard keeps each device's best verified run, which is why the {{ dev.title }} now stands at {{ dev.total | num }}{% if dev.rank %}, #{{ dev.rank }} on the board{% endif %}: that is the Performance run.</p>
+    <p>So we changed nothing then. <b>Update, scoring version 5:</b> the reference is now this phone in Performance mode, the speed its chip is built for, and the board started over with it. The runs on this page were scored the old way, when 6,000 points per section was the phone as it ships, in Balanced mode.{% if dev.best is sameas perf %} The leaderboard keeps each device's best verified run, which is why the {{ dev.title }} now stands at {{ dev.total | num }}{% if dev.rank %}, #{{ dev.rank }} on the board{% endif %}: that is the Performance run.{% endif %}</p>
     <p>If your phone has a performance mode, your score depends on it. Run the benchmark once in each mode and compare the two runs in the app: the gap is what the default costs you. And when two phones on a leaderboard look the wrong way round, find out which mode each was in before deciding which chip is faster.</p>
 
     <h2>Check it yourself</h2>
