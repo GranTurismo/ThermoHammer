@@ -10,7 +10,7 @@ namespace ThermoHammer.Api.Tests;
 /// </summary>
 public class BenchmarkMappingTests
 {
-    private static BenchmarkRequest Request(Action<BenchmarkRequest>? tweak = null)
+    internal static BenchmarkRequest Request(Action<BenchmarkRequest>? tweak = null)
     {
         var r = new BenchmarkRequest
         {
@@ -88,7 +88,7 @@ public class BenchmarkMappingTests
     private static readonly double F1 = 6000 / BenchmarkScoring.Test1Weight, F2 = 6000 / BenchmarkScoring.Test2Weight,
         F3 = 6000 / BenchmarkScoring.Test3Weight;
 
-    private static string Sign(string key, BenchmarkRequest r) =>
+    internal static string Sign(string key, BenchmarkRequest r) =>
         Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(BenchmarkScoring.Canonical(r))));
 
     [Fact]
@@ -122,6 +122,24 @@ public class BenchmarkMappingTests
         r.Test2Fps = 59.99;                                    // doubled Neon City fps after signing
         Assert.False(encryptor.IsValidBenchmark(key, r));
         Assert.False(encryptor.IsValidBenchmark("other-key", Request(x => x.Hash = Sign(key, x))));
+    }
+
+    [Fact]
+    public void TheSameRunSentTwiceIsRecognised()
+    {
+        var first = Request().ToDao();
+        // sent again: a new session and hash, the OS or the app updated in between
+        var again = Request(r => { r.SessionId = 8; r.Hash = "other"; r.OsVersion = "16.1"; r.OsBuild = "B2"; r.AppVersion = "2.1.8"; }).ToDao();
+        Assert.True(BenchmarkScoring.SameRun(first, again));
+
+        // a second real run never matches every number
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.CpuMulti = 301.76).ToDao()));
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.LlmFreeGb = 9.43).ToDao()));
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.ExportHevc = 0).ToDao()));
+        // the same numbers from another model, platform or benchmark version aren't this run
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.DeviceModel = "Honor 400").ToDao()));
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.Os = OsPlatform.iOS).ToDao()));
+        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.BenchmarkVersion = 5).ToDao()));
     }
 
     [Fact]

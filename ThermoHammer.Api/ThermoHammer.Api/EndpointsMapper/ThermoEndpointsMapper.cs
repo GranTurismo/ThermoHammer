@@ -87,9 +87,16 @@ public static class ThermoEndpointsMapper
             if (BenchmarkScoring.Problem(request) is { } problem)
                 return Results.BadRequest(problem);
 
-            session.State = SessionState.Closed;
             request.DeviceModel = await modelResolver.ResolveModelAsync(request.Os, request.DeviceModel, request.DeviceManufacturer);
             var run = request.ToDao();
+            // the same run sent again (a second tap on Submit) would count as a second run of the model: one run, one row
+            var sameModel = await db.BenchmarkRuns.AsNoTracking()
+                .Where(r => r.BenchmarkVersion == run.BenchmarkVersion && r.Os == run.Os && r.DeviceModel == run.DeviceModel)
+                .ToListAsync();
+            if (sameModel.Any(r => BenchmarkScoring.SameRun(r, run)))
+                return Results.Conflict("This run is already on the leaderboard");
+
+            session.State = SessionState.Closed;
             await db.BenchmarkRuns.AddAsync(run);
             await db.SaveChangesAsync();
 
