@@ -373,6 +373,7 @@
 		E1230782A5E06EC8583B136B /* arctic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8A5D238F93F2540B642D9D52 /* arctic.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		E1C6032A8864E8BD49980341 /* argsort.metal in Sources */ = {isa = PBXBuildFile; fileRef = E91758456C86D16385280BE9 /* argsort.metal */; };
 		E24C80AB11E99509AB148A38 /* gemma3n.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 962B4ECA0953FF3D9F43171D /* gemma3n.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		E2ADD9FA40F77A53D7E9CED7 /* BenchmarkPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66950CA264BE9E6570B190F6 /* BenchmarkPayloadTests.swift */; };
 		E371EEB7563C6B489B9277B8 /* mem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 73CA043AF3361EBD6E01083B /* mem.cpp */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		E3B1EB8917F0C4A5C65A1EDE /* hy-v4.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4D0FD200DEAC9DEBF6E86CE3 /* hy-v4.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		E3C1996E27674081BC28BA40 /* real_esrgan_general_x4v3.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 4E46D17787CC166BE8DFFA81 /* real_esrgan_general_x4v3.mlpackage */; };
@@ -678,6 +679,7 @@
 		65BEBDF61558A99F3945716A /* ggml-version.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ggml-version.h"; sourceTree = "<group>"; };
 		65EB5C10DC4B578CBCF68F81 /* wavtokenizer-dec.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "wavtokenizer-dec.cpp"; sourceTree = "<group>"; };
 		663F65BAE880188293A520A3 /* jetbrainsmono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = jetbrainsmono_bold.ttf; sourceTree = "<group>"; };
+		66950CA264BE9E6570B190F6 /* BenchmarkPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkPayloadTests.swift; sourceTree = "<group>"; };
 		6741CCB65F5A088920847286 /* llm.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = llm.cpp; sourceTree = "<group>"; };
 		677A36069BF73C7C9256C041 /* llama-cparams.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "llama-cparams.cpp"; sourceTree = "<group>"; };
 		67B63D8AFAAE8C9D436FF459 /* jamba.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = jamba.cpp; sourceTree = "<group>"; };
@@ -1744,6 +1746,7 @@
 			children = (
 				95A857EEB438245A2D238FD2 /* AiAgreementTests.swift */,
 				5B4A08E32D271F2D954F3DDE /* BackboneTests.swift */,
+				66950CA264BE9E6570B190F6 /* BenchmarkPayloadTests.swift */,
 				E316E9938A2B8AD17BD0171B /* BenchmarkScoreTests.swift */,
 				7D97868A982B3262C960900E /* BenchmarkUpdateImpactTests.swift */,
 				7CD3956F225D6E1F09E7D617 /* CertificateTests.swift */,
@@ -2049,6 +2052,7 @@
 			files = (
 				A59F0751E9B1ACF36B6D8AF0 /* AiAgreementTests.swift in Sources */,
 				587C7100CC6A1F78D07AE3DD /* BackboneTests.swift in Sources */,
+				E2ADD9FA40F77A53D7E9CED7 /* BenchmarkPayloadTests.swift in Sources */,
 				F578590BF8D33D06C6BAE938 /* BenchmarkScoreTests.swift in Sources */,
 				578C032701AEBA139B284966 /* BenchmarkUpdateImpactTests.swift in Sources */,
 				687730C5F7B8FC968889FA51 /* CertificateTests.swift in Sources */,

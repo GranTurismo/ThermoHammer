@@ -87,7 +87,10 @@ struct BenchmarkRecord: Codable, Identifiable {
         if let l = r.llm {
             llm = LlmRecord(prefillCpu: q(l.run(.cpu)?.prefill ?? 0), decodeCpu: q(l.run(.cpu)?.decode ?? 0),
                             prefillGpu: q(l.run(.gpu)?.prefill ?? 0), decodeGpu: q(l.run(.gpu)?.decode ?? 0),
-                            gpu: l.gpuName, freeGb: q(l.freeGb))
+                            gpu: l.gpuName, freeGb: q(l.freeGb),
+                            // the NPU's rates only when they count (a right answer, no error), as the server re-scores them
+                            prefillNpu: q(l.npuCounted?.prefill ?? 0), decodeNpu: q(l.npuCounted?.decode ?? 0),
+                            npu: l.npu?.model.map { "\(LlmNpuEngine.engineName) · \($0)" })
         }
         validityFlags = r.validityFlags
         complete = r.isComplete
@@ -102,6 +105,10 @@ struct LlmRecord: Codable {
     var prefillCpu = 0.0, decodeCpu = 0.0, prefillGpu = 0.0, decodeGpu = 0.0
     var gpu: String?
     var freeGb = 0.0
+    // version 5: the NPU (LlmNpuEngine) — 0 = it didn't run, failed or answered wrongly — and "<engine> · <model>" it ran.
+    // Optional, so runs saved by earlier versions still load
+    var prefillNpu: Double?, decodeNpu: Double?
+    var npu: String?
 }
 
 /** UX 5's 8K decode rates and UX 6's exports: fps, quality (dB) and which ran in hardware. */
@@ -150,6 +157,9 @@ struct BenchmarkPayload: Encodable {
     let llmPrefillCpu, llmDecodeCpu, llmPrefillGpu, llmDecodeGpu: Double
     let llmGpu: String?             // the GPU it ran on (reported)
     let llmFreeGb: Double           // memory the app could take (reported)
+    // version 5: the NPU's tokens/s (0 = none, failed, or a wrong answer) and the engine and model file it ran
+    let llmPrefillNpu, llmDecodeNpu: Double
+    let llmNpu: String?
     let validityFlags: Int
     let appVersion: String?
 
@@ -169,6 +179,7 @@ struct BenchmarkPayload: Encodable {
             f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
             f2(storageRandomRead), f2(storageRandomWrite), storageDirect ? "1" : "0", f2(dbInsert), f2(dbUpdate), f2(dbQuery),
             f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu ?? "", f2(llmFreeGb),
+            f2(llmPrefillNpu), f2(llmDecodeNpu), llmNpu ?? "",
             "\(validityFlags)"]
         return parts.joined(separator: "|")
     }
@@ -210,6 +221,7 @@ enum BenchmarkUpload {
             dbInsert: r.dbInsert, dbUpdate: r.dbUpdate, dbQuery: r.dbQuery,
             llmPrefillCpu: l.prefillCpu, llmDecodeCpu: l.decodeCpu, llmPrefillGpu: l.prefillGpu, llmDecodeGpu: l.decodeGpu,
             llmGpu: l.gpu, llmFreeGb: l.freeGb,
+            llmPrefillNpu: l.prefillNpu ?? 0, llmDecodeNpu: l.decodeNpu ?? 0, llmNpu: l.npu,
             validityFlags: r.validityFlags,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
         let mac = HMAC<SHA256>.authenticationCode(for: Data(payload.canonical().utf8), using: SymmetricKey(data: Data(session.encryptionKey.utf8)))

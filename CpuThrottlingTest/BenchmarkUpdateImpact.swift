@@ -42,7 +42,10 @@ extension BenchmarkRecord {
             AiTest.allCases.map { t in let i = (t.rawValue - 1) * AiAccel.allCases.count + a.rawValue; return i < ai.count ? ai[i] : 0 }
         }
         put("ai", AiScore.overall(AiScore.accel(.cpu, ips(.cpu)), AiScore.accel(.gpu, ips(.gpu)), AiScore.accel(.npu, ips(.npu))))
-        if let l = llm { put("llm", LlmScore.overall(LlmScore.engine(.cpu, l.prefillCpu, l.decodeCpu), LlmScore.engine(.gpu, l.prefillGpu, l.decodeGpu), 0)) }
+        if let l = llm {
+            put("llm", LlmScore.overall(LlmScore.engine(.cpu, l.prefillCpu, l.decodeCpu), LlmScore.engine(.gpu, l.prefillGpu, l.decodeGpu),
+                                        LlmScore.npu(l.prefillNpu ?? 0, l.decodeNpu ?? 0)))
+        }
         return s
     }
 }

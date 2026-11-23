@@ -154,12 +154,15 @@ enum CsvExport {
         }
         if let llm = r.llm {
             pts("llm", "prefill", llm.prefillPoints); pts("llm", "decode", llm.decodePoints)
+            pts("llm", "cpu", llm.points(.cpu)); pts("llm", "gpu", llm.points(.gpu)); pts("llm", "npu", llm.npuPoints)
             add("llm", "prefill", llm.prefill, "tokens/s"); add("llm", "decode", llm.decode, "tokens/s")
             for a in LlmAccel.allCases {
                 let run = llm.run(a)
                 add("llm", key(a.label) + "_prefill", run?.prefill ?? 0, "tokens/s"); add("llm", key(a.label) + "_decode", run?.decode ?? 0, "tokens/s")
                 if a == .cpu, let run { add("llm", "cpu_threads", "\(run.threads)", "threads") }
             }
+            // the NPU's rates as they count: 0 when it didn't run, failed or answered wrongly (as submitted)
+            add("llm", "npu_prefill", llm.npuCounted?.prefill ?? 0, "tokens/s"); add("llm", "npu_decode", llm.npuCounted?.decode ?? 0, "tokens/s")
             add("llm", "free_memory", llm.freeGb, "GB"); add("llm", "largest_model", "\(llm.largestModel)", "billion parameters")
         }
         for s in SectionScore.of(r) { add("score", s.key, "\(s.points)", "points") }
