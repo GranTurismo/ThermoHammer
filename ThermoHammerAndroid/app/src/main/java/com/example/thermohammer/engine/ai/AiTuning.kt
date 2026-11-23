@@ -30,7 +30,11 @@ enum class GpuBackend(val label: String) { AUTOMATIC("automatic"), OPENCL("OpenC
 enum class GpuStorage(val label: String) { DEFAULT("default"), BUFFER("buffers"), TEXTURE_2D("2D textures") }
 
 /** LiteRT's own choice, or FP16 asked for: nothing in 2.3.0's sources says which of FP16 and FP32 its default is on a Mali. */
-enum class GpuPrecision(val label: String) { DEFAULT("default"), FP16("FP16") }
+enum class GpuPrecision(val label: String) {
+    DEFAULT("default"), FP16("FP16"),
+    /** Test builds' precision probe only (AiSettings.GPU_PRECISION_PROBE): never chosen for a scored run. */
+    FP32("FP32"), FP16_FP32_ACCUM("FP16, FP32 accumulation")
+}
 
 /** One way to run the models on an accelerator. The default is what the app has always done (and what Qualcomm phones still get). */
 data class AiSetting(
@@ -51,7 +55,9 @@ data class AiSetting(
      */
     val cpuPin: List<Int> = emptyList(),
     /** CPU: an ADPF hint session (PerformanceHintManager, Android 12+) over the threads that run the model, told how long each inference took. */
-    val adpf: Boolean = false
+    val adpf: Boolean = false,
+    /** GPU: LiteRT caps the infinities an FP16 overflow makes at the largest finite value (test builds' precision probe only). */
+    val gpuInfCapping: Boolean = false
 ) {
     val isDefault: Boolean get() = id == DEFAULT_ID
 
@@ -60,6 +66,17 @@ data class AiSetting(
 
 object AiSettings {
     val DEFAULT = AiSetting(AiSetting.DEFAULT_ID, "default")
+
+    /**
+     * Test builds only (StressEngine.aiGpuPrecisionProbe): every model on the GPU again with more precise arithmetic
+     * than LiteRT's default, each answer checked against the CPU's. Every Adreno GPU has answered 5–6 of the 6 models
+     * wrongly since the check arrived (2.1.5); this says whether FP16 arithmetic is why. Never scored.
+     */
+    val GPU_PRECISION_PROBE = listOf(
+        AiSetting("fp32", "FP32", gpuPrecision = GpuPrecision.FP32),
+        AiSetting("fp16acc32", "FP16 with FP32 accumulation", gpuPrecision = GpuPrecision.FP16_FP32_ACCUM),
+        AiSetting("infcap", "default precision, infinities capped", gpuInfCapping = true)
+    )
 
     /** Models the GPU settings are tried on: MobileNet is dominated by launching ~100 small kernels, Real-ESRGAN by arithmetic. */
     val GPU_MODELS = listOf(AiTest.CLASSIFY, AiTest.UPSCALE)
@@ -107,8 +124,13 @@ object AiSettings {
         AiSetting("cpu-threads", "$CPU_THREADS CPU threads for the rest", cpuThreads = CPU_THREADS),
         AiSetting("gpu-rest", "GPU takes the rest", cpuThreads = CPU_THREADS, gpuTakesRest = true))
 
-    /** True for a GPU the probe applies to: a known renderer that isn't Qualcomm's Adreno (an unknown one keeps the defaults). */
-    fun gpuApplies(renderer: String): Boolean = renderer.isNotBlank() && !renderer.contains("adreno", ignoreCase = true)
+    /**
+     * True for a GPU the probe applies to: any known renderer (an unknown one keeps the defaults). Adreno GPUs too since
+     * version 5: LiteRT's default OpenCL path on them never writes its answers into the app's output buffers (Honor 600
+     * Pro, Adreno 830, 2026-11-23: the outputs read the same before any run and after twelve; OpenGL answers right), so
+     * they need the probe's rule that a default with wrong answers gives way to the fastest setting that answers right.
+     */
+    fun gpuApplies(renderer: String): Boolean = renderer.isNotBlank()
 }
 
 // ── what a probe measured ────────────────────────────────────────────────────
@@ -261,19 +283,36 @@ object AiTuner {
         base != null && models.any { t -> base.results[t]?.let { it.error == null && AiAgreement.isWrong(it.agreement) } == true }
 
     /**
+     * True when the default failed on a probe model: it delivered no answer at all — LiteRT's OpenCL path on Adreno
+     * GPUs never writes one (AiBench's output marker), and a model may not compile. Like a wrong default it is no
+     * yardstick: the fastest setting that answers right is used instead, and the default only when there is none.
+     */
+    fun defaultFailed(base: AiTuningRow?, models: List<AiTest>): Boolean =
+        base != null && base.skipped == null && models.any { t -> base.results[t]?.error != null }
+
+    /** The default can't be measured against: wrong ([defaultWrong]) or no answer ([defaultFailed]). */
+    fun noYardstick(base: AiTuningRow?, models: List<AiTest>): Boolean = defaultWrong(base, models) || defaultFailed(base, models)
+
+    /** Geometric mean of a row's own rates over the probe models: how settings are ranked when the default can't be. */
+    private fun speed(row: AiTuningRow, models: List<AiTest>): Double {
+        val rates = models.map { rate(row, it) }
+        return if (rates.any { it <= 0 }) 0.0 else exp(rates.sumOf { ln(it) } / rates.size)
+    }
+
+    /**
      * The fastest setting that qualifies and gains at least [MIN_GAIN]; the default otherwise. Where the default's
      * own answers are wrong: the fastest setting whose answers are right, however its speed compares — and the default
      * when there is none (its runs then score 0, and say why).
      */
     fun choose(rows: List<AiTuningRow>, models: List<AiTest>): AiSetting {
         val base = rows.firstOrNull { it.setting.isDefault } ?: return AiSettings.DEFAULT
-        if (models.any { rate(base, it) <= 0 }) return base.setting      // no baseline to beat
-        if (defaultWrong(base, models)) {
+        if (noYardstick(base, models)) {
             val others = rows.filter { !it.setting.isDefault }
             // the fastest whose answers are right; failing that the fastest whose answers at least aren't wrong
-            return (others.filter { answersRight(it, models) }.maxByOrNull { gain(it, base, models) }
-                ?: others.filter { answersUsable(it, models) }.maxByOrNull { gain(it, base, models) })?.setting ?: base.setting
+            return (others.filter { answersRight(it, models) }.maxByOrNull { speed(it, models) }
+                ?: others.filter { answersUsable(it, models) }.maxByOrNull { speed(it, models) })?.setting ?: base.setting
         }
+        if (models.any { rate(base, it) <= 0 }) return base.setting      // no baseline to beat
         val best = rows.filter { !it.setting.isDefault && disqualified(it, base, models) == null }
             .maxByOrNull { gain(it, base, models) }
         return if (best != null && gain(best, base, models) >= MIN_GAIN) best.setting else base.setting
@@ -302,7 +341,7 @@ object AiTuner {
                 if (skipped != null) break
                 if (!setting.isDefault && nanoTime() > deadlineNs) { skipped = "out of time"; break }
                 // (a default that answers wrongly is no yardstick: every setting gets its full turn then)
-                if (!setting.isDefault && i > 0 && base != null && !defaultWrong(base, models) &&
+                if (!setting.isDefault && i > 0 && base != null && !noYardstick(base, models) &&
                     ratio(AiTuningRow(setting, results), base, models.first()) < HOPELESS) { skipped = "clearly slower on ${models.first().name.lowercase()}"; break }
                 val s = try { measure(test, setting) } catch (e: Exception) { AiSample(0.0, error = e.message ?: e.javaClass.simpleName) }
                 val ref = reference(test)
@@ -335,10 +374,12 @@ object AiTuner {
                 val copies = if (r.writeMs >= 0) ", ${"%.2f".format(1000.0 / r.ips)} ms/call, copy in %.2f out %.2f ms".format(r.writeMs, r.readMs) else ""
                 "%s %.2f/s%s (agreement %.2f%s)".format(m.name.lowercase(), r.ips, rel, r.agreement, copies)
             }
-            val wrongDefault = defaultWrong(base, models)
+            val failedDefault = defaultFailed(base, models)
+            val wrongDefault = defaultWrong(base, models) || failedDefault
             val verdict = when {
                 row.setting == t.chosen -> if (wrongDefault && row.setting.isDefault) "used: no setting's answers were the CPU's (wrong answers score 0)" else "used"
                 row.skipped != null -> "not tried: ${row.skipped}"
+                failedDefault && row.setting.isDefault -> "it delivered no answer: not used"
                 wrongDefault && row.setting.isDefault -> "its answers differ from the CPU's: not used"
                 wrongDefault -> row.results.values.firstNotNullOfOrNull { it.error }?.let { "rejected: failed: $it" }
                     ?: when {

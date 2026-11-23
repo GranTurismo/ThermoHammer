@@ -13,6 +13,9 @@ internal interface GpuScene {
     /** Triangles submitted per frame across all passes (informational). */
     val trianglesPerFrame: Long
 
+    /** How the scene's anti-aliasing was drawn (see [GlTile]), for the report; set by init(). */
+    val drawPath: String get() = ""
+
     /** True once a scene that keeps its own timeline (the UX tests) has finished it. */
     val complete: Boolean get() = false
 

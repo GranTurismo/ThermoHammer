@@ -12,6 +12,7 @@ internal object LlmNativeI8mm {
     val loadError: String? = try { System.loadLibrary("benchllm_i8mm"); null } catch (e: Throwable) { e.message ?: e.javaClass.simpleName }
     val loaded: Boolean get() = loadError == null
 
+    @JvmStatic external fun setModel(model: Int)
     @JvmStatic external fun create(gpu: Boolean, threads: Int, seed: Long, error: Array<String?>): Long
     @JvmStatic external fun setThreads(handle: Long, threads: Int, batchThreads: Int)
     @JvmStatic external fun tuneThreads(handle: Long, listener: LlmNative.TuneListener): IntArray?

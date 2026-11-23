@@ -79,8 +79,10 @@ class BenchmarkReportTest {
         assertEquals("the probe's text is not part of the score", llm.score, withProbe.score)
         assertEquals(llm.prefill, withProbe.prefill, 0.0)
         val text = BenchmarkReport.text(BenchmarkResult(emptyList(), 0, "Mali-G1-Ultra MC12", 0, llm = withProbe), "vivo X300 Pro", "16", "MT6993", "2.1", "2026-11-12 10:00")
-        for (needle in listOf("LLM probe · kernel self-test, 12 ms in all (a tiny seeded model reads a 24-token prompt, then one more token; nothing is timed against the 3B model) · the CPU test ran in the i8mm build: its self-test answers agree with the dot-product build's",
-                "LLM CPU · prefill 44.90 tok/s · decode 21.00 tok/s · 6 threads (prompt 8) · i8mm kernels",
+        for (needle in listOf("LLM probe · kernel self-test, 12 ms in all (a tiny seeded model reads a 24-token prompt, then one more token; nothing is timed against the test model) · the CPU test ran in the i8mm build: its self-test answers agree with the dot-product build's",
+                // version 5: each engine's points against its own reference (CPU: 160 / 55 tok/s = 6000)
+                "LLM CPU · %,d pts · prefill 44.90 tok/s · decode 21.00 tok/s · 6 threads (prompt 8) · i8mm kernels".format(llm.points(LlmAccel.CPU)),
+                "LLM · %,d pts = CPU %,d · GPU %,d · NPU 0".format(llm.score, llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU)),
                 "CPU i8mm · libbenchllm_i8mm.so · self-test 5 ms · answers agree: prompt 0.99998, next token 0.99997", "USED FOR THE SCORE",
                 "CPU features · asimddp yes · i8mm yes", "Vulkan · loader 1.3.0 · 1 device", "OpenCL · 1 platform")) {
             assertTrue("report lacks '$needle':\n$text", text.contains(needle))

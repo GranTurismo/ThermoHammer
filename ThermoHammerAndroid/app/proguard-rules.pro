@@ -39,6 +39,8 @@
 # LiteRT (AI tests): its native code finds Java classes by name — LiteRtException included — to throw and to call
 # back; renamed by R8, a failed model compile aborted the whole app instead of throwing
 -keep class com.google.ai.edge.litert.** { *; }
+# LiteRT-LM (test builds only: the NPU LLM probe): JNI calls back into its Kotlin classes; its AAR has no rules
+-keep class com.google.ai.edge.litertlm.** { *; }
 -keep class org.tensorflow.lite.** { *; }
 
 # Keep file names and line numbers for Crashlytics stack traces in release builds.

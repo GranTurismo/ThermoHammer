@@ -48,6 +48,8 @@ object DriverCheck {
     const val MSG_STEP = 2       // service → app: starting on the step named in "step" (an AI model)
     const val MSG_DONE = 3       // service → app: all of it was tried and the process is still alive
     const val MSG_LLM_GPU = 4    // app → service: build and run the tiny LLM on the GPU
+    const val MSG_GPU = 5        // app → service: compile and run the AI models in "tests" on the GPU with setting "setting"
+    const val MSG_FAILED = 6     // service → app: the model named in "step" failed, "why"
 
     /** How long one step may take before the check is given up as hung. */
     const val STEP_TIMEOUT_MS = 45_000L
@@ -107,11 +109,27 @@ object DriverCheck {
     suspend fun llmGpu(context: Context): Outcome = ask(context, MSG_LLM_GPU, Bundle()) { null }
 
     /**
+     * Every AI model in `tests` compiled and run once on the GPU with the AI tuning's setting `settingId`, in the check's
+     * process. LiteRT's GPU code is fragile in the app's own process: on an Adreno, YOLOX failing to compile on OpenGL
+     * left every model after it failing too (Honor 600 Pro, 2026-11-23), and a failed compile followed by an OpenCL run
+     * aborted the process. So a model that fails here is never compiled in the app. The models that failed, with why,
+     * go to `failed`; `onModel` as each starts (main thread).
+     */
+    suspend fun gpu(context: Context, settingId: String, tests: List<AiTest>, failed: MutableMap<AiTest, String>,
+                    onModel: (AiTest) -> Unit): Outcome =
+        ask(context, MSG_GPU, Bundle().apply {
+            putString("setting", settingId); putStringArrayList("tests", ArrayList(tests.map { it.name }))
+        }, onFailed = { name, why -> AiTest.entries.firstOrNull { it.name == name }?.let { failed[it] = why } }) { name ->
+            AiTest.entries.firstOrNull { it.name == name }?.also(onModel)?.model
+        }
+
+    /**
      * Sends `what` to the service and waits: for its MSG_DONE, for its process to go away, or for a step to take longer
      * than `stepTimeoutMs`. `onStep` gets each step's name as it starts and returns how to call it in a verdict. A
      * caller that is cancelled just lets go of the service, which then ends its process.
      */
     private suspend fun ask(context: Context, what: Int, data: Bundle, stepTimeoutMs: Long = STEP_TIMEOUT_MS,
+                            onFailed: (String, String) -> Unit = { _, _ -> },
                             onStep: (String) -> String?): Outcome = withContext(Dispatchers.Main.immediate) {
         val done = CompletableDeferred<Outcome>()
         var step: String? = null
@@ -124,6 +142,7 @@ object DriverCheck {
             when (msg.what) {
                 MSG_STEP -> { step = msg.data.getString("step")?.let(onStep); arm() }
                 MSG_DONE -> done.complete(Passed)
+                MSG_FAILED -> onFailed(msg.data.getString("step").orEmpty(), msg.data.getString("why").orEmpty())
             }
             true
         })
@@ -181,6 +200,7 @@ class DriverCheckService : Service() {
             when (msg.what) {
                 DriverCheck.MSG_NPU -> npu(reply, msg.data.getStringArrayList("tests").orEmpty())
                 DriverCheck.MSG_LLM_GPU -> llmGpu()
+                DriverCheck.MSG_GPU -> gpu(reply, msg.data.getString("setting"), msg.data.getStringArrayList("tests").orEmpty())
             }
             runCatching { reply?.send(Message.obtain(null, DriverCheck.MSG_DONE)) }
             true
@@ -211,6 +231,26 @@ class DriverCheckService : Service() {
             }
             // compiled, warmed up and read back as the tests do it; a model the NPU refuses throws, and that is an answer too
             runCatching { bench.run(test, AiAccel.NPU, inputs.input(test).first, 0.0, { true }) { _, _ -> } }
+        }
+    }
+
+    private fun gpu(reply: Messenger?, settingId: String?, names: List<String>) {
+        val setting = com.example.thermohammer.engine.ai.AiSettings.gpu().firstOrNull { it.id == settingId }
+        val bench = AiBench(applicationContext, dispatchFolder = "npu-dispatch-check")
+        val inputs = AiInputs(applicationContext)
+        for (test in AiTest.entries.filter { it.name in names }) {
+            runCatching {
+                reply?.send(Message.obtain(null, DriverCheck.MSG_STEP).apply { data = Bundle().apply { putString("step", test.name) } })
+            }
+            // compiled, warmed up and its answer looked for, as the scored run does it
+            val r = runCatching { bench.run(test, AiAccel.GPU, inputs.input(test).first, 0.0, { true }, true, setting) { _, _ -> } }
+            r.exceptionOrNull()?.let { e ->
+                runCatching {
+                    reply?.send(Message.obtain(null, DriverCheck.MSG_FAILED).apply {
+                        data = Bundle().apply { putString("step", test.name); putString("why", (e.message ?: e.javaClass.simpleName).lines().first().take(120)) }
+                    })
+                }
+            }
         }
     }
 

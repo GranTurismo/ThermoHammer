@@ -35,6 +35,28 @@ data class LlmTuneReport(
     /** Whether the CPU test's threads were pinned for either phase. */
     val pinned: Boolean get() = decodePinned || promptPinned
 
+    /** The rate the search measured for what it chose in a phase (its thread count, pinned or not); null without such a trial. */
+    fun chosenRate(decode: Boolean): Double? {
+        val threads = if (decode) decodeThreads else promptThreads
+        val pinned = if (decode) decodePinned else promptPinned
+        return trials.filter { it.decode == decode && it.pinned == pinned && it.threads == threads }.maxOfOrNull { it.rate }
+    }
+
+    /**
+     * A note when the timed run came out under [SLOWED_BELOW] of what the search measured for the same setting seconds
+     * before — the phone slowed down mid-test (heat: Honor 600 Pro at 97 °C, 22.7 tok/s in the search, 7.9 timed). The
+     * search's 6-token decode trials run about a third faster than the timed 32-token replies anyway, so only a
+     * collapse is named. Null when nothing collapsed.
+     */
+    fun slowedNote(decodeRate: Double, promptRate: Double): String? {
+        fun one(name: String, timed: Double, searched: Double?): String? =
+            if (searched == null || searched <= 0 || timed <= 0 || timed >= SLOWED_BELOW * searched) null
+            else "the timed %s ran at %.0f%% of the %.2f tok/s the search measured seconds before: the phone slowed down".format(
+                Locale.US, name, 100 * timed / searched, searched)
+        return listOfNotNull(one("reply", decodeRate, chosenRate(true)), one("prompt", promptRate, chosenRate(false)))
+            .joinToString(" · ").ifEmpty { null }
+    }
+
     private fun best(decode: Boolean, pinned: Boolean): LlmTrial? =
         trials.filter { it.decode == decode && it.pinned == pinned }.maxByOrNull { it.rate }
 
@@ -83,6 +105,8 @@ data class LlmTuneReport(
     companion object {
         /** A pinned result is used only when it is this much faster than the best unpinned count (the native constant). */
         const val MIN_GAIN = 1.05
+        /** The timed run is named slowed below this share of the search's rate for the same setting. */
+        const val SLOWED_BELOW = 0.5
         private const val HEADER = 10
         private const val PER_TRIAL = 5
 

@@ -184,6 +184,9 @@ LLM_JNI(jstring, backendLog)(JNIEnv* env, jclass) {
     return env->NewStringUTF(text.c_str());
 }
 
+/** The model shape the next create builds (BC_LLM_MODEL_*): Llama 3.2 3B's unless set; set it back when done. */
+LLM_JNI(void, setModel)(JNIEnv*, jclass, jint model) { bc_llm_set_model(model); }
+
 /** The GPU backend to run on instead of the usual choice ("Vulkan"); "" restores the choice. */
 LLM_JNI(void, setGpuApi)(JNIEnv* env, jclass, jstring api) {
     const char* a = api ? env->GetStringUTFChars(api, nullptr) : nullptr;

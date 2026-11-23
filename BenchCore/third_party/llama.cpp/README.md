@@ -19,6 +19,13 @@ Local changes:
   dispatcher like every other call — Android's libvulkan exports that Vulkan 1.1 function only from API 28.
 - `ggml/src/ggml-vulkan/ggml-vulkan.cpp`: `VK_KHR_16bit_storage` (core since Vulkan 1.1, its feature checked anyway) is
   enabled only when the driver lists it — the emulator's doesn't, and device creation failed.
+- `ggml/src/ggml-vulkan/ggml-vulkan.cpp`: `VK_EXT_device_fault` is never enabled on Qualcomm GPUs. After a lost device,
+  upstream asks the driver for fault details. The Adreno driver writes through the NULL pointer of the counts query
+  and crashes the app (Honor 600 Pro, Adreno 830, Android 17). Without the extension, the lost device stays the
+  exception the app catches.
+- `ggml/src/ggml-vulkan/ggml-vulkan.cpp`: `ggml_vk_cleanup` catches a `vk::SystemError` from its final wait. On a lost
+  device that wait throws, and the cleanup runs from `llama_context`'s destructor, so the throw ended the app however
+  the caller guarded `llama_free` (Honor 600 Pro, Adreno 830, 2026-11-23). A lost device has nothing left to finish.
 - `ggml/src/ggml-cpu/arch/x86/{quants.c,repack.cpp,cpu-feats.cpp}` are added unchanged from the same commit, for the
   Windows x64 build (ThermoHammerWindows/native/llm; AVX2). The Android and Windows builds list the arch files they
   compile; project.yml's `ggml-cpu` path takes the whole directory, so it needs `arch/x86/**` in its `excludes`

@@ -25,10 +25,17 @@ import kotlin.math.tan
 //   while the scene moves, which the throttling measurement depends on.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * `tileFriendly`: draw the way tile-based mobile GPUs are meant to be fed (see [GlTile]) — 4× MSAA kept on the tiles
+ * and resolved as they're written out, depth never stored, and passes that overwrite their whole target don't load it
+ * first. The iOS scene already draws this way. The picture is the same; false keeps the classic desktop-style
+ * path (4-sample renderbuffers resolved by a blit) that scoring version 4 was measured with.
+ */
 internal class LakeValleyRenderer(
     private val asset: GpuSceneAsset,
     private val width: Int,
-    private val height: Int
+    private val height: Int,
+    private val tileFriendly: Boolean = false
 ) : GpuScene {
     companion object {
         const val LOOP_S = 50f                 // camera loop — one lap of the lake
@@ -82,6 +89,8 @@ internal class LakeValleyRenderer(
     private var shadowTex = 0; private var shadowFbo = 0
     private var reflTex = 0; private var reflFbo = 0
     private var mainFbo = 0; private var msaa = false
+    private var onTile = false                 // tileFriendly and the driver took it: no resolve blit
+    override var drawPath = ""; private set
     private var sceneTex = 0; private var sceneFbo = 0
     private val bloomTex = IntArray(3); private val bloomFbo = IntArray(3)
     private val tmpTex = IntArray(3); private val tmpFbo = IntArray(3)
@@ -311,7 +320,10 @@ internal class LakeValleyRenderer(
         val maxSamples = IntArray(1).also { GLES30.glGetIntegerv(GLES30.GL_MAX_SAMPLES, it, 0) }[0]
         val samples = min(4, maxSamples)
         msaa = samples > 1
-        if (msaa) {
+        val tileFbo = if (msaa && tileFriendly && GlTile.available()) GlTile.framebuffer(sceneTex, samples, width, height) else 0
+        if (tileFbo != 0) {
+            mainFbo = tileFbo; sceneFbo = tileFbo; onTile = true
+        } else if (msaa) {
             mainFbo = Gl.framebuffer(
                 colorRb = Gl.renderbuffer(samples, GLES30.GL_RGBA8, width, height),
                 depthRb = Gl.renderbuffer(samples, GLES30.GL_DEPTH_COMPONENT24, width, height))
@@ -320,6 +332,13 @@ internal class LakeValleyRenderer(
             sceneFbo = Gl.framebuffer(colorTex = sceneTex,
                 depthRb = Gl.renderbuffer(0, GLES30.GL_DEPTH_COMPONENT24, width, height))
             mainFbo = sceneFbo
+        }
+        drawPath = when {
+            onTile -> "${samples}x MSAA on-tile"
+            tileFriendly && msaa -> "${samples}x MSAA classic (no on-tile support), discards on"
+            tileFriendly -> "no MSAA, discards on"
+            msaa -> "${samples}x MSAA classic"
+            else -> "no MSAA"
         }
         for (l in 0 until 3) {
             val w = width shr (l + 1); val h = height shr (l + 1)
@@ -476,6 +495,7 @@ internal class LakeValleyRenderer(
         drawScene(terrainMirror, objMirror, mirrorViewProj, mirrorBatches)
         drawSky(skyMirror)
         GLES30.glFrontFace(GLES30.GL_CCW)
+        if (tileFriendly) GlTile.discardDepth()                // only the colour is read later
     }
 
     private fun mainPass() {
@@ -517,16 +537,25 @@ internal class LakeValleyRenderer(
         GLES30.glDisable(GLES30.GL_BLEND)
         unbindTextures(3)
 
-        if (msaa) {
+        if (onTile) {
+            GlTile.discardDepth()                              // resolved colour goes out with the tiles; depth stays
+        } else if (msaa) {
             GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, mainFbo)
             GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, sceneFbo)
             GLES30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                 GLES30.GL_COLOR_BUFFER_BIT, GLES30.GL_NEAREST)
+            if (tileFriendly) {                                // the 4-sample buffers are spent once resolved
+                GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, mainFbo)
+                GlTile.discard(GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_DEPTH_ATTACHMENT)
+            }
+        } else if (tileFriendly) {
+            GlTile.discardDepth()
         }
     }
 
     private fun fullscreen(p: Program, fbo: Int, w: Int, h: Int, src: Int) {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo)
+        if (tileFriendly) GlTile.discardColor()                // every pixel is overwritten: don't load the old ones
         GLES30.glViewport(0, 0, w, h)
         p.use()
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
@@ -552,6 +581,7 @@ internal class LakeValleyRenderer(
             src = bloomTex[l]; sw = w; shh = h
         }
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outputFbo)
+        if (tileFriendly) GlTile.discardColor()
         GLES30.glViewport(0, 0, width, height)
         composite.use()
         composite.f("uTime", time)

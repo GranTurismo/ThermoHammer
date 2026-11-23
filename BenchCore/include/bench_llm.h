@@ -19,6 +19,21 @@ enum {
 
 typedef struct bc_llm bc_llm;
 
+enum {
+    BC_LLM_MODEL_LLAMA32_3B = 0,   // the scored test's model (the default)
+    BC_LLM_MODEL_GEMMA3_1B = 1     // Gemma 3 1B's shape: version 5's candidate, the model phone NPUs run
+};
+
+/**
+ * The model shape the next bc_llm_create builds (and bc_llm_weight_bytes and bc_llm_set_reference mean) — Llama 3.2
+ * 3B's unless a caller asks. Weights are seeded either way; a GPU's answer is only compared with the CPU's for the
+ * same model. Process-wide: set it back when done.
+ */
+void bc_llm_set_model(int model);
+
+/** "Llama 3.2 3B shape" or "Gemma 3 1B shape": what bc_llm_set_model chose. */
+const char* bc_llm_model_name(void);
+
 /** Bytes the model's weights take. */
 int64_t bc_llm_weight_bytes(void);
 

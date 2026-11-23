@@ -8,6 +8,7 @@ import android.opengl.EGLSurface
 import android.opengl.GLES30
 import android.util.Log
 import android.view.Surface
+import com.example.thermohammer.engine.gpu.Gl
 import com.example.thermohammer.engine.gpu.GlException
 import com.example.thermohammer.engine.gpu.GpuScene
 import com.example.thermohammer.engine.gpu.GpuSceneAsset
@@ -74,6 +75,14 @@ class GpuBench(private val assets: AssetManager, private val cacheDir: java.io.F
     @Volatile var scene = GpuSceneId.LAKE_VALLEY; private set
     /** The scene of the current (or last) run — the UX scenes publish their progress and results on it. */
     @Volatile internal var activeScene: GpuScene? = null; private set
+    /** How the last run's scene drew its anti-aliasing (GpuScene.drawPath). */
+    @Volatile var drawPath = ""; private set
+
+    // ── tile-friendly drawing and one-frame captures (the A/B probe of test builds) ──
+    @Volatile private var tileFriendly = false
+    @Volatile private var captureAt = -1f
+    /** The frame a capture run drew: RGBA8, RENDER_W × RENDER_H, bottom row first; null until one has. */
+    @Volatile var captured: ByteArray? = null; private set
 
     // ── fixed-length runs (benchmark tests): every frame is logged ──────────
     @Volatile var runForS = 0f; private set         // 0 = until stop()
@@ -96,11 +105,21 @@ class GpuBench(private val assets: AssetManager, private val cacheDir: java.io.F
 
     // ── public API ──────────────────────────────────────────────────────────
 
-    /** Starts rendering `scene`; with `runForS` > 0 it renders that much timeline, logging every frame. */
-    fun start(scene: GpuSceneId = GpuSceneId.LAKE_VALLEY, runForS: Float = 0f) {
+    /**
+     * Starts rendering `scene`; with `runForS` > 0 it renders that much timeline, logging every frame.
+     * `tileFriendly`: the OpenGL scenes draw the way tile-based GPUs are meant to be fed (GlTile); false is the
+     * classic path scoring version 4 measures. `captureAt` ≥ 0: draw just the frame at that timeline time, keep its
+     * pixels in [captured], and finish — nothing is timed.
+     */
+    fun start(scene: GpuSceneId = GpuSceneId.LAKE_VALLEY, runForS: Float = 0f,
+              tileFriendly: Boolean = false, captureAt: Float = -1f) {
         if (running) return
         this.scene = scene
         this.runForS = runForS
+        this.tileFriendly = tileFriendly
+        this.captureAt = captureAt
+        captured = null
+        drawPath = ""
         finished = false
         sceneSeconds = 0f
         logCount = 0
@@ -239,8 +258,8 @@ class GpuBench(private val assets: AssetManager, private val cacheDir: java.io.F
 
             // ── scene: geometry upload, shader compile, render targets ──
             val scene: GpuScene = when (sceneId) {
-                GpuSceneId.LAKE_VALLEY -> LakeValleyRenderer(lakeAsset!!, RENDER_W, RENDER_H)
-                GpuSceneId.NEON_CITY -> NeonCityRenderer(cityAsset!!, RENDER_W, RENDER_H)
+                GpuSceneId.LAKE_VALLEY -> LakeValleyRenderer(lakeAsset!!, RENDER_W, RENDER_H, tileFriendly)
+                GpuSceneId.NEON_CITY -> NeonCityRenderer(cityAsset!!, RENDER_W, RENDER_H, tileFriendly)
                 GpuSceneId.PHOTO_EDIT -> PhotoEditScene(assets, RENDER_W, RENDER_H)
                 GpuSceneId.VIDEO -> VideoPlaybackScene(assets, RENDER_W, RENDER_H)
                 GpuSceneId.EXPORT -> VideoExportScene(assets, cacheDir, RENDER_W, RENDER_H)
@@ -249,7 +268,20 @@ class GpuBench(private val assets: AssetManager, private val cacheDir: java.io.F
             activeScene = scene
             scene.init()
             trianglesPerFrame = scene.trianglesPerFrame
+            drawPath = scene.drawPath
             running = true
+
+            // one frame at a fixed moment, read back for a picture comparison (nothing timed, nothing shown)
+            if (captureAt >= 0f) {
+                scene.render(captureAt)
+                GLES30.glFinish()
+                val buf = java.nio.ByteBuffer.allocateDirect(RENDER_W * RENDER_H * 4)
+                GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, scene.outputFbo)
+                GLES30.glReadPixels(0, 0, RENDER_W, RENDER_H, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
+                Gl.check("capture")
+                captured = ByteArray(buf.capacity()).also { buf.get(it) }
+                finished = true
+            }
 
             // Display surface state — created lazily when the UI attaches a Surface.
             var windowSurf: EGLSurface = EGL14.EGL_NO_SURFACE
@@ -272,7 +304,7 @@ class GpuBench(private val assets: AssetManager, private val cacheDir: java.io.F
             // ── frame loop — uncapped render to FBO, glFinish times each frame;
             //    every Nth frame is blitted to the display for visibility ──
             val startNs = System.nanoTime()
-            while (!stopFlag.get()) {
+            while (!finished && !stopFlag.get()) {
                 // Sync display surface with what the UI wants
                 val wanted = wantedSurface
                 if (wanted !== windowAndroidSurface) {

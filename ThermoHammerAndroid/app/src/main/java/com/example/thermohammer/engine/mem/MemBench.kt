@@ -31,6 +31,7 @@ class MemBench(private val context: Context) {
         private const val RANDOM_THREADS = 4
         private const val CHATS = 40
         private const val HISTORY = 20_000       // messages already in the database, untimed
+        private const val DB_WARM_MAX_S = 4.0    // the most a database step warms up, untimed (warmUp)
     }
 
     /** Read, write and copy bandwidth with every core streaming, then the latency of one random access. */
@@ -95,6 +96,27 @@ class MemBench(private val context: Context) {
      * saved one transaction each, messages marked read one transaction each, and chats opened (the latest 30
      * messages of a random chat, read through a cursor).
      */
+    /**
+     * Runs `op` untimed until its rate stops rising: 100 ms buckets until the last five agree within 10 % and none is
+     * far below the best so far, at most [DB_WARM_MAX_S]. SQLite's rate on a phone climbs for a second or two before it
+     * levels off (Honor 600 Pro, updates: about 15k/s at first, a steady 400k/s after 1.2–2.1 s — a different climb each
+     * time), so a step timed from a cold start measured the climb: 47k–211k/s for the same phone. Timed after this,
+     * every round gave 397k–404k/s.
+     */
+    private inline fun warmUp(isActive: () -> Boolean, op: () -> Unit) {
+        val t0 = System.nanoTime()
+        val recent = ArrayDeque<Int>()
+        var best = 0
+        while (isActive() && System.nanoTime() - t0 < (DB_WARM_MAX_S * 1e9).toLong()) {
+            val b0 = System.nanoTime()
+            var n = 0
+            while (System.nanoTime() - b0 < 100_000_000L) { op(); n++ }
+            best = maxOf(best, n)
+            recent.addLast(n); if (recent.size > 5) recent.removeFirst()
+            if (recent.size == 5 && recent.min() >= 0.9 * recent.max() && recent.min() >= 0.85 * best) return
+        }
+    }
+
     fun database(isActive: () -> Boolean, onProgress: (MemProgress) -> Unit): DbResult {
         val file = File(context.cacheDir, "membench.db")
         SQLiteDatabase.deleteDatabase(file)
@@ -124,11 +146,17 @@ class MemBench(private val context: Context) {
             }
             val detail = "SQLITE · WAL · ANDROID'S OWN SETTINGS"
             val plan = Plan(MemTest.DATABASE, listOf(2.5, 2.0, 2.0), onProgress)
+            warmUp(isActive) { add() }
             val inserts = plan.run(0, "TX/S", MemAccess.RANDOM_WRITE, detail, isActive) { s -> perSecond(s) { add() } }
             val update = db.compileStatement("UPDATE messages SET unread = 0 WHERE id = ?")
             val rows = HISTORY.toLong()
+            warmUp(isActive) { update.bindLong(1, 1 + rnd.nextLong(rows)); update.executeUpdateDelete() }
             val updates = plan.run(1, "TX/S", MemAccess.RANDOM_WRITE, detail, isActive) { s ->
                 perSecond(s) { update.bindLong(1, 1 + rnd.nextLong(rows)); update.executeUpdateDelete() }
+            }
+            warmUp(isActive) {
+                db.rawQuery("SELECT id, sender, body, sent FROM messages WHERE chat = ? ORDER BY sent DESC LIMIT 30",
+                    arrayOf(rnd.nextInt(CHATS).toString())).use { c -> while (c.moveToNext()) c.getString(2) }
             }
             val queries = plan.run(2, "CHATS/S", MemAccess.RANDOM_READ, "SQLITE · LATEST 30 MESSAGES OF A CHAT", isActive) { s ->
                 perSecond(s) {

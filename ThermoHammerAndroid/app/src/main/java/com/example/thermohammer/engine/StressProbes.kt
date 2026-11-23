@@ -251,6 +251,11 @@ object StressProbes {
         return (cpu.ifEmpty { valid }).maxOfOrNull { it.tempC }
     }
 
+    /** The chip's hottest compute sensor, CPU or GPU (the LLM test runs on both); null when neither is readable. */
+    fun computeTemp(zones: List<TempZone>): Float? =
+        zones.filter { isTemperatureZone(it.name) && XRayMapper.classify(it.name).let { r -> r == XRayRegion.CPU || r == XRayRegion.GPU } }
+            .maxOfOrNull { it.tempC }
+
     fun skinTemp(zones: List<TempZone>): Float? =
         zones.firstOrNull { matchesHints(it.name, skinZoneHints) }?.tempC
 

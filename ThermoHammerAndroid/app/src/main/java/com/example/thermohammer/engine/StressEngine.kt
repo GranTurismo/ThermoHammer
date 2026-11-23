@@ -200,6 +200,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         const val WARMUP_MS = 12_000L          // JIT/governor settle — unrecorded
         const val CALIBRATION_MS = 20_000L     // boost window — basis of the baseline
         const val SAMPLE_MS = 250L             // internal sub-sample rate (4 Hz)
+        // GPU A/B probe of test builds (gpuAbProbe): timeline per segment, the moment compared, a pixel "off" above
+        private const val AB_WARMUP_S = 2f
+        private const val AB_SEGMENT_S = 8f
+        private const val AB_CAPTURE_T = 12.5f
+        private const val AB_PIXEL_OFF = 8
         const val STAMP_MS = 1_000L            // persisted/uploaded sample rate (1 Hz)
         const val WORK_CHUNK = 4_096           // counter publish granularity
 
@@ -222,6 +227,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                                                // phone's normal (parked cores, its own UI), not passing work
         const val QUIET_POLL_MS = 3_000L       // re-measure while the phone is busy
         const val QUIET_MAX_MS = 60_000L       // then run anyway, flagged
+        // Before the LLM's thread search: ggml's all-core trial crawls when even one core is busy (Honor 600 Pro, right
+        // after the AI test: 0.28 tok/s on 8 threads, 25 on 7 — 8 threads with one taken spin at every barrier). The
+        // start's 85% bar lets one busy core in eight through (87.5%), so this one is stricter, and short.
+        const val LLM_SETTLE_SHARE = 0.95f
+        const val LLM_SETTLE_MAX_MS = 20_000L
+        const val LLM_SETTLE_POLL_MS = 1_000L
+        // …and a short cooldown first: the LLM test is last, straight after the AI test has heated the chip, and the
+        // Honor 600 Pro's LLM score swung 3,606–6,117 on the chip's temperature alone (73 °C at the start: 6,097;
+        // 97–101 °C: the timed reply collapsed to 35–41 % of what its own search had measured seconds before)
+        const val LLM_COOL_TARGET_C = 75f
+        const val LLM_COOL_MAX_MS = 60_000L
+        const val LLM_COOL_STALL_MS = 15_000L   // no 0.5 °C fall in this long: it has reached its floor
         const val COOLDOWN_MAX_MS = 30_000L    // hard cap — flag & proceed beyond this
         const val COOLDOWN_STALL_MS = 30_000L  // plateau detection window
         const val COOLDOWN_STALL_DELTA = 0.5f  // <0.5°C improvement in window = plateaued
@@ -712,12 +729,34 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val gpuScore = BenchmarkScore.overall(results)
         val gpuName = gpuBench.gpuName.ifEmpty { vkBench.gpuName }
+        // test builds: the OpenGL scenes again, the classic way against the tile-friendly way (report lines only)
+        // (not on Adreno: five runs on an Adreno 830 showed no gain and identical pictures — Mali is the open question)
+        val gpuAb = if (com.example.thermohammer.TestBuild.PROBES && from == null && !gpuName.contains("adreno", ignoreCase = true))
+            gpuAbProbe() else null
+        if (!_state.value.isRunning) return
+        // two more minutes of GPU load warm the phone for the sections after it: such a run is never verified
+        if (gpuAb != null) flags = flags or ValidityFlag.TEST_PROBES
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ux")
         val ux = runUx(from) ?: return
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ai")
         val ai = runAi(gpuName) ?: return
+        if (ai.gpuPrecision != null) flags = flags or ValidityFlag.TEST_PROBES     // more GPU load before the LLM test
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "llm")
-        val llm = runLlm() ?: return
+        val settled = settleForLlm() ?: return
+        val llamaRuns = runLlm() ?: return
+        // version 5: the LLM's third engine, the NPU — Google's own Gemma 3 1B file for the chip through LiteRT-LM, in a
+        // process of its own, after the same short cooldown the GPU part had. No NPU path: it counts 0 (LlmResult.npuPoints)
+        var npuCool: String? = null
+        val npuRun = if (com.example.thermohammer.engine.llm.NpuLlmProbe.AVAILABLE && llamaRuns.error == null) {
+            npuCool = coolForLlm("the LLM GPU test") ?: return
+            npuLlmRun()
+        } else null
+        if (!_state.value.isRunning) return
+        val llm = llamaRuns.copy(npu = npuRun)
+        val npuLlm = listOfNotNull("LLM settle · $settled", llmGpuCool?.let { "LLM settle · before the GPU test · $it" },
+            npuCool?.let { "LLM settle · before the NPU test · $it" }) + npuRun?.lines.orEmpty()
+        // a test build's run never goes to the live leaderboard (its scoring is version 5's, the server's isn't yet)
+        if (com.example.thermohammer.TestBuild.PROBES) flags = flags or ValidityFlag.TEST_PROBES
         val result = BenchmarkResult(
             tests = results,
             gpuScore = gpuScore,
@@ -730,7 +769,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             mem = mem,
             llm = llm,
             startCpuShare = quiet.share,
-            quietWaitSec = quiet.waitedSec
+            quietWaitSec = quiet.waitedSec,
+            gpuAb = gpuAb,
+            npuLlm = npuLlm
         )
         if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
             status = "completed", totalScore = result.total, verified = result.isVerified,
@@ -1070,6 +1111,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val crashedSettings = if (tuned.isEmpty()) emptySet() else aiCrashedSettings()
         val tuning = ArrayList<AiTuning>()
         val chosen = HashMap<AiAccel, AiSetting>()
+        val defaultUnusable = HashSet<AiAccel>()
         for (accel in tuned) {
             val device = when (accel) {
                 AiAccel.CPU -> topology.takeIf { it.canPin }?.let { "CPU · fast cores ${it.big.joinToString(",")} first" } ?: "CPU"
@@ -1080,6 +1122,22 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 settings = when (accel) { AiAccel.CPU -> cpuSettings; AiAccel.GPU -> AiSettings.gpu(); else -> AiSettings.mediatekNpu() }) ?: return@withContext null
             tuning += t
             chosen[accel] = t.chosen
+            // a default that answered wrongly or not at all (LiteRT's OpenCL on Adreno) is no fallback for a model the
+            // chosen setting can't run: that model scores 0 with both reasons, not with the default's leftover memory
+            if (AiTuner.noYardstick(t.rows.firstOrNull { it.setting.isDefault }, t.models)) defaultUnusable += accel
+        }
+        // the GPU's tuned setting, tried model by model in the driver check's process first: a model that fails there is
+        // never compiled here (DriverCheck.gpu says why), and a driver that crashes there costs the GPU, not the app
+        var gpuProblem: String? = null
+        val gpuFailed = HashMap<AiTest, String>()
+        val gpuSetting = chosen[AiAccel.GPU]?.takeUnless { it.isDefault }
+        if (gpuSetting != null && AiAccel.GPU in available && AiAccel.GPU !in crashed) {
+            val outcome = DriverCheck.gpu(appContext, gpuSetting.id, AiTest.entries, gpuFailed) { test ->
+                _state.update { it.copy(aiTest = test, aiAccel = AiAccel.GPU, aiRate = -1.0, aiProgress = test.ordinal / AiTest.entries.size.toFloat(),
+                    aiDetail = "GPU · ${gpuSetting.label.uppercase()} · CHECKING ${test.model.uppercase()} · NOT SCORED") }
+            }
+            if (!_state.value.isRunning) return@withContext null
+            gpuProblem = DriverCheck.problem(outcome, "GPU")
         }
         val delegation = ArrayList<AiDelegation>()
         val npuProven = HashSet<AiTest>()        // models whose NPU run is known to be the NPU's own (NpuFallback)
@@ -1096,6 +1154,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 val skip = when {
                     accel in crashed -> "crashed the app here last time"
                     accel == AiAccel.GPU && AiAccel.GPU !in available -> "no GPU accelerator"
+                    accel == AiAccel.GPU && gpuProblem != null -> gpuProblem
+                    accel == AiAccel.GPU && test in gpuFailed && AiAccel.GPU in defaultUnusable ->
+                        "${gpuSetting?.label} couldn't run it (${gpuFailed[test]}), and this GPU's default gives no right answers"
                     accel == AiAccel.NPU -> npuProblem
                     else -> null
                 }
@@ -1105,7 +1166,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     aiDetail = "${accel.label}${runtime?.let { r -> " · $r" } ?: ""} · INT8 · ${test.model.uppercase()} · COMPILING") }
                 // a run with a tuned setting leaves the setting's own marker: if it crashes, the setting is dropped
                 // next time and the accelerator keeps running with its defaults
-                var setting: AiSetting? = chosen[accel]?.takeUnless { it.isDefault }
+                // a model the GPU's tuned setting failed on in the check runs with the defaults (they answer right here)
+                var setting: AiSetting? = chosen[accel]?.takeUnless { it.isDefault || (accel == AiAccel.GPU && test in gpuFailed) }
                 val tunedSetting = setting
                 benchPrefs.edit().apply {
                     if (tunedSetting == null) putString(KEY_AI_RUNNING, "$installStamp:${test.name}:${accel.name}")
@@ -1117,8 +1179,12 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                             aiDetail = "${accel.label}${runtime?.let { r -> " · $r" } ?: ""} · INT8 · ${test.model.uppercase()}") }
                     }
                     return try { go(setting) } catch (e: Exception) {
-                        // the chosen setting failed on a model the probe didn't try: this model gets the defaults
+                        // the chosen setting failed on a model the probe didn't try: this model gets the defaults —
+                        // unless the probe found the defaults give no right answer on this accelerator
                         if (setting == null || !_state.value.isRunning) throw e
+                        if (accel in defaultUnusable)
+                            throw IllegalStateException("${setting!!.label} couldn't run it (${(e.message ?: e.javaClass.simpleName).lines().first().take(80)}), " +
+                                "and this ${accel.label}'s default gives no right answers")
                         setting = null
                         go(null)
                     }
@@ -1171,9 +1237,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 if (left > 0) { _state.update { it.copy(aiProgress = 1f) }; delay(left / 1_000_000) }
             }
         }
+        // (the test builds' GPU precision probe is gone: precision was never the cause — see AiTuning.gpuApplies)
+        val gpuPrecision: List<String>? = null
         AiResult(com.example.thermohammer.engine.ai.NpuFallback.check(runs, npuProven), bench.npuRuntime().takeIf { npuProblem == null }, npuProblem,
             npuFiles = if (bench.npuRuntime() == "Qualcomm QNN") bench.npuFiles() else null,
-            npuLog = npuLog, npuBurst = npuBurst, tuning = tuning, delegation = delegation)
+            npuLog = npuLog, npuBurst = npuBurst, tuning = tuning, delegation = delegation, gpuPrecision = gpuPrecision)
     }
 
     /** What a driver check's verdict is kept for: this install on this system build. */
@@ -1321,6 +1389,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 kernels = lib
             }
             _state.update { it.copy(llmAccel = accel, llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0) }
+            // the CPU test just heated the chip: the GPU test gets the same short cooldown the CPU test had
+            if (accel == LlmAccel.GPU) llmGpuCool = coolForLlm("the LLM CPU test") ?: return@withContext null
             val startTemp = StressProbes.cpuAdjacentTemp(StressProbes.readThermalZones())
             // the i8mm build leaves the probe's marker, not the CPU's: a crash there costs that build its place next time,
             // never the CPU's score
@@ -1329,7 +1399,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 if (i8) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
                 else benchPrefs.edit().putString(KEY_LLM_RUNNING, "$installStamp:${accel.name}").commit()
                 return try {
-                    bench.run(accel, threads, { _state.value.isRunning }, lib, pinCores) { p ->
+                    bench.run(accel, threads, { _state.value.isRunning }, lib, pinCores, model = LlmNative.MODEL_GEMMA3_1B) { p ->
                         _state.update { it.copy(llmPhase = p.phase, llmProgress = p.fraction, llmRate = p.rate, llmDetail = p.detail,
                             llmReply = p.reply, llmPrompts = p.prompts) }
                     }
@@ -1401,7 +1471,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         var gpuSkipped: String? = null
         val adreno = gpuName.contains("adreno", ignoreCase = true)
         if (LlmNative.loaded) {
-            val decision = LlmProbe.vulkanOnAdrenoDecision(gpuName, gpuApi, adreno && VulkanGpuLib.available(), "LLM:vulkan" in llmCrashedProbes(), scoredGpu != null)
+            // never on Adreno any more: on the Honor 600 Pro's Adreno 830 it lost its device in most runs, answered wrongly
+            // in the rest, and crashed the app twice (in Qualcomm's fault query, then in llama.cpp's cleanup) — 2026-11-23
+            val decision = if (adreno)
+                LlmProbe.Decision(false, "Vulkan on Adreno loses its device or answers wrongly (tested on an Adreno 830)")
+            else LlmProbe.vulkanOnAdrenoDecision(gpuName, gpuApi, adreno && VulkanGpuLib.available(), "LLM:vulkan" in llmCrashedProbes(), scoredGpu != null)
             if (decision.use && scoredGpu != null) {
                 _state.update { it.copy(llmAccel = LlmAccel.GPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
                     llmDetail = "GPU · VULKAN · REPORT ONLY · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
@@ -1779,6 +1853,103 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     /** GPU frames rendered within dtNs (fractional — see frameProgress) — −1 when the channel is off. */
+    /**
+     * Test builds only: each OpenGL scene drawn the classic way (scoring version 4) and the tile-friendly way
+     * (engine/gpu/GlTile.kt), in the order classic, tile, tile, classic so the phone warming up favours neither,
+     * each [AB_WARMUP_S] + [AB_SEGMENT_S] of timeline, frames after the warm-up counted. Then one moment of each scene
+     * drawn both ways and compared pixel by pixel — and twice the classic way, which shows what the scene varies by
+     * itself. Report lines; nothing here is scored.
+     */
+    private suspend fun gpuAbProbe(): List<String> {
+        val lines = ArrayList<String>()
+        for (test in BenchmarkTest.entries.filter { !it.rayTracing }) {
+            if (!_state.value.isRunning) break
+            _state.update { it.copy(phase = RunPhase.MEASURED, benchTest = test, benchProgress = 0f, gpuFps = -1.0) }
+
+            suspend fun runToEnd(runFor: Float, tile: Boolean, captureAt: Float = -1f, segment: Int = 0): String? {
+                gpuBench.start(test.scene, runFor, tileFriendly = tile, captureAt = captureAt)
+                gpuFramesPrev = 0.0
+                var prevNs = System.nanoTime()
+                val deadline = prevNs + 120_000_000_000L
+                while (_state.value.isRunning && !gpuBench.finished && gpuBench.glError == null && System.nanoTime() < deadline) {
+                    delay(SAMPLE_MS)
+                    val now = System.nanoTime()
+                    val fps = gpuFpsDelta(now - prevNs)
+                    prevNs = now
+                    if (captureAt < 0f) _state.update {
+                        it.copy(gpuActive = true, gpuFps = fps,
+                            benchProgress = ((segment + gpuBench.sceneSeconds / runFor) / 4f).coerceIn(0f, 1f))
+                    }
+                }
+                gpuBench.stop()
+                return gpuBench.glError ?: if (!gpuBench.finished && _state.value.isRunning) "did not finish" else null
+            }
+
+            val fps = DoubleArray(4)
+            var tilePath = ""; var classicPath = ""
+            var error: String? = null
+            for ((i, tile) in listOf(false, true, true, false).withIndex()) {
+                error = runToEnd(AB_WARMUP_S + AB_SEGMENT_S, tile, segment = i)
+                if (error != null || !_state.value.isRunning) break
+                if (tile) tilePath = gpuBench.drawPath else classicPath = gpuBench.drawPath
+                val (starts, durs, count) = gpuBench.frameLog()
+                var n = 0; var ns = 0L
+                for (k in 0 until count) if (starts[k] >= AB_WARMUP_S) { n++; ns += durs[k] }
+                fps[i] = if (ns > 0) n * 1e9 / ns else 0.0
+            }
+            if (!_state.value.isRunning) break
+            val name = "GPU A/B ${test.number} ${test.title}"
+            if (error != null) { lines += "$name · failed: $error"; continue }
+            val classic = (fps[0] + fps[3]) / 2; val tile = (fps[1] + fps[2]) / 2
+            lines += "%s · classic %.2f fps (%s) · tile-friendly %.2f fps (%s) · %+.1f%% · segments %.2f, %.2f, %.2f, %.2f".format(
+                name, classic, classicPath, tile, tilePath, (tile / classic - 1) * 100, fps[0], fps[1], fps[2], fps[3])
+
+            val pics = ArrayList<ByteArray>()
+            for (tilePic in listOf(false, false, true)) {
+                val e = runToEnd(0f, tilePic, captureAt = AB_CAPTURE_T)
+                if (e != null || !_state.value.isRunning) { error = e; break }
+                gpuBench.captured?.let { pics += it }
+            }
+            if (!_state.value.isRunning) break
+            lines += if (pics.size == 3) {
+                val (selfMean, selfOff) = pictureDiff(pics[0], pics[1])
+                val (mean, off) = pictureDiff(pics[0], pics[2])
+                "%s · picture at %.1f s, tile-friendly vs classic: mean %.3f levels, %.3f%% of pixels off by more than %d · classic vs classic: mean %.3f, %.3f%%".format(
+                    name, AB_CAPTURE_T, mean, off, AB_PIXEL_OFF, selfMean, selfOff)
+            } else "$name · picture comparison failed: ${error ?: "no capture"}"
+        }
+        lines.forEach { android.util.Log.i("GpuAbProbe", it) }
+        return lines
+    }
+
+    /**
+     * The LLM test's NPU engine (version 5): Gemma 3 1B through LiteRT-LM (engine/llm/NpuLlmProbe.kt), in a process of its
+     * own — a native crash there costs the NPU's third of the LLM score, not the run.
+     */
+    private suspend fun npuLlmRun(): LlmNpuRun {
+        _state.update { it.copy(llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0,
+            llmDetail = "NPU · LITERT-LM · GEMMA 3 1B · PREPARING") }
+        return com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext) { label, fraction ->
+            _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
+        }
+    }
+
+    /** Mean absolute difference of the RGB channels (0–255 levels) and the share of pixels (%) where one differs by more than [AB_PIXEL_OFF]. */
+    private fun pictureDiff(a: ByteArray, b: ByteArray): Pair<Double, Double> {
+        var sum = 0L; var off = 0L
+        val pixels = minOf(a.size, b.size) / 4
+        for (p in 0 until pixels) {
+            var worst = 0
+            for (c in 0 until 3) {
+                val d = kotlin.math.abs((a[p * 4 + c].toInt() and 255) - (b[p * 4 + c].toInt() and 255))
+                sum += d
+                if (d > worst) worst = d
+            }
+            if (worst > AB_PIXEL_OFF) off++
+        }
+        return sum.toDouble() / (pixels * 3).coerceAtLeast(1) to off * 100.0 / pixels.coerceAtLeast(1)
+    }
+
     private fun gpuFpsDelta(dtNs: Long, runner: GpuRunner = gpuBench): Double {
         if (!runner.running || dtNs <= 0) return -1.0
         val f = runner.frameProgress()
@@ -1878,6 +2049,58 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     private class QuietCheck(val quiet: Boolean, val share: Float, val waitedSec: Int)
+
+    /**
+     * Waits (at most [LLM_SETTLE_MAX_MS]) until the app has the CPU to itself again before the LLM test: what the AI test
+     * started on its way out — the NPU's and the GPU's teardown — can keep a core busy for many seconds, and ggml's
+     * all-core trial then crawls. What it saw, for the test builds' report; null if the benchmark was stopped.
+     */
+    /** What the cooldown before the LLM GPU test saw (test builds' report); null when it didn't run. */
+    private var llmGpuCool: String? = null
+
+    private suspend fun settleForLlm(): String? {
+        llmGpuCool = null
+        // the share check first: it spins every core for a moment and warms the chip, so the cooldown comes after it
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        val first = withContext(Dispatchers.Default) { StressProbes.cpuShare() }
+        var share = first
+        while (share < LLM_SETTLE_SHARE && android.os.SystemClock.elapsedRealtime() - t0 < LLM_SETTLE_MAX_MS) {
+            if (!_state.value.isRunning) return null
+            _state.update { it.copy(llmDetail = "LLM · WAITING FOR THE CPU TO SETTLE") }
+            delay(LLM_SETTLE_POLL_MS)
+            share = withContext(Dispatchers.Default) { StressProbes.cpuShare() }
+        }
+        if (!_state.value.isRunning) return null
+        val waited = (android.os.SystemClock.elapsedRealtime() - t0) / 1000.0
+        val cool = coolForLlm("the AI test and the CPU check") ?: return null
+        return "$cool · CPU share %.0f%% at the end of the AI test, %.0f%% after %.1f s%s".format(first * 100, share * 100, waited,
+            if (share < LLM_SETTLE_SHARE) " (still busy: started anyway)" else "")
+    }
+
+    /**
+     * Lets the chip cool (CPU or GPU, the hotter) to [LLM_COOL_TARGET_C] before the LLM test, for at most
+     * [LLM_COOL_MAX_MS], stopping early once it no longer falls. What it saw, for the report; null if stopped.
+     */
+    private suspend fun coolForLlm(after: String): String? {
+        fun temp() = StressProbes.computeTemp(StressProbes.readThermalZones())
+        val start = temp() ?: return "chip temperature unreadable: no cooldown"
+        var t = start
+        var prev = start
+        var waitedMs = 0L
+        var stallMs = 0L
+        while (t > LLM_COOL_TARGET_C && waitedMs < LLM_COOL_MAX_MS && stallMs < LLM_COOL_STALL_MS) {
+            if (!_state.value.isRunning) return null
+            _state.update { it.copy(llmDetail = "LLM · LETTING THE CHIP COOL · %.0f °C → %.0f °C".format(t, LLM_COOL_TARGET_C)) }
+            delay(1_000L); waitedMs += 1_000L
+            t = temp() ?: break
+            stallMs = if (t < prev - 0.5f) 0L else stallMs + 1_000L
+            if (stallMs == 0L) prev = t
+        }
+        if (!_state.value.isRunning) return null
+        return if (waitedMs == 0L) "chip %.0f °C after %s: no cooldown needed".format(start, after)
+        else "chip %.0f °C after %s, %.0f °C after %d s%s".format(start, after, t, waitedMs / 1000,
+            when { t <= LLM_COOL_TARGET_C -> ""; stallMs >= LLM_COOL_STALL_MS -> " (stopped falling)"; else -> " (time limit)" })
+    }
 
     private suspend fun runSession() {
         val reachedTarget = coolDown()

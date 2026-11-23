@@ -229,6 +229,13 @@ private fun DiagnosticsScreenWrapper(
     // ── Share / present: the finished run on screen as a card (ui/share) ──
     var stressRunAt by remember { mutableLongStateOf(0L) }                 // when the verdict's run ended
     fun benchRecordOnScreen(): BenchmarkRecord? = benchRecords.firstOrNull { it.id == benchRecordId }
+
+    /** A finished run's full text report, dated with the run's own time (what COPY REPORT gives, and MY RUNS keeps). */
+    fun benchReportText(result: com.example.thermohammer.engine.BenchmarkResult, at: Long): String =
+        com.example.thermohammer.engine.BenchmarkReport.text(
+            result, engine.getDeviceModel(), "${engine.getAndroidVersion()} (${engine.getOsBuild()})",
+            engine.getSocModel().ifBlank { "?" }, appBuildLabel(context),
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(at)))
     fun benchCard(result: com.example.thermohammer.engine.BenchmarkResult): RunCard.Benchmark {
         val rec = benchRecordOnScreen()
         return RunCard.ownBenchmark(result, MyDeviceName.get(context), engine.getAndroidVersion(),
@@ -374,7 +381,13 @@ private fun DiagnosticsScreenWrapper(
             when {
                 state.wasCompleted && result != null -> {
                     val record = BenchmarkRecord.of(result, java.util.UUID.randomUUID().toString(), System.currentTimeMillis())
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { benchStore.add(record) }
+                    val reportText = benchReportText(result, record.timestamp)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        benchStore.add(record)
+                        // its full report, for COPY REPORT in MY RUNS later (the history keeps only the numbers)
+                        com.example.thermohammer.data.BenchmarkReportStore(context)
+                            .save(record.id, reportText, benchStore.all().map { it.id }.toSet(), record.score, record.timestamp)
+                    }
                     benchRecords = benchStore.current()
                     benchRecordId = record.id
                     benchSubmitting = false; benchSubmitMsg = null; benchSubmitErr = null; showCertificate = false
@@ -856,11 +869,8 @@ private fun DiagnosticsScreenWrapper(
                             System.currentTimeMillis()))
                     },
                     onCopyReport = {
-                        val version = appBuildLabel(context)
-                        val text = com.example.thermohammer.engine.BenchmarkReport.text(
-                            result, engine.getDeviceModel(), "${engine.getAndroidVersion()} (${engine.getOsBuild()})",
-                            engine.getSocModel().ifBlank { "?" }, version,
-                            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date()))
+                        val text = benchRecordId?.let { com.example.thermohammer.data.BenchmarkReportStore(context).load(it) }
+                            ?: benchReportText(result, benchRecordOnScreen()?.timestamp ?: System.currentTimeMillis())
                         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                         cm.setPrimaryClip(android.content.ClipData.newPlainText("ThermoHammer benchmark report", text))
                         Toast.makeText(context, "Report copied — paste it anywhere", Toast.LENGTH_SHORT).show()

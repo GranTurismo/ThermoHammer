@@ -12,6 +12,7 @@
 #include "bench_llm.h"
 
 static int failures = 0;
+static int g_vocab = 128256;   // the model's vocabulary: Llama 3.2's, or Gemma 3's (LLM_MODEL=gemma3)
 
 static void check(bool ok, const char* what) {
     std::printf("%s %s\n", ok ? "  ok  " : "  FAIL", what);
@@ -83,7 +84,7 @@ static void run(int gpu) {
     for (int i = 0; i < 64 && ok; i++) {
         int t = 0;
         const double step = bc_llm_next(llm, &t);
-        ok = step > 0 && t >= 0 && t < 128256;
+        ok = step > 0 && t >= 0 && t < g_vocab;
         if (i < 8) first[i] = t;
         if (i >= 4) { d += step; tokens++; }                    // the first tokens warm up
     }
@@ -135,6 +136,12 @@ static void selftest() {
 }
 
 int main(int argc, char** argv) {
+    // LLM_MODEL=gemma3: version 5's candidate shape (Gemma 3 1B) instead of the scored test's
+    if (const char* m = std::getenv("LLM_MODEL"); m && std::strcmp(m, "gemma3") == 0) {
+        bc_llm_set_model(BC_LLM_MODEL_GEMMA3_1B);
+        g_vocab = 262144;
+    }
+    std::printf("model: %s\n", bc_llm_model_name());
     std::printf("weights %.2f GB · largest model in 8 GB: %dB, in 3 GB: %dB, in 0.5 GB: %dB\n",
                 bc_llm_weight_bytes() / 1e9, bc_llm_largest_model(8e9), bc_llm_largest_model(3e9), bc_llm_largest_model(0.5e9));
     check(bc_llm_largest_model(8e9) == 8 && bc_llm_largest_model(3e9) == 3 && bc_llm_largest_model(0.5e9) == 0, "largest model");

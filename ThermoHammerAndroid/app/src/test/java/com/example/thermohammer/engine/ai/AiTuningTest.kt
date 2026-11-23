@@ -38,12 +38,13 @@ class AiTuningTest {
     }
 
     @Test
-    fun `settings only apply to GPUs that aren't Adreno and are known`() {
+    fun `settings apply to every known GPU, Adreno too`() {
         assertTrue(AiSettings.gpuApplies("Mali-G1-Ultra MC12"))
         assertTrue(AiSettings.gpuApplies("Immortalis-G925"))
         assertTrue(AiSettings.gpuApplies("Xclipse 940"))
-        assertFalse(AiSettings.gpuApplies("Adreno (TM) 830"))
-        assertFalse(AiSettings.gpuApplies("QUALCOMM ADRENO(TM) 740"))
+        // since version 5: LiteRT's default OpenCL path on Adreno never delivers its answers, so Adreno is probed too
+        assertTrue(AiSettings.gpuApplies("Adreno (TM) 830"))
+        assertTrue(AiSettings.gpuApplies("QUALCOMM ADRENO(TM) 740"))
         assertFalse("an unknown renderer keeps the defaults", AiSettings.gpuApplies(""))
         assertFalse(AiSettings.gpuApplies("   "))
     }
@@ -260,8 +261,32 @@ class AiTuningTest {
     }
 
     @Test
-    fun `a default that didn't run leaves nothing to beat`() {
-        val t = tune(flat(100.0, "opencl" to 200.0), fail = { id, _ -> if (id == "default") "no GPU" else null })
+    fun `a default that delivers no answer gives way to the fastest setting that answers right`() {
+        // the Honor 600 Pro's Adreno 830: LiteRT's OpenCL (the default, and every OpenCL variant) never writes its answer,
+        // OpenGL ES answers right at half the speed the OpenCL loop seemed to run
+        val never = "its answer never arrived: LiteRT left the output buffers untouched"
+        val rates = flat(100.0, "opengl" to 50.0)
+        val calls = ArrayList<String>()
+        val t = tune(rates, calls = calls, fail = { id, _ -> when (id) { "opengl" -> null; "int8-input" -> "Failed to compile model"; else -> never } })
+        assertTrue(AiTuner.defaultFailed(t.rows.first(), gpuModels))
+        assertEquals("opengl", t.chosen.id)
+        assertTrue("a failed default is no yardstick: the slower setting gets its second model", calls.contains("opengl/${AiTest.UPSCALE.name}"))
+        val lines = AiTuner.lines(t)
+        assertTrue(lines[1], lines[1].endsWith("it delivered no answer: not used"))
+        assertTrue(lines.drop(1).first { it.contains("OpenGL ES backend") }.endsWith("· used"))
+    }
+
+    @Test
+    fun `of several settings that answer right where the default failed, the fastest by its own rate is used`() {
+        val t = tune(flat(100.0, "opengl" to 50.0, "int8-input" to 70.0),
+            fail = { id, _ -> if (id == "opengl" || id == "int8-input") null else "no answer" })
+        assertEquals("int8-input", t.chosen.id)
+    }
+
+    @Test
+    fun `a default that fails where nothing else answers right stays - its runs score 0`() {
+        val t = tune(flat(100.0, "opencl" to 200.0), fail = { id, _ -> if (id == "opencl") null else "no GPU" },
+            outputs = { _, _ -> listOf(scrambled) })
         assertTrue(t.chosen.isDefault)
     }
 

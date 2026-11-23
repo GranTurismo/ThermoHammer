@@ -105,6 +105,8 @@ data class BenchmarkRecord(
     val llmDecodeCpu: Double = 0.0,
     val llmPrefillGpu: Double = 0.0,
     val llmDecodeGpu: Double = 0.0,
+    val llmPrefillNpu: Double = 0.0,      // version 5: the NPU through LiteRT-LM (0 = none, failed or answered wrongly)
+    val llmDecodeNpu: Double = 0.0,
     val llmGpu: String? = null,
     val llmFreeGb: Double = 0.0,
     val qrRate: Double = 0.0,             // ZXing decodes/s
@@ -164,6 +166,8 @@ data class BenchmarkRecord(
                 llmScore = result.llmScore,
                 llmPrefillCpu = llm?.run(LlmAccel.CPU)?.prefill ?: 0.0, llmDecodeCpu = llm?.run(LlmAccel.CPU)?.decode ?: 0.0,
                 llmPrefillGpu = llm?.run(LlmAccel.GPU)?.prefill ?: 0.0, llmDecodeGpu = llm?.run(LlmAccel.GPU)?.decode ?: 0.0,
+                llmPrefillNpu = llm?.npu?.takeIf { it.right && it.error == null }?.prefill ?: 0.0,
+                llmDecodeNpu = llm?.npu?.takeIf { it.right && it.error == null }?.decode ?: 0.0,
                 llmGpu = llm?.gpuName, llmFreeGb = llm?.freeGb ?: 0.0,
                 test1Fps = t1.avgFps, test1LowFps = t1.lowFps, test1Points = t1.points,
                 test2Fps = t2.avgFps, test2LowFps = t2.lowFps, test2Points = t2.points,

@@ -9,6 +9,11 @@ internal object LlmNative {
 
     const val PROMPT = 512           // BC_LLM_PROMPT
     const val SEED = 3L              // BC_LLM_SEED
+    const val MODEL_LLAMA32_3B = 0   // BC_LLM_MODEL_LLAMA32_3B: the scored test's
+    const val MODEL_GEMMA3_1B = 1    // BC_LLM_MODEL_GEMMA3_1B: version 5's candidate (test builds' probe)
+
+    /** The model shape the next [create] builds (process-wide in this library): set it back to [MODEL_LLAMA32_3B] when done. */
+    @JvmStatic external fun setModel(model: Int)
 
     @JvmStatic external fun weightBytes(): Long
     /** ARMv8.2 dot product and FP16, which the kernels are built with. */

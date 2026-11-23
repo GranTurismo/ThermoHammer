@@ -4471,6 +4471,13 @@ vk_device ggml_vk_get_device(size_t idx) {
         }
 #endif
 
+        // ThermoHammer: Qualcomm's Adreno driver writes through the NULL pFaultInfo of vkGetDeviceFaultInfoEXT's counts
+        // query (which the spec allows) and kills the app with a SIGSEGV (Honor 600 Pro, Adreno 830, Android 17,
+        // 2026-11-23). Without the extension, a lost device stays the vk::DeviceLostError the app catches.
+        if (device->vendor_id == VK_VENDOR_ID_QUALCOMM) {
+            device->device_fault = false;
+        }
+
         VkPhysicalDeviceFaultFeaturesEXT fault_features {};
         fault_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
         if (device->device_fault) {
@@ -12956,7 +12963,15 @@ void ggml_vk_cleanup(ggml_backend_vk_context * ctx) {
     // discard any unsubmitted command buffers
     ctx->compute_ctx.reset();
     // wait for any pending command buffers to finish
-    ggml_vk_synchronize(ctx);
+    // ThermoHammer: on a lost device the wait throws vk::DeviceLostError, and this runs from llama_context's
+    // destructor, so the throw ended the app however its caller guarded the call (Honor 600 Pro, Adreno 830,
+    // 2026-11-23: "terminating due to uncaught exception of type vk::DeviceLostError: vk::Queue::submit"). A lost
+    // device has nothing left to finish: the cleanup goes on.
+    try {
+        ggml_vk_synchronize(ctx);
+    } catch (const vk::SystemError & e) {
+        GGML_LOG_WARN("ggml_vulkan: cleanup skipped the final wait: %s\n", e.what());
+    }
 
     ggml_vk_graph_cleanup(ctx);
 

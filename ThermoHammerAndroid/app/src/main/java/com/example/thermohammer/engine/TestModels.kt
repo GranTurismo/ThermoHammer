@@ -57,6 +57,7 @@ object ValidityFlag {
     const val BASELINE_EXCEEDED = 1 shl 8 // measured run sustained >105% of calibration baseline
                                         // — the "peak" was captured under degraded conditions
                                         //   (capped, starved, or parked on little cores)
+    const val TEST_PROBES = 1 shl 9       // a test build's report-only probes ran mid-benchmark (extra load, extra heat)
 
     /**
      * Only verified runs go to the leaderboard: nothing set but FREQ_MISSING, which describes the phone (stock

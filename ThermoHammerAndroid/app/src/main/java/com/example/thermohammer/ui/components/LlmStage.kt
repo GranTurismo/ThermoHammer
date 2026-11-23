@@ -66,7 +66,7 @@ fun LlmBenchView(state: StressState) {
                 }
             }
             Spacer(Modifier.width(6.dp))
-            Text(LlmBench.MODEL + " · 1.8 GB · 28 LAYERS", style = label.copy(color = Forge.ink1, fontWeight = FontWeight.Normal))
+            Text(LlmBench.MODEL + " · 0.6 GB · 26 LAYERS", style = label.copy(color = Forge.ink1, fontWeight = FontWeight.Normal))
         }
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(18.dp)) {

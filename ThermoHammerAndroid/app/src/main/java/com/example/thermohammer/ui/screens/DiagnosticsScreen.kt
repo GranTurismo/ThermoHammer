@@ -245,7 +245,7 @@ private fun ScrollableContent(
 
 @Composable
 internal fun AppHeader(state: StressState, isNetworkConnected: Boolean) {
-    val thermalCol = thermalStateColor(state.currentThermalState)
+    val tempCol = if (state.cpuTemp > 0f) Ramp.forTemp(state.cpuTemp) else Forge.ink2
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -299,20 +299,20 @@ internal fun AppHeader(state: StressState, isNetworkConnected: Boolean) {
                 style = ThermoType.annotation(8f, if (state.isRunning) phaseColor(state.phase) else Forge.ink2)
             )
         }
-        // Live thermal status chip — the instrument's always-on readout
+        // Live readout: the CPU chip's temperature, and only that. Android's own heat level for the whole phone (the
+        // maker's judgement, mostly from the body's temperature and slow to change) used to sit above it and read as
+        // its verdict — "NOMINAL" over 102 °C, "SERIOUS" over 52. It still drives the cooldown before a run and shows in
+        // a stress test's results ("WORST THERMAL") and chart, where it stands alone.
         Column(horizontalAlignment = Alignment.End) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(thermalCol))
-                Text(
-                    thermalStateName(state.currentThermalState),
-                    style = ThermoType.label(9f, thermalCol)
-                )
+                Box(Modifier.size(6.dp).clip(CircleShape).background(tempCol))
+                Text("CPU", style = ThermoType.label(9f, tempCol))
             }
             Spacer(Modifier.height(3.dp))
             TickerText(
                 value = state.cpuTemp,
                 format = { if (it > 0f) "%.1f°C".format(it) else "--°C" },
-                color = if (state.cpuTemp > 0f) Ramp.forTemp(state.cpuTemp) else Forge.ink2,
+                color = tempCol,
                 size = 11f
             )
         }
@@ -354,7 +354,7 @@ internal fun StatsPanel(state: StressState) {
         ) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(thermalCol))
             Spacer(Modifier.width(10.dp))
-            Text("THERMAL: ${thermalStateName(state.currentThermalState)}", style = ThermoType.data(11f, Forge.ink0, FontWeight.Bold))
+            Text("PHONE HEAT (ANDROID): ${thermalStateName(state.currentThermalState)}", style = ThermoType.data(11f, Forge.ink0, FontWeight.Bold))
             Spacer(Modifier.weight(1f))
             Text(
                 if (state.isRunning) state.phase.displayName else "STANDBY",
@@ -834,7 +834,7 @@ private fun BenchmarkTestRows(rayTracingProblem: String?, rayTracingChecked: Boo
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text("LLM · ${a.label}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Llama 3.2 3B, 4-bit · a 512-token prompt, then the reply token by token"
+                Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Gemma 3 1B, 4-bit · a 512-token prompt, then the reply token by token"
                     else "The same model with every layer on the GPU · llama.cpp OpenCL (Adreno) or Vulkan",
                     style = ThermoType.annotation(8f, Forge.ink2))
             }

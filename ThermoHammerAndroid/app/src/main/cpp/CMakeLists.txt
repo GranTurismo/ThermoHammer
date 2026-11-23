@@ -72,6 +72,12 @@ add_library(thaffinity SHARED affinity_jni.cpp)
 target_compile_options(thaffinity PRIVATE -Os -fno-exceptions -fno-rtti -Wall)
 target_link_options(thaffinity PRIVATE -Wl,--gc-sections)
 
+# On-chip anti-aliasing for the GPU scenes (engine/gpu/GlTile.kt): two GL extension functions looked up by name.
+add_library(thgltile SHARED gl_tile_jni.cpp)
+target_compile_options(thgltile PRIVATE -Os -fno-exceptions -fno-rtti -Wall)
+target_link_options(thgltile PRIVATE -Wl,--gc-sections)
+target_link_libraries(thgltile EGL)
+
 # The LLM test: llama.cpp (BenchCore/third_party/llama.cpp, b11700) running BenchCore/llm — its CPU backend with
 # the Arm dot-product kernels, its OpenCL backend for Adreno GPUs (the kernels' sources embedded, the phone's
 # OpenCL driver opened at run time by cl_loader.c) and its Vulkan backend for the other GPUs. Its own library

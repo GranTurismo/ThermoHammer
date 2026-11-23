@@ -680,7 +680,7 @@ private fun LlmCard(llm: LlmResult) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("LLM · LLAMA 3.2 3B · 4-BIT", style = ThermoType.label(9f).copy(color = accent))
+                Text("LLM · GEMMA 3 1B · 4-BIT", style = ThermoType.label(9f).copy(color = accent))
                 Text("PROMPT · REPLY", style = ThermoType.data(13f, Forge.ink0, FontWeight.Black))
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -702,14 +702,28 @@ private fun LlmCard(llm: LlmResult) {
             }
             Spacer(Modifier.height(6.dp))
         }
+        // the third engine: the NPU through LiteRT-LM, with Google's own file for the chip
+        llm.npu?.let { n ->
+            val ok = n.right && n.error == null
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Metric("NPU PREFILL TOK/S", if (ok) rate(n.prefill) else "—", if (ok) Forge.ink0 else Ramp.at(0.85f))
+                Metric("NPU DECODE TOK/S", if (ok) rate(n.decode) else "—", if (ok) Forge.ink0 else Ramp.at(0.85f))
+                Metric("ANSWER", when { n.error != null -> "—"; n.right -> "RIGHT"; else -> "WRONG" }, if (ok) Forge.ink1 else Ramp.at(0.85f))
+            }
+            n.error?.let { Text("NPU: $it", style = ThermoType.annotation(8f, Ramp.at(0.85f))) }
+            Spacer(Modifier.height(6.dp))
+        }
+        Text("CPU %,d · GPU %,d · NPU %,d points — each a third".format(llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU), llm.npuPoints),
+            style = ThermoType.annotation(8f, Forge.ink1))
         llm.error?.let { Text("Not run: $it.", style = ThermoType.annotation(8f, Ramp.at(0.85f))) }
         Text(if (llm.largestModel > 0) "Largest common model that fits in the memory free now: ${llm.largestModel}B (4-bit, %.1f GB free).".format(llm.freeGb)
             else "Memory free now: %.1f GB — too little for even a 1B model.".format(llm.freeGb),
             style = ThermoType.annotation(8f, Forge.ink1))
         Spacer(Modifier.height(2.dp))
-        Text("Prefill reads a 512-token prompt; decode writes the reply token by token. The faster of the CPU and the GPU counts " +
-            "for each: %.0f and %.1f tokens/s = 6000 points. The weights come from a seed — the words are random, the work is real.".format(
-                LlmScore.REF_PREFILL, LlmScore.REF_DECODE),
+        Text("The same task on every engine: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token " +
+            "(decode). llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real); " +
+            "the NPU runs Google's own file for the chip and must answer a fixed question right. Each engine is measured " +
+            "against its own reference and counts a third; one the phone can't run counts 0.",
             style = ThermoType.annotation(8f, Forge.ink2))
     }
 }
@@ -731,6 +745,7 @@ internal fun validityNote(flags: Int): String {
         if (flags and ValidityFlag.ENV_CAPPED != 0) add("battery saver was on")
         if (flags and (ValidityFlag.COOLDOWN_TIMEOUT or ValidityFlag.WARM_STARTED) != 0) add("started warm")   // as PhoneHealth
         if (flags and ValidityFlag.INTERFERENCE != 0) add("the phone was busy with background work")
+        if (flags and ValidityFlag.TEST_PROBES != 0) add("a version 5 test build (its scoring is not the leaderboard's yet)")
     }
     return if (notes.isEmpty()) "Unverified." else "Unverified: " + notes.joinToString(", ") + "."
 }

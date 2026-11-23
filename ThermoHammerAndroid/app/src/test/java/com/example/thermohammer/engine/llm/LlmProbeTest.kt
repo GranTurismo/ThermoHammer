@@ -71,7 +71,7 @@ class LlmProbeTest {
     }
 
     @Test
-    fun `nothing is timed against the 3B model, only the self-test's own milliseconds are reported`() {
+    fun `nothing is timed against the test model, only the self-test's own milliseconds are reported`() {
         var t = 0L
         val dot = FakeLib("dotprod", answer(), onSelftest = { t += 5_000_000 })
         val i8 = FakeLib("i8mm", answer(), onSelftest = { t += 7_000_000 })
@@ -163,7 +163,7 @@ class LlmProbeTest {
             .copy(skipped = mapOf("sve" to "nothing"), cpuFeatures = "CPU features · asimddp yes", vulkan = listOf("Vulkan · loader 1.3.0 · 1 device"),
                 opencl = listOf("OpenCL · 1 platform"))
         val lines = LlmProbe.lines(r)
-        assertTrue(lines[0], lines[0].startsWith("LLM probe · kernel self-test, ") && lines[0].contains("nothing is timed against the 3B model") &&
+        assertTrue(lines[0], lines[0].startsWith("LLM probe · kernel self-test, ") && lines[0].contains("nothing is timed against the test model") &&
             lines[0].contains("the CPU test ran in the i8mm build: its self-test answers agree"))
         assertTrue(lines[1], lines[1].startsWith("  CPU dotprod · libfake_dotprod.so · self-test ") && !lines[1].contains("USED") && !lines[1].contains("agree"))
         assertTrue(lines[2], lines[2].contains("CPU i8mm · libfake_i8mm.so · self-test ") && lines[2].contains("answers agree: prompt 1.0") && lines[2].contains("next token 1.0") && !lines[2].contains("DIFFERENT"))

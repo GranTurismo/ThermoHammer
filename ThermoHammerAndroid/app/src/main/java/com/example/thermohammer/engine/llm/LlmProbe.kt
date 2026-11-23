@@ -322,7 +322,7 @@ object LlmProbe {
     fun lines(p: LlmProbeResult): List<String> {
         val out = ArrayList<String>()
         out += if (p.checks.isEmpty()) "LLM probe · no kernel self-test: the dot-product build is the only CPU build that applies on this phone"
-            else "LLM probe · kernel self-test, %.0f ms in all (a tiny seeded model reads a 24-token prompt, then one more token; nothing is timed against the 3B model) · the CPU test ran in the %s build: %s".format(
+            else "LLM probe · kernel self-test, %.0f ms in all (a tiny seeded model reads a 24-token prompt, then one more token; nothing is timed against the test model) · the CPU test ran in the %s build: %s".format(
                 p.seconds * 1000, p.chosen, p.why ?: "")
         for (r in p.checks) {
             out += if (r.error != null) "  CPU ${r.variant} · ${r.library} · self-test failed (${r.error})"

@@ -210,7 +210,10 @@ class AiBench(private val context: Context, private val dispatchFolder: String =
         precision = when (s.gpuPrecision) {
             GpuPrecision.DEFAULT -> null
             GpuPrecision.FP16 -> CompiledModel.GpuOptions.Precision.FP16
+            GpuPrecision.FP32 -> CompiledModel.GpuOptions.Precision.FP32
+            GpuPrecision.FP16_FP32_ACCUM -> CompiledModel.GpuOptions.Precision.FP16_WITH_FP32_ACCUM
         },
+        infiniteFloatCapping = if (s.gpuInfCapping) true else null,
         // LiteRT: the 8-bit input quantization of FC and convolution ops needs constant tensors shared
         constantTensorSharing = if (s.srcQuantized) true else null,
         allowSrcQuantizedFcConvOps = if (s.srcQuantized) true else null,
@@ -262,7 +265,18 @@ class AiBench(private val context: Context, private val dispatchFolder: String =
                 val outputs = model.createOutputBuffers()
                 try {
                     inputs[0].writeInt8(input)
+                    // the outputs start as a pattern no model writes: an accelerator that never delivers its answer (LiteRT's
+                    // OpenCL path on Adreno GPUs) then reads as exactly that, not as whatever the memory held before — which
+                    // could even be the CPU's own answer from the run just before, and pass the check
+                    val marker = runCatching {
+                        outputs.map { o -> ByteArray(o.readInt8().size) { i -> (i * 37 + 11).toByte() }.also { o.writeInt8(it) } }
+                    }.getOrNull()
                     repeat(WARMUP_RUNS) { model.run(inputs, outputs) }
+                    if (marker != null) {
+                        val got = outputs.map { it.readInt8() }
+                        if (got.indices.all { got[it].contentEquals(marker[it]) })
+                            throw IllegalStateException("its answer never arrived: LiteRT left the output buffers untouched")
+                    }
                     // the threads LiteRT started for the model: what is new in /proc/self/task after the warm-up (a pool
                     // that starts its threads on first use has them by now). A pinned run says where they ended up — that
                     // is the check that the pool inherited the mask — and an ADPF session covers them and this thread.
@@ -400,9 +414,18 @@ class AiInputs(private val context: Context) {
     }
 
     /** YOLOX: 8400 candidate boxes (x1 y1 x2 y2 in the 640×640 input), scores and classes → kept after NMS. */
-    private fun detections(boxesQ: ByteArray, scoresQ: ByteArray, classes: ByteArray, names: List<String>): List<AiBox> {
+    private fun detections(boxesQ: ByteArray, scoresQ: ByteArray, classBytes: ByteArray, names: List<String>): List<AiBox> {
         val boxes = dequant(boxesQ, 4.416495f, 51)
         val scores = dequant(scoresQ, 0.0038126425f, 0)
+        // the class of each candidate: 32-bit integers from ARG_MAX (the model's final CAST to bytes is gone — LiteRT's
+        // OpenGL backend generated broken shader code for it, and YOLOX couldn't run on Adreno GPUs at all), one byte
+        // each in the original file
+        val n = scores.size
+        val classes = IntArray(n) { i ->
+            if (classBytes.size >= 4 * n) (classBytes[4 * i].toInt() and 0xFF) or ((classBytes[4 * i + 1].toInt() and 0xFF) shl 8) or
+                ((classBytes[4 * i + 2].toInt() and 0xFF) shl 16) or (classBytes[4 * i + 3].toInt() shl 24)
+            else classBytes.getOrElse(i) { 0 }.toInt() and 0xFF
+        }
         val candidates = scores.indices.filter { scores[it] > 0.35f }.sortedByDescending { scores[it] }
         val kept = ArrayList<Int>()
         for (i in candidates) {
@@ -411,7 +434,7 @@ class AiInputs(private val context: Context) {
         }
         return kept.map { i ->
             AiBox(boxes[i * 4], boxes[i * 4 + 1] - 80f, boxes[i * 4 + 2], boxes[i * 4 + 3] - 80f,
-                names.getOrElse(classes[i].toInt() and 0xFF) { "object" }, scores[i])
+                names.getOrElse(classes[i]) { "object" }, scores[i])
         }
     }
 

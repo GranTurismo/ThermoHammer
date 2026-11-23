@@ -273,6 +273,17 @@ private fun RunRow(
                 Text(validityNote(r.validityFlags) + " Only verified runs can go to the leaderboard.",
                     style = ThermoType.annotation(9f, Ramp.at(0.5f)))
             }
+            // the run's full report, kept when it finished (BenchmarkReportStore): runs from before it was kept have none
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val report = remember(r.id) { com.example.thermohammer.data.BenchmarkReportStore(context).load(r.id) }
+            if (report != null) {
+                Spacer(Modifier.height(10.dp))
+                ActionPill("COPY REPORT", Forge.ink1) {
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("ThermoHammer benchmark report", report))
+                    android.widget.Toast.makeText(context, "Report copied — paste it anywhere", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
             when {
                 row.canSubmit && isSubmitting -> {
                     Spacer(Modifier.height(10.dp))

@@ -10,6 +10,7 @@ import com.example.thermohammer.engine.ux.QrResult
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 // ── GPU benchmark — Blender-authored scenes, one score ─────────────────────────
 // The default run: GPU Test 1 (Lake Valley) and GPU Test 2 (Neon City) on
@@ -57,7 +58,9 @@ data class BenchmarkResult(
     val mem: MemResult? = null,
     val llm: LlmResult? = null,
     val startCpuShare: Float = 1f,           // share of the CPU the app got when the tests began
-    val quietWaitSec: Int = 0                // how long it waited for background work to finish first
+    val quietWaitSec: Int = 0,               // how long it waited for background work to finish first
+    val gpuAb: List<String>? = null,         // test builds: the OpenGL scenes classic vs tile-friendly (report only)
+    val npuLlm: List<String>? = null         // test builds: an LLM on the NPU through LiteRT-LM (report only)
 ) {
     val isVerified: Boolean get() = validityFlags == 0
     val uxScore: Int get() = ux?.score ?: 0
@@ -75,7 +78,7 @@ data class BenchmarkResult(
 enum class MemTest(val number: Int, val title: String, val seconds: Int, val labels: List<String>) {
     RAM(1, "RAM", 10, listOf("READ", "WRITE", "COPY", "LATENCY")),
     STORAGE(2, "STORAGE", 12, listOf("SEQ WRITE", "SEQ READ", "RANDOM READ", "RANDOM WRITE")),
-    DATABASE(3, "DATABASE", 8, listOf("INSERT", "UPDATE", "QUERY"))
+    DATABASE(3, "DATABASE", 14, listOf("INSERT", "UPDATE", "QUERY"))   // each step warms up untimed first (MemBench.warmUp)
 }
 
 /** RAM over a buffer far bigger than the caches: GB/s with every core streaming at once, and one random access in ns. */
@@ -109,9 +112,11 @@ object MemScore {
     const val REF_SEQ_WRITE = 1300.0
     const val REF_RANDOM_READ = 29_000.0   // 4 KB IOPS
     const val REF_RANDOM_WRITE = 13_400.0
-    const val REF_INSERT = 9700.0          // transactions/s
-    const val REF_UPDATE = 36_000.0
-    const val REF_QUERY = 20_300.0         // chats opened/s
+    // version 5: the database steps are timed after a warm-up (MemBench.warmUp) — the old references timed the climb.
+    // PROVISIONAL: Honor in Performance mode, 2026-11-23 test build; a calibration run sets the final values
+    const val REF_INSERT = 15_700.0        // transactions/s
+    const val REF_UPDATE = 389_000.0
+    const val REF_QUERY = 43_800.0         // chats opened/s
 
     /** 6000 × the geometric mean of value ÷ reference; 0 if any part is 0. */
     private fun geo(vararg ratios: Double): Int =
@@ -469,7 +474,9 @@ data class AiResult(
     // the CPU: reported only. The scores count the rates of the setting the probe chose; nothing else of this is scored
     // or sent to the server.
     val tuning: List<AiTuning> = emptyList(),
-    val delegation: List<AiDelegation> = emptyList()
+    val delegation: List<AiDelegation> = emptyList(),
+    /** Test builds: the GPU's answers and rates at higher precision than LiteRT's default (report lines, never scored). */
+    val gpuPrecision: List<String>? = null
 ) {
     fun ips(t: AiTest, a: AiAccel): Double = runs.firstOrNull { it.test == t && it.accel == a }?.ips ?: 0.0
     fun points(t: AiTest, a: AiAccel): Int = AiScore.points(t, a, ips(t, a))
@@ -481,7 +488,10 @@ object AiScore {
     // Inferences per second worth 6000 points, per accelerator, in AiTest order: the Snapdragon 8 Elite (Honor VKP-NX9, release build, 2026-10-25) scores 6000 on every test
     // (NPU through Qualcomm QNN). Repeated in BenchmarkScoring.cs.
     val REF_CPU = doubleArrayOf(330.0, 18.2, 4.71, 2.65, 42.0, 2890.0)
-    val REF_GPU = doubleArrayOf(658.0, 85.5, 33.1, 92.8, 182.0, 1470.0)
+    // version 5: the GPU's references re-measured on the path that answers right — LiteRT's OpenGL backend on the Adreno 830
+    // (its default OpenCL path never delivered an answer, so the old ones timed nothing). PROVISIONAL: Performance mode,
+    // 2026-11-23 test build; a calibration run sets the final values
+    val REF_GPU = doubleArrayOf(280.7, 36.7, 16.6, 38.8, 74.2, 582.0)
     val REF_NPU = doubleArrayOf(1690.0, 473.0, 229.0, 774.0, 993.0, 2100.0)
 
     fun ref(t: AiTest, a: AiAccel): Double = when (a) {
@@ -522,37 +532,75 @@ data class LlmResult(
     val error: String? = null,        // why the test couldn't run at all (too little RAM, a 32-bit build, …)
     // the short probe of the CPU kernel builds and what this phone's CPU and GPU drivers offer. The CPU run in `runs` ran
     // in the kernel build the probe chose (the i8mm one only where it measured clearly faster); the rest is reported only
-    val probe: LlmProbeResult? = null
+    val probe: LlmProbeResult? = null,
+    /** The NPU: Google's own Gemma 3 1B file for this chip through LiteRT-LM (null: no NPU path was tried on this phone). */
+    val npu: LlmNpuRun? = null
 ) {
     fun run(a: LlmAccel): LlmRun? = runs.firstOrNull { it.accel == a }
-    /** The faster of the CPU and the GPU at each — what a chat app on this phone would get. */
-    val prefill: Double get() = runs.maxOfOrNull { it.prefill } ?: 0.0
-    val decode: Double get() = runs.maxOfOrNull { it.decode } ?: 0.0
-    val prefillPoints: Int get() = LlmScore.prefillPoints(prefill)
-    val decodePoints: Int get() = LlmScore.decodePoints(decode)
-    val score: Int get() = LlmScore.overall(prefill, decode)
+    /** One engine's points: its prompt and reply rates against the same engine's reference (LlmScore). */
+    fun points(a: LlmAccel): Int = run(a)?.let { LlmScore.engine(a, it.prefill, it.decode) } ?: 0
+    /** The NPU's points; 0 when it didn't run, failed, or answered the check question wrongly. */
+    val npuPoints: Int get() = npu?.takeIf { it.right && it.error == null }?.let { LlmScore.npu(it.prefill, it.decode) } ?: 0
+    private val rates: List<Pair<Double, Double>> get() =
+        runs.map { it.prefill to it.decode } + listOfNotNull(npu?.takeIf { it.right && it.error == null }?.let { it.prefill to it.decode })
+    /** The fastest engine at each — what a chat app on this phone could get (shown, not scored). */
+    val prefill: Double get() = rates.maxOfOrNull { it.first } ?: 0.0
+    val decode: Double get() = rates.maxOfOrNull { it.second } ?: 0.0
+    /** The best engine's points for each phase, against that engine's own reference (CSV, the health memo). */
+    val prefillPoints: Int get() = maxOf(run(LlmAccel.CPU)?.let { LlmScore.phase(it.prefill, LlmScore.REF_CPU_PREFILL) } ?: 0,
+        run(LlmAccel.GPU)?.let { LlmScore.phase(it.prefill, LlmScore.REF_GPU_PREFILL) } ?: 0,
+        if (npuPoints > 0) LlmScore.phase(npu!!.prefill, LlmScore.REF_NPU_PREFILL) else 0)
+    val decodePoints: Int get() = maxOf(run(LlmAccel.CPU)?.let { LlmScore.phase(it.decode, LlmScore.REF_CPU_DECODE) } ?: 0,
+        run(LlmAccel.GPU)?.let { LlmScore.phase(it.decode, LlmScore.REF_GPU_DECODE) } ?: 0,
+        if (npuPoints > 0) LlmScore.phase(npu!!.decode, LlmScore.REF_NPU_DECODE) else 0)
+    /** Version 5's rule: the CPU, the GPU and the NPU each count a third — an engine that can't run the task counts 0. */
+    val score: Int get() = LlmScore.overall(points(LlmAccel.CPU), points(LlmAccel.GPU), npuPoints)
 }
 
+/**
+ * The LLM test's NPU engine: LiteRT-LM running Google's per-chip Gemma 3 1B file (4-bit) — the same task as the CPU and
+ * GPU runs (a 512-token prompt, 32-token replies), timed by LiteRT-LM's own benchmark, then one fixed question whose
+ * reply must name the expected word. `lines`: what it reported, for the report.
+ */
+data class LlmNpuRun(val prefill: Double, val decode: Double, val right: Boolean, val model: String? = null,
+                     val error: String? = null, val lines: List<String> = emptyList())
+
 object LlmScore {
-    // Tokens per second worth 6000 points: the Snapdragon 8 Elite's faster path (Honor VKP-NX9, bench build,
-    // 2026-10-26 — its Adreno 830 for both: CPU 23.5 / 6.8, GPU 362.7 / 17.23). Repeated in BenchmarkScoring.cs.
-    const val REF_PREFILL = 362.7
-    const val REF_DECODE = 17.23
+    // Version 5: Gemma 3 1B (4-bit) on each engine — llama.cpp on the CPU and the GPU (seeded weights, the model's exact
+    // shape), LiteRT-LM on the NPU (Google's own file for the chip) — each against the same engine's reference, then the
+    // three averaged (rule B, BENCHMARK_V5_PLAN.md). Tokens per second worth 6000 points per engine.
+    // PROVISIONAL: the Honor VKP-NX9 (Snapdragon 8 Elite) in Performance mode, test builds of 2026-11-23 (CPU i8mm about
+    // 150–190 / 45–61, GPU OpenCL 880–907 / 28–33, NPU 5,345–5,596 / 49–59). A calibration run sets the final values;
+    // the server's BenchmarkScoring.cs needs the same numbers before version 5 goes live.
+    const val REF_CPU_PREFILL = 160.0
+    const val REF_CPU_DECODE = 55.0
+    const val REF_GPU_PREFILL = 890.0
+    const val REF_GPU_DECODE = 32.0
+    const val REF_NPU_PREFILL = 5450.0
+    const val REF_NPU_DECODE = 52.0
 
-    fun prefillPoints(tokensPerS: Double): Int = (6000 * tokensPerS.coerceAtLeast(0.0) / REF_PREFILL).roundToInt()
-    fun decodePoints(tokensPerS: Double): Int = (6000 * tokensPerS.coerceAtLeast(0.0) / REF_DECODE).roundToInt()
+    /** One phase's points against `ref` tokens/s. */
+    fun phase(tokensPerS: Double, ref: Double): Int = (6000 * tokensPerS.coerceAtLeast(0.0) / ref).roundToInt()
 
-    /** Geometric mean of prefill and decode — each the faster of the CPU and the GPU; 0 if either is 0. */
-    fun overall(prefill: Double, decode: Double): Int {
-        val p = prefillPoints(prefill); val d = decodePoints(decode)
-        if (p <= 0 || d <= 0) return 0
-        return exp((ln(p.toDouble()) + ln(d.toDouble())) / 2).roundToInt()
+    /** One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0. */
+    fun engine(prefill: Double, decode: Double, refPrefill: Double, refDecode: Double): Int =
+        if (!(prefill > 0) || !(decode > 0)) 0 else (6000 * sqrt((prefill / refPrefill) * (decode / refDecode))).roundToInt()
+
+    fun engine(a: LlmAccel, prefill: Double, decode: Double): Int = when (a) {
+        LlmAccel.CPU -> engine(prefill, decode, REF_CPU_PREFILL, REF_CPU_DECODE)
+        LlmAccel.GPU -> engine(prefill, decode, REF_GPU_PREFILL, REF_GPU_DECODE)
     }
+
+    fun npu(prefill: Double, decode: Double): Int = engine(prefill, decode, REF_NPU_PREFILL, REF_NPU_DECODE)
+
+    /** Each engine counts a third; one the phone lacks or can't run the task on scores 0 there. */
+    fun overall(cpu: Int, gpu: Int, npu: Int): Int =
+        ((cpu.coerceAtLeast(0) + gpu.coerceAtLeast(0) + npu.coerceAtLeast(0)) / 3.0).roundToInt()
 }
 
 object BenchmarkScore {
     /** Bump when a scene, the resolution or the scoring changes — scores compare only within a version. */
-    const val VERSION = 4
+    const val VERSION = 5
     /** Frames that start before this (s) are driver/shader warm-up and not scored. */
     const val WARMUP_S = 2f
     private const val WINDOW_S = 5f

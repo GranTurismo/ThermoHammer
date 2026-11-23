@@ -29,10 +29,17 @@ import kotlin.math.sin
 //   The knobs below set the load: tuned to ≈4× Lake Valley's frame cost.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * `tileFriendly`: what tile-based mobile GPUs are spared here (see [GlTile]): the multisample buffers once resolved, the
+ * reflection's depth, and the old contents of targets a pass overwrites completely aren't kept or loaded. The MSAA
+ * resolve itself stays the classic blit, because fog and the motion blur read the resolved depth. The picture is the
+ * same; false is exactly the path scoring version 4 measured.
+ */
 internal class NeonCityRenderer(
     private val asset: NeonCityAsset,
     private val width: Int,
-    private val height: Int
+    private val height: Int,
+    private val tileFriendly: Boolean = false
 ) : GpuScene {
 
     companion object {
@@ -110,6 +117,7 @@ internal class NeonCityRenderer(
     private var searchTex = 0; private var searchFbo = 0
     private var reflTex = 0; private var reflFbo = 0
     private var mainFbo = 0; private var msaa = false
+    override var drawPath = ""; private set
     private var sceneTex = 0; private var depthTex = 0; private var sceneFbo = 0
     private var fogTex = 0; private var fogFbo = 0
     private var hdrTex = 0; private var hdrFbo = 0
@@ -319,9 +327,18 @@ internal class NeonCityRenderer(
         sceneFbo = Gl.framebuffer(colorTex = sceneTex, depthTex = depthTex)
         val samples = supportedSamples(hdrInternal)
         msaa = samples > 1
+        // Always the classic resolve, even tile-friendly: fog and the motion blur read the resolved depth, and on-tile
+        // MSAA doesn't give it — on an Adreno 830 the on-tile depth texture changed 61% of the picture (2026-11-23).
+        // Tile-friendly here means only the discards.
         mainFbo = if (msaa) Gl.framebuffer(
             colorRb = Gl.renderbuffer(samples, hdrInternal, width, height),
             depthRb = Gl.renderbuffer(samples, GLES30.GL_DEPTH_COMPONENT24, width, height)) else sceneFbo
+        drawPath = when {
+            tileFriendly && msaa -> "${samples}x MSAA classic (depth is read later), discards on"
+            tileFriendly -> "no MSAA, discards on"
+            msaa -> "${samples}x MSAA classic"
+            else -> "no MSAA"
+        }
 
         // fog keeps its transmittance in alpha, which 2-bit RGB10_A2 alpha can't hold
         fogTex = if (hdrFloat) hdrTexture(width / 2, height / 2) else Gl.texture(width / 2, height / 2)
@@ -500,6 +517,7 @@ internal class NeonCityRenderer(
         objMirror.i("uMaxMoving", MIRROR_MOVING); objMirror.i("uMaxStatic", MIRROR_STATIC)
         drawBatches(objMirror, mirrorViewProj, false)
         drawSky(skyMirror, mirrorCamPos)
+        if (tileFriendly) GlTile.discardDepth()                // only the colour is read later
         bind(UNIT_REFLECTION, reflTex)
         GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
     }
@@ -542,11 +560,17 @@ internal class NeonCityRenderer(
             GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, sceneFbo)
             GLES30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                 GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT, GLES30.GL_NEAREST)
+            if (tileFriendly) {                                // the multisample buffers are spent once resolved
+                GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, mainFbo)
+                GlTile.discard(GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_DEPTH_ATTACHMENT)
+            }
         }
     }
 
-    private fun fullscreen(fbo: Int, w: Int, h: Int) {
+    /** `keep`: the pass blends onto what's there; otherwise every pixel is overwritten and the old ones needn't load. */
+    private fun fullscreen(fbo: Int, w: Int, h: Int, keep: Boolean = false) {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo)
+        if (tileFriendly && !keep) GlTile.discardColor()
         GLES30.glViewport(0, 0, w, h)
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
     }
@@ -592,7 +616,7 @@ internal class NeonCityRenderer(
             val w = max(1, width shr l); val h = max(1, height shr l)
             up.f2("uTexel", 1f / max(1, width shr (l + 1)), 1f / max(1, height shr (l + 1)))
             bind(0, bloomTex[l])
-            fullscreen(bloomFbo[l - 1], w, h)
+            fullscreen(bloomFbo[l - 1], w, h, keep = true)       // additive: adds onto the level's own blur
         }
         GLES30.glDisable(GLES30.GL_BLEND)
 

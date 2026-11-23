@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test builds only: "Open with" / Share for a LiteRT-LM model file, copied for the NPU LLM probe (src/nonRelease). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.example.thermohammer.NpuModelImportActivity"
+            android:exported="true"
+            android:label="NPU model for ThermoHammer Bench"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <!-- the NPU LLM probe's own process: a native crash there ends it, not the benchmark -->
+        <service
+            android:name="com.example.thermohammer.engine.llm.NpuLlmProbeService"
+            android:exported="false"
+            android:process=":npullm" />
+        <!-- the GPU AI diagnosis (adb-started through the activity above), in a process of its own -->
+        <service
+            android:name="com.example.thermohammer.engine.ai.AiGpuDiagnosisService"
+            android:exported="false"
+            android:process=":aidiag" />
+    </application>
+</manifest>

@@ -38,8 +38,9 @@ class LlmBench(private val context: Context) {
         const val DECODE_S = 4.0
         const val REPLY = 32
         private const val WARMUP_TOKENS = 4
-        private const val NEED_RAM = 5_000_000_000L     // phones sold as 6 GB report about 5.5 GB
-        const val MODEL = "LLAMA 3.2 3B · Q4_0"
+        // version 5's model is Gemma 3 1B (0.6 GB of weights): a phone sold as 4 GB (about 3.6 GB reported) has room
+        private const val NEED_RAM = 3_000_000_000L
+        const val MODEL = "GEMMA 3 1B · Q4_0"
     }
 
     private fun memory(): ActivityManager.MemoryInfo = ActivityManager.MemoryInfo().also {
@@ -51,7 +52,7 @@ class LlmBench(private val context: Context) {
         if (!LlmNative.loaded) return "needs a 64-bit Arm phone"
         if (!LlmNative.cpuSupported()) return "the CPU lacks the ARMv8.2 dot-product instructions the model's kernels use"
         val total = memory().totalMem
-        if (total < NEED_RAM) return "needs a phone with 6 GB of RAM (this one has %.1f GB)".format(total / 1e9)
+        if (total < NEED_RAM) return "needs a phone with 4 GB of RAM (this one has %.1f GB)".format(total / 1e9)
         return null
     }
 
@@ -74,12 +75,26 @@ class LlmBench(private val context: Context) {
      * keeps that only if it is clearly faster; without, it is the search the test always had.
      */
     internal fun run(accel: LlmAccel, threads: Int, isActive: () -> Boolean, lib: LlmCpuLib = DotprodLib,
-                     cores: List<Int> = emptyList(), onProgress: (LlmProgress) -> Unit): LlmRun? {
+                     cores: List<Int> = emptyList(), model: Int = LlmNative.MODEL_LLAMA32_3B,
+                     onProgress: (LlmProgress) -> Unit): LlmRun? {
         val gpu = accel == LlmAccel.GPU
         val api: LlmCpuLib = if (gpu) DotprodLib else lib      // the C API is the same either way; only the library differs
         val where = if (gpu) "GPU · ${gpuApi().uppercase()}" else "CPU"
         if (gpu) LlmNative.setCacheDir(File(context.cacheDir, "llm-opencl").path)
-        onProgress(LlmProgress(LlmPhase.BUILD, 0f, -1.0, "$where · BUILDING THE MODEL · 1.8 GB OF WEIGHTS FROM A SEED"))
+        // another model's shape (test builds' version-5 probe) in both libraries: the CPU's reference for the GPU's
+        // answer is handed to the dot-product one; put back below, whatever happens
+        val otherModel = model != LlmNative.MODEL_LLAMA32_3B
+        if (otherModel) { LlmNative.setModel(model); if (lib === I8mmLib) LlmNativeI8mm.setModel(model) }
+        try {
+            return runModel(accel, threads, isActive, lib, cores, gpu, api, where, if (otherModel) "0.6 GB" else "1.8 GB", onProgress)
+        } finally {
+            if (otherModel) { LlmNative.setModel(LlmNative.MODEL_LLAMA32_3B); if (lib === I8mmLib) LlmNativeI8mm.setModel(LlmNative.MODEL_LLAMA32_3B) }
+        }
+    }
+
+    private fun runModel(accel: LlmAccel, threads: Int, isActive: () -> Boolean, lib: LlmCpuLib, cores: List<Int>,
+                         gpu: Boolean, api: LlmCpuLib, where: String, size: String, onProgress: (LlmProgress) -> Unit): LlmRun? {
+        onProgress(LlmProgress(LlmPhase.BUILD, 0f, -1.0, "$where · BUILDING THE MODEL · $size OF WEIGHTS FROM A SEED"))
         val error = arrayOfNulls<String>(1)
         val h = if (gpu) LlmNative.create(true, threads, LlmNative.SEED, error) else lib.create(threads, LlmNative.SEED, error)
         if (h == 0L) return LlmRun(accel, 0.0, 0.0, error = error[0] ?: "the model could not be built", kernels = lib.variant)

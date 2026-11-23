@@ -77,4 +77,18 @@ class LlmTuneReportTest {
         val r = LlmTuneReport.parse(raw(decodePinned = 1, mainCore = -1, trials = listOf(trial(0, 1, 4, 0.4))), cores)!!
         assertTrue(r.lines().last(), r.lines().last().contains("on no single core"))
     }
+
+    @Test
+    fun `a timed run that collapses below half the search's rate for the same setting is named, a normal one is not`() {
+        // the Honor 600 Pro at 97 °C: the search measured 22.67 tok/s for 6 unpinned threads, the timed reply 7.87
+        val r = LlmTuneReport.parse(raw(decodeThreads = 6, promptThreads = 8, trials = listOf(
+            trial(0, 0, 8, 6 / 19.51), trial(0, 0, 6, 6 / 22.67), trial(1, 0, 8, 64 / 41.52))), cores)!!
+        assertEquals(22.67, r.chosenRate(true)!!, 1e-6)
+        val note = r.slowedNote(decodeRate = 7.87, promptRate = 45.26)
+        assertNotNull(note)
+        assertTrue(note!!, note.contains("timed reply ran at 35% of the 22.67 tok/s"))
+        assertFalse("the prompt held up", note.contains("prompt"))
+        // the usual gap (6-token trials run faster than 32-token replies): 20.88 timed after 28.30 searched
+        assertNull(r.slowedNote(decodeRate = 0.74 * 22.67, promptRate = 41.0))
+    }
 }

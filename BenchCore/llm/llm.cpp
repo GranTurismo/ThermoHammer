@@ -48,9 +48,23 @@ namespace {
 constexpr uint32_t VOCAB = 128256, EMBD = 3072, LAYERS = 28, HEADS = 24, KV_HEADS = 8, HEAD_DIM = 128, FF = 8192;
 constexpr float ROPE_BASE = 500000.0f;
 
-/** A Llama-shaped model's dimensions: the test's own is Llama 3.2 3B's, the kernel self-test's is a tiny one. */
-struct Shape { uint32_t vocab, embd, layers, heads, kv_heads, head_dim, ff; };
+/**
+ * A model's dimensions: the scored test's is Llama 3.2 3B's, the kernel self-test's a tiny Llama, and version 5's
+ * candidate Gemma 3 1B's (bc_llm_set_model) — the model Google compiles for phone NPUs, so llama.cpp and an NPU can
+ * run the same task. `swa`: Gemma's sliding attention window (every sixth layer attends globally).
+ */
+struct Shape {
+    uint32_t vocab, embd, layers, heads, kv_heads, head_dim, ff;
+    const char* arch = "llama";
+    uint32_t swa = 0;
+};
 constexpr Shape FULL{VOCAB, EMBD, LAYERS, HEADS, KV_HEADS, HEAD_DIM, FF};
+// Gemma 3 1B: 26 layers 1152 wide, 4 query heads and 1 key/value head of 256, a 6912-wide GeGLU, a 262,144-token
+// vocabulary whose embedding is also the output head, 512-token sliding window; every matrix Q4_0 here, 0.6 GB
+constexpr Shape GEMMA3_1B{262144, 1152, 26, 4, 1, 256, 6912, "gemma3", 512};
+/** The shape bc_llm_create builds (bc_llm_set_model): the scored test's unless a caller asks for another. */
+const Shape* g_shape = &FULL;
+bool is_gemma(const Shape& m) { return std::strcmp(m.arch, "gemma3") == 0; }
 /** Small enough to build and run in a few milliseconds, and every matrix still a repackable Q4_0 one (rows a multiple of 4, columns of 32). */
 constexpr Shape TINY{1024, 512, 2, 8, 2, 64, 1536};
 constexpr double PI = 3.14159265358979323846;
@@ -130,6 +144,9 @@ ggml_backend_dev_t gpu_device() {
 // The CPU's logits for each prompt it ran (by seed and length), sampled: what a GPU's must agree with.
 std::mutex g_ref_mutex;
 std::map<std::pair<uint64_t, int>, std::vector<float>> g_ref;
+
+/** Part of a reference's key: a GPU's answer is only ever compared with the CPU's for the same model. */
+uint64_t model_tag(const Shape& m) { return is_gemma(m) ? 0x67656d6d61330001ULL : 0; }
 
 /** Pearson correlation of two samples. */
 double correlation(const std::vector<float>& a, const std::vector<float>& b) {
@@ -242,8 +259,40 @@ void add_tensor(gguf_context* g, const std::string& name, ggml_type type) {
     gguf_add_tensor(g, &t);
 }
 
+/** Gemma 3's metadata and tensors, as its GGUF carries them — minus the tokenizer (the test feeds token ids). */
+gguf_context* gemma_metadata(const Shape& m) {
+    gguf_context* g = gguf_init_empty();
+    gguf_set_val_str(g, "general.architecture", "gemma3");
+    gguf_set_val_str(g, "general.name", "Gemma 3 1B shape, seeded weights");
+    gguf_set_val_u32(g, "gemma3.vocab_size", m.vocab);
+    gguf_set_val_u32(g, "gemma3.context_length", 32768);
+    gguf_set_val_u32(g, "gemma3.embedding_length", m.embd);
+    gguf_set_val_u32(g, "gemma3.block_count", m.layers);
+    gguf_set_val_u32(g, "gemma3.feed_forward_length", m.ff);
+    gguf_set_val_u32(g, "gemma3.attention.head_count", m.heads);
+    gguf_set_val_u32(g, "gemma3.attention.head_count_kv", m.kv_heads);
+    gguf_set_val_u32(g, "gemma3.attention.key_length", m.head_dim);
+    gguf_set_val_u32(g, "gemma3.attention.value_length", m.head_dim);
+    gguf_set_val_u32(g, "gemma3.attention.sliding_window", m.swa);
+    gguf_set_val_f32(g, "gemma3.rope.freq_base", 1000000.0f);
+    gguf_set_val_f32(g, "gemma3.rope.freq_base_swa", 10000.0f);
+    gguf_set_val_f32(g, "gemma3.attention.layer_norm_rms_epsilon", 1e-6f);
+    gguf_set_val_str(g, "tokenizer.ggml.model", "no_vocab");
+    add_tensor(g, "token_embd.weight", GGML_TYPE_Q4_0);                 // also the output head (tied)
+    add_tensor(g, "output_norm.weight", GGML_TYPE_F32);
+    for (uint32_t i = 0; i < m.layers; i++) {
+        const std::string b = "blk." + std::to_string(i) + ".";
+        for (const char* n : {"attn_norm", "post_attention_norm", "attn_q_norm", "attn_k_norm", "ffn_norm", "post_ffw_norm"})
+            add_tensor(g, b + n + ".weight", GGML_TYPE_F32);
+        for (const char* n : {"attn_q", "attn_k", "attn_v", "attn_output", "ffn_gate", "ffn_up", "ffn_down"})
+            add_tensor(g, b + n + ".weight", GGML_TYPE_Q4_0);
+    }
+    return g;
+}
+
 /** The model's metadata, as a GGUF of Llama 3.2 3B would carry it — minus the tokenizer (the test feeds token ids). */
-gguf_context* metadata(const Shape& m = FULL) {
+gguf_context* metadata(const Shape& m = *g_shape) {
+    if (is_gemma(m)) return gemma_metadata(m);
     gguf_context* g = gguf_init_empty();
     gguf_set_val_str(g, "general.architecture", "llama");
     gguf_set_val_str(g, "general.name", "Llama 3.2 3B shape, seeded weights");
@@ -283,6 +332,7 @@ void put(char* err, int size, const std::string& s) {
 }  // namespace
 
 struct bc_llm {
+    Shape shape = FULL;                      // what was built (bc_llm_set_model at create time)
     llama_model* model = nullptr;
     llama_context* ctx = nullptr;
     std::atomic<bool> cancelled{false};
@@ -337,9 +387,17 @@ static bool on_abort(void* data) { return static_cast<bc_llm*>(data)->cancelled.
 extern "C" {
 
 int64_t bc_llm_weight_bytes(void) {
-    const int64_t per_layer = int64_t(EMBD) * (EMBD + 2 * KV_HEADS * HEAD_DIM + EMBD) + 3 * int64_t(EMBD) * FF;
-    return (per_layer * LAYERS + int64_t(EMBD) * VOCAB) / 32 * Q4_0_BLOCK + int64_t(4) * EMBD * (2 * LAYERS + 1);
+    const Shape& m = *g_shape;
+    const int64_t q = int64_t(m.heads) * m.head_dim, kv = int64_t(m.kv_heads) * m.head_dim;
+    const int64_t per_layer = int64_t(m.embd) * (q + 2 * kv) + q * m.embd + 3 * int64_t(m.embd) * m.ff;
+    const int64_t norms = is_gemma(m) ? int64_t(4) * (int64_t(m.embd) * (4 * m.layers + 1) + 2 * int64_t(m.head_dim) * m.layers)
+                                      : int64_t(4) * m.embd * (2 * m.layers + 1);
+    return (per_layer * m.layers + int64_t(m.embd) * m.vocab) / 32 * Q4_0_BLOCK + norms;
 }
+
+void bc_llm_set_model(int model) { g_shape = model == BC_LLM_MODEL_GEMMA3_1B ? &GEMMA3_1B : &FULL; }
+
+const char* bc_llm_model_name(void) { return is_gemma(*g_shape) ? "Gemma 3 1B shape" : "Llama 3.2 3B shape"; }
 
 void bc_llm_set_cache_dir(const char* dir) {
     if (dir && *dir) setenv("GGML_OPENCL_KERNEL_CACHE_DIR", dir, 1);
@@ -367,11 +425,12 @@ bc_llm* bc_llm_create(int gpu, int threads, uint64_t seed, char* err, int err_si
     if (gpu && !dev) { put(err, err_size, "llama.cpp found no GPU it can run on (Metal, OpenCL or Vulkan)"); return nullptr; }
 
     auto* llm = new bc_llm();
+    llm->shape = *g_shape;
     llm->gpu = gpu != 0;
     llm->seed = seed;
     llm->rng = mix(seed);
     llm->prompt.resize(BC_LLM_PROMPT);
-    for (auto& t : llm->prompt) t = llama_token((llm->rng = mix(llm->rng)) % VOCAB);
+    for (auto& t : llm->prompt) t = llama_token((llm->rng = mix(llm->rng)) % llm->shape.vocab);
     llm->next = llm->prompt[0];
 
     ggml_backend_dev_t devices[2] = {dev, nullptr};             // the CPU run: no device, nothing offloaded
@@ -380,8 +439,8 @@ bc_llm* bc_llm_create(int gpu, int threads, uint64_t seed, char* err, int err_si
     mp.n_gpu_layers = gpu ? -1 : 0;
     mp.split_mode = LLAMA_SPLIT_MODE_NONE;
     mp.load_mode = LLAMA_LOAD_MODE_NONE;
-    gguf_context* meta = metadata();
-    Fill fill{seed, {}, {}};
+    gguf_context* meta = metadata(llm->shape);
+    Fill fill{seed, {}, {}, llm->shape.head_dim};
     std::string thrown;
     const bool built = bc_guard::call([&] { llm->model = llama_model_init_from_user(meta, fill_tensor, &fill, mp); }, thrown);
     gguf_free(meta);
@@ -746,14 +805,14 @@ double bc_llm_prefill(bc_llm* llm, int tokens) {
     }
     if (!logits) { llm->fail("no output"); return -1; }
     std::vector<float> sample;
-    for (uint32_t i = 0; i < VOCAB; i += SAMPLE_STEP) {
+    for (uint32_t i = 0; i < llm->shape.vocab; i += SAMPLE_STEP) {
         if (!std::isfinite(logits[i])) { llm->error = "the model's output was not a number"; return -1; }
         sample.push_back(logits[i]);
     }
     llm->last_sample = sample;
     {
         std::lock_guard<std::mutex> lock(g_ref_mutex);
-        const auto key = std::make_pair(llm->seed, tokens);
+        const auto key = std::make_pair(llm->seed ^ model_tag(llm->shape), tokens);
         if (!llm->gpu) g_ref[key] = sample;
         else if (const auto ref = g_ref.find(key); ref != g_ref.end()) llm->agreement = correlation(ref->second, sample);
     }
@@ -806,7 +865,7 @@ double bc_llm_next(bc_llm* llm, int* token) {
     int top_i[TOP_K];
     int filled = 0, low = 0;
     bool finite = true;
-    for (uint32_t i = 0; i < VOCAB; i++) {
+    for (uint32_t i = 0; i < llm->shape.vocab; i++) {
         const float v = logits[i];
         finite = finite && std::isfinite(v);
         if (filled < TOP_K) {
@@ -926,7 +985,7 @@ int bc_llm_gpu_selftest(char* err, int err_size) {
 void bc_llm_set_reference(uint64_t seed, int tokens, const float* sample, int n) {
     if (!sample || n <= 0) return;
     std::lock_guard<std::mutex> lock(g_ref_mutex);
-    g_ref[std::make_pair(seed, tokens)] = std::vector<float>(sample, sample + n);
+    g_ref[std::make_pair(seed ^ model_tag(*g_shape), tokens)] = std::vector<float>(sample, sample + n);
 }
 
 const char* bc_llm_backend_log(void) {
