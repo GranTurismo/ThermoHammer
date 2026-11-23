@@ -10,7 +10,8 @@
      not published (get v73-v81): SM8735 (8s Gen 4), SM7750 (7 Gen 4), SM7550 (7 Gen 3), SM7635 (7s Gen 3), SM7435 (7s Gen 2), SM6650 (6 Gen 4), SM6475 (6 Gen 3)
      Dimensitys, by NeuroPilot adapter (Google's LiteRT samples; * = LiteRT supports the chip, the sample doesn't list it):
      8: MT6991 (Dimensity 9400), MT6989 (Dimensity 9300), MT6985 (Dimensity 9200), MT6983 (Dimensity 9000), MT6897 (Dimensity 8300), MT6893 (Dimensity 1200/1300), MT6878 (Dimensity 7300), MT6877 (Dimensity 900/1080), MT6879 (MT6879), MT6895 (Dimensity 8100/8200*), MT6886 (Dimensity 7200*), MT6853 (Dimensity 720/800U*)
-     9: MT6993 (Dimensity 9500) -->
+     9: MT6993 (Dimensity 9500)
+     MediaTek chips are matched under all three spellings phones report (Build.SOC_MANUFACTURER): Mediatek, MTK, MediaTek -->
 <config:device-targeting-config xmlns:config="http://schemas.android.com/apk/config">
     <config:device-group name="Qualcomm_SM8350">
         <config:device-selector>
@@ -219,6 +220,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6991"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6991"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6989">
         <config:device-selector>
@@ -226,6 +230,9 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6989"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6989"/>
         </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6985">
@@ -235,6 +242,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6985"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6985"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6983">
         <config:device-selector>
@@ -242,6 +252,9 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6983"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6983"/>
         </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6897">
@@ -251,6 +264,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6897"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6897"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6893">
         <config:device-selector>
@@ -258,6 +274,9 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6893"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6893"/>
         </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6878">
@@ -267,6 +286,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6878"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6878"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6877">
         <config:device-selector>
@@ -274,6 +296,9 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6877"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6877"/>
         </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6879">
@@ -283,6 +308,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6879"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6879"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6895">
         <config:device-selector>
@@ -290,6 +318,9 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6895"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6895"/>
         </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6886">
@@ -299,6 +330,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6886"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6886"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6853">
         <config:device-selector>
@@ -307,6 +341,9 @@
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6853"/>
         </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6853"/>
+        </config:device-selector>
     </config:device-group>
     <config:device-group name="Mediatek_MT6993">
         <config:device-selector>
@@ -314,6 +351,9 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="MTK" model="MT6993"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="MediaTek" model="MT6993"/>
         </config:device-selector>
     </config:device-group>
 </config:device-targeting-config>

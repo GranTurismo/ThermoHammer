@@ -66,10 +66,12 @@ object NpuLlmProbe {
      */
     suspend fun runIsolated(context: Context, model: File? = null, stepTimeoutMs: Long = STEP_TIMEOUT_MS,
                             onStep: (String, Float) -> Unit): LlmNpuRun = withContext(Dispatchers.Main.immediate) {
-        fun failed(why: String) = LlmNpuRun(0.0, 0.0, false, error = why, lines = listOf("$HEAD · $why"))
         // the model is found here, in the app's process (Play's AI pack), and handed to the engine's process
         val soc = NpuModels.soc()
         @Suppress("NAME_SHADOWING") val model = model ?: NpuModels.modelFile(context)
+        // a failure once the file was found (its process crashed or hung, the libraries didn't load) keeps the model's
+        // name: the NPU scores 0 and the run stays complete — the phone has its file, the NPU just couldn't run it
+        fun failed(why: String) = LlmNpuRun(0.0, 0.0, false, model = model?.name, error = why, lines = listOf("$HEAD · $why"))
         if (model == null) {
             val why = if (NpuModels.supported(soc))
                 "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone — Google Play " +
@@ -188,7 +190,7 @@ object NpuLlmProbe {
         val model = (modelPath?.let(::File) ?: NpuModels.modelFile(context))?.takeIf { it.isFile }
             ?: return notRun("$head · not run: no model file for $soc (${NpuModels.fileName(soc)})")
         val (libs, libsNote) = try { libraryDir(context, vendor) } catch (e: Exception) {
-            return notRun("$head · not run: the NPU libraries couldn't be prepared: ${e.why()}")
+            return notRun("$head · not run: the NPU libraries couldn't be prepared: ${e.why()}").copy(model = model.name)
         }
         val backend: Backend = Backend.NPU(libs.path)
         val where = "$vendor NPU · $libsNote"
@@ -267,7 +269,7 @@ class NpuLlmProbeService : Service() {
     override fun onCreate() {
         super.onCreate()
         // whatever happens to the app, this process doesn't outstay the probe
-        Handler(Looper.getMainLooper()).postDelayed({ exit() }, 15 * 60_000L)
+        Handler(Looper.getMainLooper()).postDelayed({ exit() }, 30 * 60_000L)    // past the slowest step's watchdog (20 min)
     }
 
     /**

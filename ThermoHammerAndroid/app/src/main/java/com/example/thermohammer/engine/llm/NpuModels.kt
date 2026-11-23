@@ -2,6 +2,8 @@ package com.example.thermohammer.engine.llm
 
 import android.content.Context
 import android.os.Build
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import com.google.android.play.core.aipacks.AiPackManagerFactory
 import com.google.android.play.core.aipacks.AiPackStates
 import com.google.android.play.core.aipacks.model.AiPackStatus
@@ -69,6 +71,13 @@ object NpuModels {
         return null
     }
 
+    /**
+     * MainActivity's launcher for Play's "download over mobile data?" dialog: Play holds a large pack until the user says
+     * yes (REQUIRES_USER_CONFIRMATION, WAITING_FOR_WIFI). Asked once per app session.
+     */
+    @Volatile var confirmLauncher: ActivityResultLauncher<IntentSenderRequest>? = null
+    @Volatile private var confirmAsked = false
+
     sealed interface Status {
         /** Google builds no Gemma NPU file for this chip: nothing to wait for, the NPU third counts 0. */
         data object NotNeeded : Status
@@ -98,9 +107,19 @@ object NpuModels {
         return when (state.status()) {
             AiPackStatus.COMPLETED -> modelFile(context)?.let { Status.Ready(it) }
                 ?: Status.Unavailable("downloaded, but the file for ${soc.uppercase()} isn't in it")
-            AiPackStatus.PENDING, AiPackStatus.DOWNLOADING, AiPackStatus.TRANSFERRING ->
-                Status.Downloading(state.transferProgressPercentage().coerceIn(0, 100))
-            AiPackStatus.WAITING_FOR_WIFI, AiPackStatus.REQUIRES_USER_CONFIRMATION -> Status.WaitingForWifi
+            // the download itself (transferProgressPercentage is only Play's last copy into the app's storage)
+            AiPackStatus.PENDING, AiPackStatus.DOWNLOADING, AiPackStatus.TRANSFERRING -> Status.Downloading(
+                if (state.totalBytesToDownload() > 0) (state.bytesDownloaded() * 100 / state.totalBytesToDownload()).toInt().coerceIn(0, 100)
+                else state.transferProgressPercentage().coerceIn(0, 100))
+            AiPackStatus.WAITING_FOR_WIFI, AiPackStatus.REQUIRES_USER_CONFIRMATION -> {
+                // Play waits for the user's OK (or Wi-Fi): show its dialog once, from the activity
+                val launcher = confirmLauncher
+                if (launcher != null && !confirmAsked) {
+                    confirmAsked = true
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { runCatching { manager.showConfirmationDialog(launcher) } }
+                }
+                Status.WaitingForWifi
+            }
             AiPackStatus.NOT_INSTALLED -> Status.Unavailable("not downloaded yet")
             AiPackStatus.FAILED -> Status.Unavailable("the download failed (error ${state.errorCode()})")
             AiPackStatus.CANCELED -> Status.Unavailable("the download was cancelled")
