@@ -2481,7 +2481,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
-				CURRENT_PROJECT_VERSION = 45;
+				CURRENT_PROJECT_VERSION = 46;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = C58ABB3474;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
@@ -2525,7 +2525,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.7;
+				MARKETING_VERSION = 2.2.0;
 				MTL_HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal",
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src",
@@ -2659,7 +2659,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COREML_CODEGEN_LANGUAGE = None;
-				CURRENT_PROJECT_VERSION = 45;
+				CURRENT_PROJECT_VERSION = 46;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = C58ABB3474;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
@@ -2703,7 +2703,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.1.7;
+				MARKETING_VERSION = 2.2.0;
 				MTL_HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal",
 					"$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src",
