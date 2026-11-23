@@ -311,3 +311,19 @@ Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdrago
   - An Android run on a chip in `NpuModels.CHIPS` without its NPU model sets `ValidityFlag.NPU_MODEL_MISSING` (1 shl 10), and the server refuses it too.
   - An older app version gets "The leaderboard moved to a new scoring version. Update ThermoHammer and run the benchmark again to submit."
 - **Release:** the apps go up held (Play managed publishing, App Store manual release, Partner Center manual publish). Once all three are approved, the server deploys (migration `AddBenchmarkLlmNpu`, adding 6 columns) and the apps are released together. The board starts over, because it lists only the current version.
+
+## Decisions and status, 2026-11-23 evening
+
+- **Scale:** the Honor in Performance mode = 6,000 (the user's rule: Balanced only if it kept old records valid, and it couldn't). References = the median of 11 Honor runs (commit 9e97eee).
+- **GPU tile-friendly anti-aliasing:** dropped. It gained nothing on Adreno (5 runs) or Mali (11T).
+- **Android:**
+  - Gemma NPU files as one fast-follow Play AI pack, `gemma_npu`. It's split per chip by the existing device groups: SM8550, SM8650, SM8750, SM8850, MT6989, MT6991, MT6993.
+  - Google Tensor's files are 8-bit, so they're left out (Pixels count NPU 0).
+  - A supported chip without its file gets `NPU_MODEL_MISSING` and can't submit.
+- **iPhone/Mac:**
+  - ANEMLL's core is vendored (MIT).
+  - Our own conversion of Gemma 3 1B: LUT4 layers and head, LUT8 embeddings, context 1,280, ANEMLL 0.3.5 at commit 8d2791c.
+  - Delivered from **the user's server** (user's choice over Apple-hosted asset packs): `thermohammer.gtgroup.dev/models/gemma3-1b-it-lut4-ctx1280-v1.aar`. It downloads once over Wi-Fi with a SHA-256 check, then compiles for the Neural Engine in the background.
+  - A14/M1 can't load a 1,280-context chunked model (ANEMLL's limit), so those devices count NPU 0.
+- **Windows:** no NPU LLM engine; that third counts 0.
+- **New chips:** a chip without a Google file counts NPU 0 until we add its file (an app update for the pack plus the server's `NpuLlmChips`).

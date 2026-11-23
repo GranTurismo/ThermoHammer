@@ -66,6 +66,31 @@ enum AneLlm {
 
     private static func why(_ e: Error) -> String { String(String(describing: e).prefix(240)) }
 
+    private static func config(_ dir: URL) -> YAMLConfig {
+        let path = dir.path
+        return YAMLConfig(contextLength: contextLength,
+                          embedPath: "\(path)/gemma3_embeddings_lut8.mlmodelc",
+                          ffnPath: "\(path)/gemma3_FFN_PF_lut4_chunk_01of01.mlmodelc",
+                          lmheadPath: "\(path)/gemma3_lm_head_lut4.mlmodelc",
+                          numChunks: 1, isMonolithic: false, monolithicModelPath: nil, slidingWindow: slidingWindow)
+    }
+
+    /**
+     * Loads the model once and lets it go: the first load on a device compiles it for its Neural Engine (minutes), and
+     * Core ML keeps the result — so done after the download (LlmNpuModel), the benchmark's own load takes seconds.
+     * Returns how long it took, or why it failed.
+     */
+    @available(iOS 18.0, macOS 15.0, *)
+    static func prepare(modelDir dir: URL) async -> Result<Double, Error> {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        do {
+            _ = try await ModelLoader().loadModel(from: config(dir), configuration: .init(computeUnits: .cpuAndNeuralEngine))
+            return .success(CFAbsoluteTimeGetCurrent() - t0)
+        } catch {
+            return .failure(error)
+        }
+    }
+
     /** Runs the task on the Neural Engine with the model in `dir`. `progress(label, fraction)`. Never throws. */
     static func run(modelDir dir: URL, progress: @escaping (String, Double) -> Void) async -> Run {
         guard #available(iOS 18.0, macOS 15.0, *) else {
@@ -73,12 +98,7 @@ enum AneLlm {
         }
         var run = Run(model: modelName)
         let head = "LLM NPU · \(engineName) · \(modelName)"
-        let path = dir.path
-        let config = YAMLConfig(contextLength: contextLength,
-                                embedPath: "\(path)/gemma3_embeddings_lut8.mlmodelc",
-                                ffnPath: "\(path)/gemma3_FFN_PF_lut4_chunk_01of01.mlmodelc",
-                                lmheadPath: "\(path)/gemma3_lm_head_lut4.mlmodelc",
-                                numChunks: 1, isMonolithic: false, monolithicModelPath: nil, slidingWindow: slidingWindow)
+        let config = config(dir)
         let pieces = (try? String(contentsOf: dir.appendingPathComponent("vocab.txt"), encoding: .utf8))?
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\\\", with: "\\") } ?? []

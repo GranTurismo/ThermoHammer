@@ -41,6 +41,8 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
         return base.appendingPathComponent("npu-llm", isDirectory: true).appendingPathComponent(AneLlm.modelName, isDirectory: true)
     }
     private static var marker: URL { directory.appendingPathComponent(".complete-\(archiveName)") }
+    /** Written once the model has been compiled for this device's Neural Engine (AneLlm.prepare). */
+    private static var preparedMarker: URL { directory.appendingPathComponent(".prepared") }
 
     /** The model's folder once it's complete on the device, else nil. */
     static var readyDirectory: URL? { FileManager.default.fileExists(atPath: marker.path) ? directory : nil }
@@ -50,10 +52,27 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
         state = Self.readyDirectory != nil ? .ready : .unknown
     }
 
-    /** Starts the download if the model isn't here and none is running. Harmless to call again. */
+    private var preparing = false
+
+    /**
+     * Compiles the model for this device's Neural Engine in the background, once (it takes minutes the first time), so
+     * the benchmark's own load takes seconds. A device whose Neural Engine can't load it (A14, M1) just fails here too.
+     */
+    private func prepareIfNeeded() {
+        guard #available(iOS 18.0, macOS 15.0, *), let dir = Self.readyDirectory,
+              !FileManager.default.fileExists(atPath: Self.preparedMarker.path), !preparing else { return }
+        preparing = true
+        Task.detached(priority: .utility) { [self] in
+            if case .success = await AneLlm.prepare(modelDir: dir) { try? Data().write(to: Self.preparedMarker) }
+            queue.async { self.preparing = false }
+        }
+    }
+
+    /** Starts the download if the model isn't here and none is running, or prepares it if it is. Harmless to call again. */
     func start() {
         queue.async { [self] in
-            guard Self.readyDirectory == nil, task == nil else { if Self.readyDirectory != nil { publish(.ready) }; return }
+            if Self.readyDirectory != nil { publish(.ready); prepareIfNeeded(); return }
+            guard task == nil else { return }
             let config = URLSessionConfiguration.default
             // Wi-Fi (or Ethernet on a Mac) only: 0.7 GB on someone's data plan isn't ours to spend
             config.allowsExpensiveNetworkAccess = false
@@ -95,7 +114,10 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
         } catch {
             outcome = .failed(String(describing: error))
         }
-        queue.async { [self] in self.task = nil; session.finishTasksAndInvalidate(); self.session = nil; publish(outcome) }
+        queue.async { [self] in
+            self.task = nil; session.finishTasksAndInvalidate(); self.session = nil; publish(outcome)
+            if outcome == .ready { prepareIfNeeded() }
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
