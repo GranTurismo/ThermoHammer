@@ -452,7 +452,6 @@ public sealed class LakeValleyRenderer : IGpuScene
         ctx.ClearDepthStencilView(reflDsv, DepthStencilClearFlags.Depth, 1, 0);
         DrawScene(terrainMirror, objMirror, mirrorFrame, mirrorBatches, false);   // mirroring flips the winding
         DrawSky(skyMirror);
-        bench.Discard(reflDsv);                                         // only the colour is read later
     }
 
     private void MainPass()
@@ -491,15 +490,12 @@ public sealed class LakeValleyRenderer : IGpuScene
             ctx.DrawInstanced(6, (uint)count, 0, 0);
         }
         ctx.ResolveSubresource(sceneTex, 0, msaaColor, 0, Format.R8G8B8A8_UNorm);
-        bench.Discard(msaaRtv);                                         // spent once resolved
-        bench.Discard(msaaDsv);
     }
 
     private void Fullscreen(Pipe p, ID3D11RenderTargetView target, int w, int h, ID3D11ShaderResourceView[] sources, LvPost post)
     {
         ctx.PSSetShaderResources(0, new ID3D11ShaderResourceView[4]);   // unbind before the target changes
         ctx.OMSetRenderTargets(target);
-        bench.Discard(target);                                          // every pixel is overwritten
         ctx.RSSetViewport(0, 0, w, h);
         SetPipe(p);
         ctx.RSSetState(raster[1, 0]);

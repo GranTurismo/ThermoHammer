@@ -200,11 +200,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         const val WARMUP_MS = 12_000L          // JIT/governor settle — unrecorded
         const val CALIBRATION_MS = 20_000L     // boost window — basis of the baseline
         const val SAMPLE_MS = 250L             // internal sub-sample rate (4 Hz)
-        // GPU A/B probe of test builds (gpuAbProbe): timeline per segment, the moment compared, a pixel "off" above
-        private const val AB_WARMUP_S = 2f
-        private const val AB_SEGMENT_S = 8f
-        private const val AB_CAPTURE_T = 12.5f
-        private const val AB_PIXEL_OFF = 8
         const val STAMP_MS = 1_000L            // persisted/uploaded sample rate (1 Hz)
         const val WORK_CHUNK = 4_096           // counter publish granularity
 
@@ -729,18 +724,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         val gpuScore = BenchmarkScore.overall(results)
         val gpuName = gpuBench.gpuName.ifEmpty { vkBench.gpuName }
-        // test builds: the OpenGL scenes again, the classic way against the tile-friendly way (report lines only)
-        // (not on Adreno: five runs on an Adreno 830 showed no gain and identical pictures — Mali is the open question)
-        val gpuAb = if (com.example.thermohammer.TestBuild.PROBES && from == null && !gpuName.contains("adreno", ignoreCase = true))
-            gpuAbProbe() else null
         if (!_state.value.isRunning) return
-        // two more minutes of GPU load warm the phone for the sections after it: such a run is never verified
-        if (gpuAb != null) flags = flags or ValidityFlag.TEST_PROBES
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ux")
         val ux = runUx(from) ?: return
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ai")
         val ai = runAi(gpuName) ?: return
-        if (ai.gpuPrecision != null) flags = flags or ValidityFlag.TEST_PROBES     // more GPU load before the LLM test
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "llm")
         val settled = settleForLlm() ?: return
         val llamaRuns = runLlm() ?: return
@@ -770,7 +758,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             llm = llm,
             startCpuShare = quiet.share,
             quietWaitSec = quiet.waitedSec,
-            gpuAb = gpuAb,
             npuLlm = npuLlm
         )
         if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
@@ -1854,75 +1841,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     /** GPU frames rendered within dtNs (fractional — see frameProgress) — −1 when the channel is off. */
     /**
-     * Test builds only: each OpenGL scene drawn the classic way (scoring version 4) and the tile-friendly way
-     * (engine/gpu/GlTile.kt), in the order classic, tile, tile, classic so the phone warming up favours neither,
-     * each [AB_WARMUP_S] + [AB_SEGMENT_S] of timeline, frames after the warm-up counted. Then one moment of each scene
-     * drawn both ways and compared pixel by pixel — and twice the classic way, which shows what the scene varies by
-     * itself. Report lines; nothing here is scored.
-     */
-    private suspend fun gpuAbProbe(): List<String> {
-        val lines = ArrayList<String>()
-        for (test in BenchmarkTest.entries.filter { !it.rayTracing }) {
-            if (!_state.value.isRunning) break
-            _state.update { it.copy(phase = RunPhase.MEASURED, benchTest = test, benchProgress = 0f, gpuFps = -1.0) }
-
-            suspend fun runToEnd(runFor: Float, tile: Boolean, captureAt: Float = -1f, segment: Int = 0): String? {
-                gpuBench.start(test.scene, runFor, tileFriendly = tile, captureAt = captureAt)
-                gpuFramesPrev = 0.0
-                var prevNs = System.nanoTime()
-                val deadline = prevNs + 120_000_000_000L
-                while (_state.value.isRunning && !gpuBench.finished && gpuBench.glError == null && System.nanoTime() < deadline) {
-                    delay(SAMPLE_MS)
-                    val now = System.nanoTime()
-                    val fps = gpuFpsDelta(now - prevNs)
-                    prevNs = now
-                    if (captureAt < 0f) _state.update {
-                        it.copy(gpuActive = true, gpuFps = fps,
-                            benchProgress = ((segment + gpuBench.sceneSeconds / runFor) / 4f).coerceIn(0f, 1f))
-                    }
-                }
-                gpuBench.stop()
-                return gpuBench.glError ?: if (!gpuBench.finished && _state.value.isRunning) "did not finish" else null
-            }
-
-            val fps = DoubleArray(4)
-            var tilePath = ""; var classicPath = ""
-            var error: String? = null
-            for ((i, tile) in listOf(false, true, true, false).withIndex()) {
-                error = runToEnd(AB_WARMUP_S + AB_SEGMENT_S, tile, segment = i)
-                if (error != null || !_state.value.isRunning) break
-                if (tile) tilePath = gpuBench.drawPath else classicPath = gpuBench.drawPath
-                val (starts, durs, count) = gpuBench.frameLog()
-                var n = 0; var ns = 0L
-                for (k in 0 until count) if (starts[k] >= AB_WARMUP_S) { n++; ns += durs[k] }
-                fps[i] = if (ns > 0) n * 1e9 / ns else 0.0
-            }
-            if (!_state.value.isRunning) break
-            val name = "GPU A/B ${test.number} ${test.title}"
-            if (error != null) { lines += "$name · failed: $error"; continue }
-            val classic = (fps[0] + fps[3]) / 2; val tile = (fps[1] + fps[2]) / 2
-            lines += "%s · classic %.2f fps (%s) · tile-friendly %.2f fps (%s) · %+.1f%% · segments %.2f, %.2f, %.2f, %.2f".format(
-                name, classic, classicPath, tile, tilePath, (tile / classic - 1) * 100, fps[0], fps[1], fps[2], fps[3])
-
-            val pics = ArrayList<ByteArray>()
-            for (tilePic in listOf(false, false, true)) {
-                val e = runToEnd(0f, tilePic, captureAt = AB_CAPTURE_T)
-                if (e != null || !_state.value.isRunning) { error = e; break }
-                gpuBench.captured?.let { pics += it }
-            }
-            if (!_state.value.isRunning) break
-            lines += if (pics.size == 3) {
-                val (selfMean, selfOff) = pictureDiff(pics[0], pics[1])
-                val (mean, off) = pictureDiff(pics[0], pics[2])
-                "%s · picture at %.1f s, tile-friendly vs classic: mean %.3f levels, %.3f%% of pixels off by more than %d · classic vs classic: mean %.3f, %.3f%%".format(
-                    name, AB_CAPTURE_T, mean, off, AB_PIXEL_OFF, selfMean, selfOff)
-            } else "$name · picture comparison failed: ${error ?: "no capture"}"
-        }
-        lines.forEach { android.util.Log.i("GpuAbProbe", it) }
-        return lines
-    }
-
-    /**
      * The LLM test's NPU engine (version 5): Gemma 3 1B through LiteRT-LM (engine/llm/NpuLlmProbe.kt), in a process of its
      * own — a native crash there costs the NPU's third of the LLM score, not the run.
      */
@@ -1932,22 +1850,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         return com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext) { label, fraction ->
             _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
         }
-    }
-
-    /** Mean absolute difference of the RGB channels (0–255 levels) and the share of pixels (%) where one differs by more than [AB_PIXEL_OFF]. */
-    private fun pictureDiff(a: ByteArray, b: ByteArray): Pair<Double, Double> {
-        var sum = 0L; var off = 0L
-        val pixels = minOf(a.size, b.size) / 4
-        for (p in 0 until pixels) {
-            var worst = 0
-            for (c in 0 until 3) {
-                val d = kotlin.math.abs((a[p * 4 + c].toInt() and 255) - (b[p * 4 + c].toInt() and 255))
-                sum += d
-                if (d > worst) worst = d
-            }
-            if (worst > AB_PIXEL_OFF) off++
-        }
-        return sum.toDouble() / (pixels * 3).coerceAtLeast(1) to off * 100.0 / pixels.coerceAtLeast(1)
     }
 
     private fun gpuFpsDelta(dtNs: Long, runner: GpuRunner = gpuBench): Double {

@@ -44,14 +44,6 @@ public sealed class GpuBench : IDisposable
 
     public readonly ID3D11Device Device;
     public readonly ID3D11DeviceContext Ctx;
-    /// <summary>
-    /// Tile-friendly drawing (the Android scenes' GlTile, the iOS scenes' memoryless targets): images nothing reads
-    /// again are discarded rather than kept — the multisample buffers once resolved, depth nobody samples, targets a
-    /// pass overwrites completely. A desktop GPU ignores the hint; a tile-based one (Snapdragon X's Adreno) skips
-    /// writing or reloading them. The picture is the same. Off = the path scoring version 4 measured.
-    /// </summary>
-    public bool TileFriendly { get; set; }
-    private readonly ID3D11DeviceContext1? ctx1;
     /// <summary>The adapter's name, e.g. "NVIDIA GeForce RTX 4070".</summary>
     public readonly string Name;
     public readonly FeatureLevel Level;
@@ -63,12 +55,6 @@ public sealed class GpuBench : IDisposable
     private readonly ID3D11RenderTargetView viewRtv;
     private readonly ID3D11Query done;
     private readonly List<IDisposable> owned = [];
-
-    /// <summary>With <see cref="TileFriendly"/>: the view's contents needn't be kept (Direct3D 11.1; a no-op without it).</summary>
-    public void Discard(ID3D11View? view)
-    {
-        if (TileFriendly && view != null) ctx1?.DiscardView(view);
-    }
 
     /// <summary>Receives a small BGRA copy of a finished frame (960×540) on the benchmark thread; never part of a measurement.</summary>
     public Action<byte[]>? FrameSink;
@@ -104,7 +90,6 @@ public sealed class GpuBench : IDisposable
     private GpuBench(ID3D11Device device, ID3D11DeviceContext ctx, string name, FeatureLevel level, bool owns)
     {
         Device = device; Ctx = ctx; Name = name; Level = level; ownsDevice = owns;
-        ctx1 = ctx.QueryInterfaceOrNull<ID3D11DeviceContext1>();
         linear = Device.CreateSamplerState(new SamplerDescription(Filter.MinMagMipLinear, TextureAddressMode.Clamp, TextureAddressMode.Clamp,
             TextureAddressMode.Clamp, 0, 1, ComparisonFunction.Never, new Color4(0, 0, 0, 0), 0, float.MaxValue));
         present = Pipeline("Present", "presentVS", "presentFS", null, OpaqueBlend());

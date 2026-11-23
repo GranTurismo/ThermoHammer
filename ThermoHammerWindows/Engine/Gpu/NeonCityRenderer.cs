@@ -537,7 +537,6 @@ public sealed class NeonCityRenderer : IGpuScene
         BindGrid(false);
         DrawBatches(false);
         DrawSky(skyMirror);
-        bench.Discard(reflDsv);                                         // only the colour is read later
         ctx.OMSetRenderTargets((ID3D11RenderTargetView?)null);
         UnbindViews();
         ctx.GenerateMips(reflSrv);
@@ -587,15 +586,12 @@ public sealed class NeonCityRenderer : IGpuScene
         ctx.PSSetShaderResource(3, msaaDepthSrv);
         ctx.Draw(3, 0);
         ctx.PSSetShaderResource(3, null);
-        bench.Discard(msaaRtv);                                         // both resolved: the multisample buffers are spent
-        bench.Discard(msaaDsv);
     }
 
     private void Fullscreen(Pipe p, ID3D11RenderTargetView target, int w, int h, NcPost post, params (int slot, ID3D11ShaderResourceView view)[] sources)
     {
         UnbindViews();
         ctx.OMSetRenderTargets(target);
-        if (p != up) bench.Discard(target);                             // overwritten; the additive up-chain keeps it
         ctx.RSSetViewport(0, 0, w, h);
         SetPipe(p);
         ctx.RSSetState(rasterMain);
@@ -613,7 +609,6 @@ public sealed class NeonCityRenderer : IGpuScene
         BindFrame(frame);
         BindGrid(false);
         ctx.OMSetRenderTargets(fogRtv);
-        bench.Discard(fogRtv);                                          // every pixel is overwritten
         ctx.RSSetViewport(0, 0, width / 2, height / 2);
         SetPipe(fog);
         ctx.RSSetState(rasterMain);

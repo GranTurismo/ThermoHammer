@@ -39,7 +39,6 @@ object BenchmarkReport {
                     t.test.number, t.test.title, t.points, t.avgFps, t.lowFps, t.stabilityPct, t.frames,
                     t.startTempC?.let { "%.0f".format(it) } ?: "?", t.endTempC?.let { "%.0f".format(it) } ?: "?"))
             }
-            r.gpuAb?.forEach { appendLine(it) }
             r.ux?.let { ux ->
                 val w = ux.web
                 appendLine("UX 1 WEB BROWSING · %,d pts · %s".format(ux.webPoints,

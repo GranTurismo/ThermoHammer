@@ -59,7 +59,6 @@ data class BenchmarkResult(
     val llm: LlmResult? = null,
     val startCpuShare: Float = 1f,           // share of the CPU the app got when the tests began
     val quietWaitSec: Int = 0,               // how long it waited for background work to finish first
-    val gpuAb: List<String>? = null,         // test builds: the OpenGL scenes classic vs tile-friendly (report only)
     val npuLlm: List<String>? = null         // test builds: an LLM on the NPU through LiteRT-LM (report only)
 ) {
     val isVerified: Boolean get() = validityFlags == 0
