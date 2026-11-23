@@ -57,13 +57,17 @@ CATALOG = {
         "note": "The models are open and 8-bit. The NPU counts where the device has a supported one; elsewhere it scores 0.",
     },
     "llm": {
-        "blurb": "A language model running on the device itself.",
+        "blurb": "Google's Gemma 3 1B language model running on the device itself, on each engine it has.",
         "tests": [
-            ("L1", "LLM on the CPU", "A Llama 3.2 3B-sized model, 4-bit: a 512-token prompt in, then the reply token by token"),
+            ("L1", "LLM on the CPU", "Gemma 3 1B, 4-bit, on llama.cpp: a 512-token prompt in, then a 32-token reply token by token"),
             ("L2", "LLM on the GPU", "The same model with every layer on the GPU"),
+            ("L3", "LLM on the NPU", "Google's Gemma 3 1B build for the phone's chip (Android) or the Apple Neural Engine (iPhone "
+                                    "and Mac), which must also answer a fixed question right"),
         ],
-        "note": "It runs on llama.cpp with a model built in memory, so nothing is downloaded. The faster of the CPU and the "
-                "GPU counts. On phones it needs 6 GB of RAM.",
+        "note": "Each engine is scored against the reference device's same engine and counts a third; an engine that can't "
+                "run the model scores 0 there. The CPU and GPU runs need no download. The NPU model comes from the app "
+                "store with the app (about 0.7 to 1 GB) on the chips that can run it. Gemma is provided under and subject "
+                "to the Gemma Terms of Use.",
     },
 }
 
