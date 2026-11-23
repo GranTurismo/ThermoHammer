@@ -17,10 +17,10 @@ class BenchmarkScoreTest {
 
     @Test
     fun `points scale linearly with fps and the tests land on the same scale`() {
-        // the Snapdragon 8 Elite reference: 129.5, 26.3 and 13.4 fps
-        assertEquals(5996, BenchmarkScore.points(BenchmarkTest.LAKE_VALLEY, 129.5))
-        assertEquals(5996, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 26.3))
-        assertEquals(6003, BenchmarkScore.points(BenchmarkTest.NEON_CITY_RT, 13.4))
+        // the Snapdragon 8 Elite reference (Performance mode): 129.85, 28.98 and 14.12 fps
+        assertEquals(6000, BenchmarkScore.points(BenchmarkTest.LAKE_VALLEY, 129.85))
+        assertEquals(5999, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 28.98))
+        assertEquals(6000, BenchmarkScore.points(BenchmarkTest.NEON_CITY_RT, 14.12))
         assertEquals(12000, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 6000 * 2 / BenchmarkTest.NEON_CITY.weight))
         assertEquals(6000, BenchmarkScore.overall(6000, 6000, 6000))
     }
@@ -272,5 +272,38 @@ class BenchmarkScoreTest {
         assertEquals(0, LlmScore.engine(LlmAccel.GPU, 120.0, 0.0))     // no reply: 0
         val total = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, llm = cpuOnly)
         assertEquals(5000 + 1000, total.total)
+    }
+
+    /**
+     * The reference phone (Honor VKP-NX9, Snapdragon 8 Elite, Performance mode): the median of every measurement over its
+     * 11 runs of 2026-11-23 scores 6000 on each test — the same numbers pin BenchmarkScoring.cs, BenchmarkModels.swift and
+     * BenchmarkModels.cs, so the four copies of the references can't drift apart.
+     */
+    @Test
+    fun `the reference phone's medians score 6000 on every test`() {
+        fun near(points: Int, what: String) = assertTrue("$what scored $points", points in 5970..6030)
+        mapOf(com.example.thermohammer.engine.cpu.CpuTest.MATH to 3039.31, com.example.thermohammer.engine.cpu.CpuTest.DATA to 1533.32,
+            com.example.thermohammer.engine.cpu.CpuTest.CRYPTO to 1184.12, com.example.thermohammer.engine.cpu.CpuTest.MULTI to 8884.08)
+            .forEach { (t, v) -> near(CpuScore.points(t, v), t.name) }
+        near(MemScore.ram(63.51, 28.26, 19.71, 133.94), "RAM")
+        near(MemScore.storage(1780.0, 1309.0, 24722.0, 13375.0), "storage")
+        near(MemScore.db(15700.0, 389000.0, 43800.0), "database")
+        near(BenchmarkScore.points(BenchmarkTest.LAKE_VALLEY, 129.85), "Lake Valley")
+        near(BenchmarkScore.points(BenchmarkTest.NEON_CITY, 28.98), "Neon City")
+        near(BenchmarkScore.points(BenchmarkTest.NEON_CITY_RT, 14.12), "Neon City RT")
+        near(UxScore.webPoints(WebResult(3061.0, 4818.0, 3061.0, 4898.0, 4001.7)), "web")
+        near(UxScore.scrollPoints(66558.0), "scroll")
+        near(UxScore.galleryPoints(GalleryResult(229.26, 167.78, 173.55)), "gallery")
+        near(UxScore.photoPoints(349.95), "photo")
+        near(UxScore.videoPoints(listOf(269.0, 331.4, 309.6, 274.2), listOf(91.13, 75.02)), "video")
+        near(UxScore.qrPoints(1171.51), "QR")
+        // export: the reference phone has two of the three 4K encoders and no 8K one — two thirds of the 4K part
+        assertEquals(3000, UxScore.exportPoints(listOf(136.3, 136.3, 0.0), 0.0))
+        near(AiScore.accel(AiAccel.CPU, listOf(543.63, 28.67, 7.73, 4.59, 64.54, 3967.59)), "AI CPU")
+        near(AiScore.accel(AiAccel.GPU, listOf(280.7, 36.7, 16.6, 38.8, 74.2, 582.0)), "AI GPU")
+        near(AiScore.accel(AiAccel.NPU, listOf(1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38)), "AI NPU")
+        near(LlmScore.engine(LlmAccel.CPU, 160.0, 55.0), "LLM CPU")
+        near(LlmScore.engine(LlmAccel.GPU, 890.0, 32.0), "LLM GPU")
+        near(LlmScore.npu(5450.0, 52.0), "LLM NPU")
     }
 }

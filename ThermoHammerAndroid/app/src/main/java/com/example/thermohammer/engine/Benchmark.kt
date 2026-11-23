@@ -21,12 +21,12 @@ import kotlin.math.sqrt
 
 enum class RunKind { BENCHMARK, STRESS }
 
-/** One GPU test: its scene, timeline length and the weight that turns fps into points — the Snapdragon 8 Elite (Honor VKP-NX9, release build, 2026-10-25) = 6000 (BenchmarkScoring.cs repeats them). */
+/** One GPU test: its scene, timeline length and the weight that turns fps into points — the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5) = 6000 (BenchmarkScoring.cs repeats them). */
 enum class BenchmarkTest(val number: Int, val scene: GpuSceneId, val title: String, val seconds: Int,
                          val weight: Double, val rayTracing: Boolean = false) {
-    LAKE_VALLEY(1, GpuSceneId.LAKE_VALLEY, "LAKE VALLEY", 50, 46.3),                       // 129.5 fps
-    NEON_CITY(2, GpuSceneId.NEON_CITY, "NEON CITY", 60, 228.0),                            // 26.3 fps
-    NEON_CITY_RT(3, GpuSceneId.NEON_CITY, "NEON CITY RT", 60, 448.0, rayTracing = true);  // 13.4 fps
+    LAKE_VALLEY(1, GpuSceneId.LAKE_VALLEY, "LAKE VALLEY", 50, 46.21),                      // 129.85 fps
+    NEON_CITY(2, GpuSceneId.NEON_CITY, "NEON CITY", 60, 207.0),                            // 28.98 fps
+    NEON_CITY_RT(3, GpuSceneId.NEON_CITY, "NEON CITY RT", 60, 424.9, rayTracing = true);  // 14.12 fps
 }
 
 data class BenchmarkTestResult(
@@ -101,18 +101,18 @@ data class MemResult(val ram: RamResult, val storage: StorageResult, val db: DbR
 }
 
 object MemScore {
-    // Reference values, 6000 points each: the Snapdragon 8 Elite (Honor VKP-NX9, release build, 2026-10-25) scores 6000 on every test.
+    // Reference values, 6000 points each: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5).
     // Never calibrate on the emulator — its RAM and storage are the Mac's. Repeated in BenchmarkScoring.cs.
-    const val REF_READ = 57.8              // GB/s, every core
-    const val REF_WRITE = 28.4
-    const val REF_COPY = 18.7
-    const val REF_LATENCY = 245.0          // ns per random access — lower is better
-    const val REF_SEQ_READ = 1750.0        // MB/s
-    const val REF_SEQ_WRITE = 1300.0
-    const val REF_RANDOM_READ = 29_000.0   // 4 KB IOPS
-    const val REF_RANDOM_WRITE = 13_400.0
+    const val REF_READ = 63.5              // GB/s, every core
+    const val REF_WRITE = 28.3
+    const val REF_COPY = 19.7
+    const val REF_LATENCY = 134.0          // ns per random access — lower is better
+    const val REF_SEQ_READ = 1780.0        // MB/s
+    const val REF_SEQ_WRITE = 1309.0
+    const val REF_RANDOM_READ = 24_700.0   // 4 KB IOPS
+    const val REF_RANDOM_WRITE = 13_380.0
     // version 5: the database steps are timed after a warm-up (MemBench.warmUp) — the old references timed the climb.
-    // PROVISIONAL: Honor in Performance mode, 2026-11-23 test build; a calibration run sets the final values
+    // The same phone and mode, the median of the warmed-up runs (381k–396k updates/s; one complete run: 15.4k / 396k / 44.5k)
     const val REF_INSERT = 15_700.0        // transactions/s
     const val REF_UPDATE = 389_000.0
     const val REF_QUERY = 43_800.0         // chats opened/s
@@ -146,11 +146,11 @@ data class CpuResult(val runs: List<CpuTestRun>) {
 
 object CpuScore {
     // Reference values (geometric mean of the test's kernel ops/s, the shared C++ kernels of BenchCore), 6000 points
-    // each: the Snapdragon 8 Elite (Honor VKP-NX9, bench build, 2026-10-26). Repeated in BenchmarkScoring.cs.
-    const val REF_MATH = 1469.0
-    const val REF_DATA = 647.0
-    const val REF_CRYPTO = 580.0
-    const val REF_MULTI = 5003.0
+    // each: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5). Repeated in BenchmarkScoring.cs.
+    const val REF_MATH = 3039.0
+    const val REF_DATA = 1533.0
+    const val REF_CRYPTO = 1184.0
+    const val REF_MULTI = 8884.0
 
     fun ref(t: CpuTest) = when (t) {
         CpuTest.MATH -> REF_MATH
@@ -365,26 +365,27 @@ data class UxResult(
 }
 
 object UxScore {
-    // Reference results, scored at 6000 points each: the Snapdragon 8 Elite (Honor VKP-NX9, release build, 2026-10-25) scores 6000 on every test.
+    // Reference results, scored at 6000 points each: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5).
     // The server repeats these numbers (BenchmarkScoring.cs).
-    const val REF_LAYOUT = 1320.0     // cards reflowed every frame
-    const val REF_CANVAS = 2730.0     // gradient shapes
-    const val REF_CSS = 1980.0        // composited tiles
-    const val REF_SVG = 3130.0        // animated paths
-    const val REF_JS = 2160.0         // geometric mean of suite ops/s
-    const val REF_SCROLL = 66_600.0   // feed px/s held
-    const val REF_JPEG = 122.0        // gallery MP/s per format
-    const val REF_WEBP = 99.0
-    const val REF_AVIF = 103.0
-    const val REF_PHOTO = 397.0       // MP/s through the editing chain
-    const val REF_VIDEO = 298.0       // decoded 4K frames/s, mean of the codecs
-    // PROVISIONAL until the Honor's report (version 4): 8K = a quarter of the 4K rate (same pixel rate); export ≈ a
-    // hardware encoder's 4K rate with AV1 missing
-    const val REF_VIDEO_8K = 74.5     // decoded 8K frames/s, mean of HEVC and AV1
-    const val REF_EXPORT = 100.0      // encoded 4K frames/s, mean of H.264, HEVC, AV1
-    const val REF_EXPORT_8K = 30.0    // encoded 8K frames/s, HEVC
-    // zxing-cpp decodes/s → points: the Honor's 562/s (2026-10-26) → 6000
-    const val QR_WEIGHT = 10.67
+    const val REF_LAYOUT = 3061.0     // cards reflowed every frame
+    const val REF_CANVAS = 4818.0     // gradient shapes
+    const val REF_CSS = 3061.0        // composited tiles
+    const val REF_SVG = 4898.0        // animated paths
+    const val REF_JS = 4002.0         // geometric mean of suite ops/s
+    const val REF_SCROLL = 66_560.0   // feed px/s held
+    const val REF_JPEG = 229.3        // gallery MP/s per format
+    const val REF_WEBP = 167.8
+    const val REF_AVIF = 173.6
+    const val REF_PHOTO = 350.0       // MP/s through the editing chain
+    const val REF_VIDEO = 296.0       // decoded 4K frames/s, mean of the codecs
+    // 8K decode: the mean of its HEVC (91.1) and AV1 (75.0) rates. Export: the rate of one of its 4K hardware encoders (H.264
+    // and HEVC 136.3 each; it has no AV1 encoder, so it scores two thirds of the 4K part); 8K export = a quarter of that
+    // (the same pixel rate), as it encodes no 8K
+    const val REF_VIDEO_8K = 83.1     // decoded 8K frames/s, mean of HEVC and AV1
+    const val REF_EXPORT = 136.3      // encoded 4K frames/s, mean of H.264, HEVC, AV1
+    const val REF_EXPORT_8K = 34.1    // encoded 8K frames/s, HEVC
+    // zxing-cpp decodes/s → points: the Honor's 1,171.5/s → 6000
+    const val QR_WEIGHT = 5.122
 
     fun webPoints(r: WebResult): Int {
         val parts = doubleArrayOf(r.layout / REF_LAYOUT, r.canvas / REF_CANVAS, r.css / REF_CSS, r.svg / REF_SVG, r.js / REF_JS)
@@ -484,14 +485,14 @@ data class AiResult(
 }
 
 object AiScore {
-    // Inferences per second worth 6000 points, per accelerator, in AiTest order: the Snapdragon 8 Elite (Honor VKP-NX9, release build, 2026-10-25) scores 6000 on every test
+    // Inferences per second worth 6000 points, per accelerator, in AiTest order: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5)
     // (NPU through Qualcomm QNN). Repeated in BenchmarkScoring.cs.
-    val REF_CPU = doubleArrayOf(330.0, 18.2, 4.71, 2.65, 42.0, 2890.0)
+    val REF_CPU = doubleArrayOf(543.6, 28.67, 7.73, 4.59, 64.5, 3968.0)
     // version 5: the GPU's references re-measured on the path that answers right — LiteRT's OpenGL backend on the Adreno 830
-    // (its default OpenCL path never delivered an answer, so the old ones timed nothing). PROVISIONAL: Performance mode,
-    // 2026-11-23 test build; a calibration run sets the final values
+    // (its default OpenCL path never delivered an answer, so the old ones timed nothing): Performance mode, the median of
+    // the test runs of 2026-11-23 (the complete run scored 5,965)
     val REF_GPU = doubleArrayOf(280.7, 36.7, 16.6, 38.8, 74.2, 582.0)
-    val REF_NPU = doubleArrayOf(1690.0, 473.0, 229.0, 774.0, 993.0, 2100.0)
+    val REF_NPU = doubleArrayOf(1726.0, 485.0, 214.6, 689.3, 986.0, 2154.0)
 
     fun ref(t: AiTest, a: AiAccel): Double = when (a) {
         AiAccel.CPU -> REF_CPU; AiAccel.GPU -> REF_GPU; AiAccel.NPU -> REF_NPU
@@ -568,9 +569,8 @@ object LlmScore {
     // Version 5: Gemma 3 1B (4-bit) on each engine — llama.cpp on the CPU and the GPU (seeded weights, the model's exact
     // shape), LiteRT-LM on the NPU (Google's own file for the chip) — each against the same engine's reference, then the
     // three averaged (rule B, BENCHMARK_V5_PLAN.md). Tokens per second worth 6000 points per engine.
-    // PROVISIONAL: the Honor VKP-NX9 (Snapdragon 8 Elite) in Performance mode, test builds of 2026-11-23 (CPU i8mm about
-    // 150–190 / 45–61, GPU OpenCL 880–907 / 28–33, NPU 5,345–5,596 / 49–59). A calibration run sets the final values;
-    // the server's BenchmarkScoring.cs needs the same numbers before version 5 goes live.
+    // The Honor VKP-NX9 (Snapdragon 8 Elite) in Performance mode, the median of the test runs of 2026-11-23 (CPU i8mm
+    // 150–190 / 45–61, GPU OpenCL 880–909 / 27–33, NPU 5,345–5,724 / 49–59). Repeated in BenchmarkScoring.cs.
     const val REF_CPU_PREFILL = 160.0
     const val REF_CPU_DECODE = 55.0
     const val REF_GPU_PREFILL = 890.0
