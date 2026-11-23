@@ -25,12 +25,14 @@ struct LlmNpuRun {
     var model: String? = nil     // the model file it ran — recorded as "<engineName> · <model>"; nil when none ran
     var error: String? = nil     // why it didn't run or failed (the result card and the report show it)
     var lines: [String] = []     // its own report lines, printed after the report's "LLM NPU" line
+    /// The device could run the model but it wasn't downloaded yet: the run is incomplete (BenchFlag.npuModelMissing)
+    var missingModel = false
 }
 
 enum LlmNpuEngine {
     /// The engine and its version as a run records it (the payload's `llmNpu`, "<engineName> · <model>"): an engine
     /// update can move NPU scores, so name the version once there is one (Android's is "LiteRT-LM 0.19.1").
-    static let engineName = "ANEMLL"
+    static let engineName = AneLlm.engineName
 
     /**
      * Runs the task on the Neural Engine and returns what it measured. LlmSection calls it once per benchmark, after
@@ -39,8 +41,24 @@ enum LlmNpuEngine {
      * thread. When the user stops the benchmark the task is cancelled (`Task.isCancelled`): return soon after that.
      */
     static func run(progress: @escaping (String, Double) -> Void) async -> LlmNpuRun {
-        let why = "no Neural Engine LLM engine in this build yet"
-        progress("NPU · NOT RUN · \(why.uppercased())", 1)
-        return LlmNpuRun(prefill: 0, decode: 0, right: false, model: nil, error: why, lines: ["LLM NPU · \(engineName) · not run: \(why)"])
+        func notRun(_ why: String, missing: Bool = false) -> LlmNpuRun {
+            progress("NPU · NOT RUN", 1)
+            return LlmNpuRun(prefill: 0, decode: 0, right: false, model: nil, error: why,
+                             lines: ["LLM NPU · \(engineName) · not run: \(why)"], missingModel: missing)
+        }
+        #if targetEnvironment(simulator)
+        return notRun("the simulator has no Neural Engine")
+        #else
+        guard #available(iOS 18.0, macOS 15.0, *) else {
+            return notRun("the Neural Engine engine needs iOS 18 or later (Core ML's model state)")
+        }
+        guard let dir = LlmNpuModel.readyDirectory else {
+            LlmNpuModel.shared.start()            // for the next run: it downloads once, over Wi-Fi
+            return notRun("its model (Gemma 3 1B for the Neural Engine, ~0.7 GB) isn't on this device yet — it downloads "
+                          + "once over Wi-Fi; this run can't be submitted", missing: true)
+        }
+        let r = await AneLlm.run(modelDir: dir, progress: progress)
+        return LlmNpuRun(prefill: r.prefill, decode: r.decode, right: r.right, model: r.model, error: r.error, lines: r.lines)
+        #endif
     }
 }

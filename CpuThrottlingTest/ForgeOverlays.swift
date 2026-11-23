@@ -35,6 +35,7 @@ struct ForgeOverlayScrim<Content: View>: View {
 
 struct PreflightOverlay: View {
     let engine: StressEngine
+    var benchmark = false
     let onProceed: () -> Void
     let onCancel: () -> Void
 
@@ -112,7 +113,7 @@ struct PreflightOverlay: View {
         .onAppear {
             pollTask = Task {
                 while !Task.isCancelled {
-                    let r = await StressEngine.shared.runPreflight()
+                    let r = await StressEngine.shared.runPreflight(benchmark: benchmark)
                     self.report = r
                     self.initialChecking = false
                     try? await Task.sleep(nanoseconds: 1_500_000_000)

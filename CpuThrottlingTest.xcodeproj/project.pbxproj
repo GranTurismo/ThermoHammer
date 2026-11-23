@@ -82,6 +82,7 @@
 		2E2317A4227649E2639AEB68 /* sgemm.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A088CE4411629E223191688 /* sgemm.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE -DGGML_SCHED_MAX_COPIES=4 -DGGML_USE_CPU -DGGML_USE_METAL -DGGML_USE_CPU_REPACK -DGGML_USE_LLAMAFILE -march=armv8.2-a+dotprod+fp16 -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-cpu"; }; };
 		2E2606F20A1CC67AB1CF9E82 /* QRDataBlock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B334A7A6C4FE0F0881FFD741 /* QRDataBlock.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		2E556600ECE6B5B8526E79FA /* jetbrainsmono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BD2F472D58B9D9A79B16AFFA /* jetbrainsmono_regular.ttf */; };
+		2F73776D9304B059DD42EA47 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = DE4B33D620A6BD203E844EF7 /* README.md */; };
 		2F88DE6CAB2475C2D7C29060 /* kimi-k3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7714A00CFFD8EAF8908759B5 /* kimi-k3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		325E37AEC0CE8588C653245D /* mul_mv_mma.metal in Sources */ = {isa = PBXBuildFile; fileRef = 252770D955F172A0EBDE3409 /* mul_mv_mma.metal */; };
 		3294971C6DF81BCD0FDA0733 /* wkv.metal in Sources */ = {isa = PBXBuildFile; fileRef = 881C0AF1F7F59FFBF0B35136 /* wkv.metal */; };
@@ -133,9 +134,11 @@
 		4B9C825FEE8D9AFD4CD4BB2F /* glm4-moe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F908A0F4AD46543E925B9C28 /* glm4-moe.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		4BE65188E552F108FA060BB6 /* ExportBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 800448D73C7874070008524D /* ExportBench.swift */; };
 		4C179CB92BF814EEE196747D /* NeonCitySim.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFBEE485D7FDE160FEA84D5C /* NeonCitySim.swift */; };
+		4D85421DD2EDFD3EA783DC23 /* AnemllShims.swift in Sources */ = {isa = PBXBuildFile; fileRef = E920C440BE6D673B10C5B329 /* AnemllShims.swift */; };
 		4E45604B2BB76C70DA5AE172 /* internlm2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4652DC0083737584274C48D4 /* internlm2.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		4EE5E40B70B7110A08232A5E /* llama-quant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A2DE8CD82BF46F1243291EB /* llama-quant.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		4F34455A60B1C11767C5D4FA /* mamba2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 79F5EF8BFA430CE336CE43A3 /* mamba2.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		52097DDE7C50DA7D6FAA9243 /* SamplingConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87BB796F3502096B440F20FB /* SamplingConfig.swift */; };
 		5280562C2D330CD55C34F5B2 /* deepseek2ocr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5EEB94A933CB53D1929C701F /* deepseek2ocr.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		5298AD8955D0F4DA6494DD60 /* BenchmarkUpdateImpact.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1E17F2B612E88E19C906B7 /* BenchmarkUpdateImpact.swift */; };
 		52D16F70EDFBD29250EC917C /* phi3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7FEA3447192CD5B4FC613906 /* phi3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -143,6 +146,7 @@
 		545E56B88B9984A163A8E429 /* nemotron.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1B870B2E24908DB45DC4B5E7 /* nemotron.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		547A387B90AE35F6C119625C /* ggml-metal-device.m in Sources */ = {isa = PBXBuildFile; fileRef = CC5CAC29FFB19CCEC228747B /* ggml-metal-device.m */; settings = {COMPILER_FLAGS = "-O3 -w -fno-objc-arc -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE -DGGML_SCHED_MAX_COPIES=4 -DGGML_USE_CPU -DGGML_USE_METAL -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"; }; };
 		54ECA01C7855EFDEC4DEA266 /* chameleon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 276EC2A962E4616FD72E2725 /* chameleon.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		54EE86F966CF8796A54D6D83 /* InferenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D324AFE6B31D5C12D94236E /* InferenceManager.swift */; };
 		550C603FA4259E7B2C9E9F49 /* ShareCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9708ED5DF95CBE928EE135 /* ShareCard.swift */; };
 		55E39EA208690C4129D1B1A6 /* LakeValleyRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3580515D37B446766CF91DAE /* LakeValleyRenderer.swift */; };
 		55F01CCFA13B07AAF32641A0 /* starcoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DB1C5064A6132ACCE3D284A1 /* starcoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -170,6 +174,7 @@
 		6423A7B97420291981252877 /* Content.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3B8A1AF0FF04521ADA3F262E /* Content.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		64278A5A87810555CB70685F /* MyRuns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7354176627F058B1AB370ADB /* MyRuns.swift */; };
 		642AC07248A4E7E025A0041C /* nemotron-h.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4E3B315C7C911537E615F43B /* nemotron-h.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		644C5CAED7EC2D0AF220EA74 /* LlmNpuModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B53D59253137547A79DBF54B /* LlmNpuModel.swift */; };
 		64C1D64F3AB9CAD2742871E3 /* PhotoEdit.metal in Sources */ = {isa = PBXBuildFile; fileRef = 2486945E45EBFAE81DDAD4F9 /* PhotoEdit.metal */; };
 		657436EE3E19C44CA65B63F2 /* WhiteRectDetector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		657EF580C5B258EBAA5E58FB /* RunActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCFD30D4A68B4B350829C331 /* RunActivity.swift */; };
@@ -203,6 +208,7 @@
 		79441CDB61D395CA37E00810 /* ThermalXRay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 226B2C15F04FAA9C36F84124 /* ThermalXRay.swift */; };
 		7946F76EFBB0BD430A4EA840 /* deepseek.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D42B29CF1FA98FA630CE302D /* deepseek.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7A460B87CD21DB350040F88B /* smollm3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2F7AB44AF7E3FECEC35971B0 /* smollm3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		7AA590D27F2366B4D659116E /* FFNChunk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C07B46A6C3A2376E5CF38B /* FFNChunk.swift */; };
 		7AF4D5D66333EF3779DBA3A5 /* ReedSolomonDecoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 955A0D5AD795FC7E3D1A1AC2 /* ReedSolomonDecoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		7B277C21133067C2C7EAF2D3 /* spark2-5.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9399BD0C5F839463B6620C3D /* spark2-5.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		7B289CE439181C33BAA78BFF /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = F994A7A582952E477848D2D6 /* FirebaseCrashlytics */; };
@@ -222,6 +228,7 @@
 		81371D8BB9DE0F7D5704AF22 /* AiInputs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3870E9176FBD9A15ABB91D71 /* AiInputs.swift */; };
 		8145E1154CFEF6953B30961A /* CpuBench.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E134F5A19DBEF362D8A76 /* CpuBench.swift */; };
 		8215CA7875B5016F300FAC11 /* minimax-m3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D71D24F2EDA21E155DC0E95F /* minimax-m3.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
+		8237A2BE97C1317BA27F463A /* AneLlm.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC00222940D142AEFA5A584E /* AneLlm.swift */; };
 		836AB8351A68127A2BB0E764 /* BitMatrix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A489A8FCFC83663A329D2FE8 /* BitMatrix.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		837A547E4FE6564E62067939 /* ReedSolomonEncoder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 20101E13981EDEE521F7612D /* ReedSolomonEncoder.cpp */; settings = {COMPILER_FLAGS = "-O3 -w"; }; };
 		8476B1E2D2F445F3B64A9B78 /* grok.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A4ACA985526985E851C2941D /* grok.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -287,6 +294,8 @@
 		AC10649DE264685EAD22E8A2 /* pangu-embed.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9051E73EBA439EB2A3508E41 /* pangu-embed.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		AD8C6E2F076CDC170786D2A2 /* ShareLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72EE744BDB03F1EB0E69EF5C /* ShareLinksTests.swift */; };
 		ADB073BEDA4B1D80438FA718 /* mul_mv.metal in Sources */ = {isa = PBXBuildFile; fileRef = B3BD001E756711DDAA6CC802 /* mul_mv.metal */; };
+		ADCBA16A734651EE32C2C513 /* ModelLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97ED592CDAC1EEB92551D60 /* ModelLoader.swift */; };
+		AE416999D4863AF5F943193F /* MetalArgmax.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF0652C3F12E2315E5A5AF89 /* MetalArgmax.swift */; };
 		AEC90AE8B9785B8ACE477C51 /* unicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3D7835393BC54D353B74965B /* unicode.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
 		AF35AF2AF30760735A0A05EF /* ComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E4099E6624D1B717D9A9E26 /* ComparisonView.swift */; };
 		AF6F75FB265671320B84BFB7 /* exaone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AE2CE0D467718DF59399F254 /* exaone.cpp */; settings = {COMPILER_FLAGS = "-O3 -w -I$(SRCROOT)/BenchCore/third_party/llama.cpp/include -I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"; }; };
@@ -536,6 +545,7 @@
 		276078C30422D1316BDC5114 /* Content.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Content.h; sourceTree = "<group>"; };
 		276EC2A962E4616FD72E2725 /* chameleon.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = chameleon.cpp; sourceTree = "<group>"; };
 		27E17DB16298941D64AA4B7A /* llama4.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = llama4.cpp; sourceTree = "<group>"; };
+		29C07B46A6C3A2376E5CF38B /* FFNChunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFNChunk.swift; sourceTree = "<group>"; };
 		29D71E3D149CF4486D960223 /* ffnet_40s.mlpackage */ = {isa = PBXFileReference; path = ffnet_40s.mlpackage; sourceTree = "<group>"; };
 		2A7325303EBF8B66A42ED630 /* hrm-text.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "hrm-text.cpp"; sourceTree = "<group>"; };
 		2A995461C848FB551F35ADFA /* ggml.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ggml.cpp; sourceTree = "<group>"; };
@@ -656,6 +666,7 @@
 		5C484EE5CD9543B6897E9251 /* binary-ops.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "binary-ops.h"; sourceTree = "<group>"; };
 		5C5555F916B69A4E0A83957F /* qwen3vl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = qwen3vl.cpp; sourceTree = "<group>"; };
 		5CE951C4AE111D540D119FC0 /* GTIN.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GTIN.h; sourceTree = "<group>"; };
+		5D324AFE6B31D5C12D94236E /* InferenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceManager.swift; sourceTree = "<group>"; };
 		5D8BA3A790DED0C9AEBACCD0 /* web */ = {isa = PBXFileReference; lastKnownFileType = folder; name = web; path = ThermoHammerAndroid/app/src/main/assets/web; sourceTree = SOURCE_ROOT; };
 		5E180BA1B0B2B06FD3587745 /* clip.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = clip.cpp; sourceTree = "<group>"; };
 		5E26522B11C211466748665C /* rnd1.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rnd1.cpp; sourceTree = "<group>"; };
@@ -759,6 +770,7 @@
 		86AA5485FA57582561174DB0 /* ggml-metal.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ggml-metal.cpp"; sourceTree = "<group>"; };
 		86E80651D4E2AC9DCEAE3109 /* FontTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontTests.swift; sourceTree = "<group>"; };
 		8731D43369C35A7CFBB50C1F /* Point.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Point.h; sourceTree = "<group>"; };
+		87BB796F3502096B440F20FB /* SamplingConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamplingConfig.swift; sourceTree = "<group>"; };
 		87DE918138042A760BB23DFD /* maion-coder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "maion-coder.cpp"; sourceTree = "<group>"; };
 		881C0AF1F7F59FFBF0B35136 /* wkv.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = wkv.metal; sourceTree = "<group>"; };
 		8880F857D1A9A46F981C0DB9 /* qwen3.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = qwen3.cpp; sourceTree = "<group>"; };
@@ -870,6 +882,7 @@
 		B4D8A5AB068A44ED95F4A8A7 /* BinaryBitmap.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BinaryBitmap.h; sourceTree = "<group>"; };
 		B4F40CC95B1045168CA386E8 /* StressEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressEngine.swift; sourceTree = "<group>"; };
 		B5233F96178F63FA1E668901 /* bitnet.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = bitnet.cpp; sourceTree = "<group>"; };
+		B53D59253137547A79DBF54B /* LlmNpuModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlmNpuModel.swift; sourceTree = "<group>"; };
 		B605084CC9E5B0EBA91639EC /* Generator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Generator.h; sourceTree = "<group>"; };
 		B60860F76E5EF69500090C78 /* ReviewPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPolicyTests.swift; sourceTree = "<group>"; };
 		B642380E472C13605899A45D /* llama-kv-cache-dsv4.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "llama-kv-cache-dsv4.h"; sourceTree = "<group>"; };
@@ -941,6 +954,7 @@
 		D71D24F2EDA21E155DC0E95F /* minimax-m3.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "minimax-m3.cpp"; sourceTree = "<group>"; };
 		D89B1BE7610D5EDAE726D956 /* ggml-metal-common.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ggml-metal-common.cpp"; sourceTree = "<group>"; };
 		D97424AF0EBE742E70F15587 /* neon_city.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = neon_city.bin; sourceTree = "<group>"; };
+		D97ED592CDAC1EEB92551D60 /* ModelLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLoader.swift; sourceTree = "<group>"; };
 		D99FEEB590C0C1B5CDC7C51C /* WhiteRectDetector.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = WhiteRectDetector.cpp; sourceTree = "<group>"; };
 		DB1C5064A6132ACCE3D284A1 /* starcoder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = starcoder.cpp; sourceTree = "<group>"; };
 		DBD01621639CE5E0573DA77B /* eagle3.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = eagle3.cpp; sourceTree = "<group>"; };
@@ -952,6 +966,7 @@
 		DE174E5A952F4BEC83198EE8 /* ggml-backend-dl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ggml-backend-dl.h"; sourceTree = "<group>"; };
 		DE2612E71B9AF625D8C5551F /* seed-oss.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "seed-oss.cpp"; sourceTree = "<group>"; };
 		DE294D94C909ACDDC34CED3B /* mmq.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mmq.h; sourceTree = "<group>"; };
+		DE4B33D620A6BD203E844EF7 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		DE57A21C6A398760018CF25F /* HRI.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HRI.cpp; sourceTree = "<group>"; };
 		DFE61F13EC187CF936D91083 /* fa_f32.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = fa_f32.metal; sourceTree = "<group>"; };
 		E054E1D1519FAB8F7E779014 /* QRWriter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = QRWriter.cpp; sourceTree = "<group>"; };
@@ -972,14 +987,17 @@
 		E811D96D8FA1A38619FBC4F6 /* llama-grammar.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "llama-grammar.cpp"; sourceTree = "<group>"; };
 		E91758456C86D16385280BE9 /* argsort.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = argsort.metal; sourceTree = "<group>"; };
 		E91AC4B71578909E668B9D33 /* gemma4.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = gemma4.cpp; sourceTree = "<group>"; };
+		E920C440BE6D673B10C5B329 /* AnemllShims.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnemllShims.swift; sourceTree = "<group>"; };
 		E9DC92981725B18432ADE412 /* rwkv6qwen2.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rwkv6qwen2.cpp; sourceTree = "<group>"; };
 		EB1E9BA53CCC29BD19B0429B /* dots1.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = dots1.cpp; sourceTree = "<group>"; };
 		EB69B84DA3D01DAEF1DADC57 /* quants.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = quants.c; sourceTree = "<group>"; };
 		EBB1DD15BBFEE6B5630F2EAB /* ReviewPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPrompt.swift; sourceTree = "<group>"; };
 		EBE9D234CF26FA9775147053 /* llama-io.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "llama-io.cpp"; sourceTree = "<group>"; };
+		EC00222940D142AEFA5A584E /* AneLlm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AneLlm.swift; sourceTree = "<group>"; };
 		EC1E17F2B612E88E19C906B7 /* BenchmarkUpdateImpact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkUpdateImpact.swift; sourceTree = "<group>"; };
 		EECF5798EF10C0B5F92CF3EC /* common.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = common.h; sourceTree = "<group>"; };
 		EEF7370A3693E941E39D09F6 /* zueci_big5.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zueci_big5.h; sourceTree = "<group>"; };
+		EF0652C3F12E2315E5A5AF89 /* MetalArgmax.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalArgmax.swift; sourceTree = "<group>"; };
 		EF1004CCF979001C8BB0DFC3 /* ReaderOptions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReaderOptions.h; sourceTree = "<group>"; };
 		EF1C9DA9BF9CB2B10DDF4AD2 /* Barcode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Barcode.h; sourceTree = "<group>"; };
 		EFFC1BC6FDA1FC3F7E9D1F63 /* common.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = common.h; sourceTree = "<group>"; };
@@ -1126,6 +1144,20 @@
 				54D426FFDF3DE94E4FB318E6 /* ShareLinks.swift */,
 			);
 			path = Share;
+			sourceTree = "<group>";
+		};
+		214556ED35B003B08D958F8E /* ANEMLL */ = {
+			isa = PBXGroup;
+			children = (
+				E920C440BE6D673B10C5B329 /* AnemllShims.swift */,
+				29C07B46A6C3A2376E5CF38B /* FFNChunk.swift */,
+				5D324AFE6B31D5C12D94236E /* InferenceManager.swift */,
+				EF0652C3F12E2315E5A5AF89 /* MetalArgmax.swift */,
+				D97ED592CDAC1EEB92551D60 /* ModelLoader.swift */,
+				DE4B33D620A6BD203E844EF7 /* README.md */,
+				87BB796F3502096B440F20FB /* SamplingConfig.swift */,
+			);
+			path = ANEMLL;
 			sourceTree = "<group>";
 		};
 		293512AC33A481F52E2DC200 /* libzueci */ = {
@@ -1301,9 +1333,12 @@
 		4AF590ED084A74A036F3AE51 /* LLM */ = {
 			isa = PBXGroup;
 			children = (
+				EC00222940D142AEFA5A584E /* AneLlm.swift */,
 				723C44E1D15B1768394D9B64 /* LlmNpuEngine.swift */,
+				B53D59253137547A79DBF54B /* LlmNpuModel.swift */,
 				A9DE89921CAFD9285BFC8BBF /* LlmSection.swift */,
 				126EB8D99B5411CAEF65DE3C /* LlmStageView.swift */,
+				214556ED35B003B08D958F8E /* ANEMLL */,
 			);
 			path = LLM;
 			sourceTree = "<group>";
@@ -1977,6 +2012,7 @@
 			files = (
 				B9E77AB5C76732439AAC2A32 /* Assets.xcassets in Resources */,
 				A41FB7BE1D5A226224E83500 /* GoogleService-Info.plist in Resources */,
+				2F73776D9304B059DD42EA47 /* README.md in Resources */,
 				9EE011BD4A05C5817A6846A4 /* ai in Resources */,
 				B9E775C3A8516AC54AFF7F46 /* jetbrainsmono_bold.ttf in Resources */,
 				D419247625F51322181363F1 /* jetbrainsmono_extrabold.ttf in Resources */,
@@ -2075,6 +2111,8 @@
 				81371D8BB9DE0F7D5704AF22 /* AiInputs.swift in Sources */,
 				8F69EB42845FAD99A7C0DA38 /* AiSection.swift in Sources */,
 				75E9DAA2F14107D814A27F44 /* AiStageView.swift in Sources */,
+				8237A2BE97C1317BA27F463A /* AneLlm.swift in Sources */,
+				4D85421DD2EDFD3EA783DC23 /* AnemllShims.swift in Sources */,
 				BC826DE41A3DA4582DD04315 /* AppOverlays.swift in Sources */,
 				029B67566B2314C9932C322C /* AppTelemetry.swift in Sources */,
 				5F63C0FBC9DB5F4BA7BD6343 /* Barcode.cpp in Sources */,
@@ -2109,6 +2147,7 @@
 				80A1DF8E6EE76F329690B2CA /* ECI.cpp in Sources */,
 				8BD77CEAA6A6AC9E9C2F1213 /* Error.cpp in Sources */,
 				4BE65188E552F108FA060BB6 /* ExportBench.swift in Sources */,
+				7AA590D27F2366B4D659116E /* FFNChunk.swift in Sources */,
 				9697F8572D49C0D9BB5C0390 /* ForgeComponents.swift in Sources */,
 				FFD85D02A52E05F574C08C1F /* ForgeOverlays.swift in Sources */,
 				DCABF38983A5D21026133054 /* ForgeTheme.swift in Sources */,
@@ -2122,16 +2161,20 @@
 				F3D82800A1E29EBEFBEBE88C /* GridSampler.cpp in Sources */,
 				5DD4D57FEAA7E8B02474E829 /* HRI.cpp in Sources */,
 				EA863C7FFC1F67B64DCF282F /* HybridBinarizer.cpp in Sources */,
+				54EE86F966CF8796A54D6D83 /* InferenceManager.swift in Sources */,
 				C009678D94D9473927807FEF /* LakeValley.metal in Sources */,
 				3460A743E41FDE9662DA3BF6 /* LakeValleyAsset.swift in Sources */,
 				55E39EA208690C4129D1B1A6 /* LakeValleyRenderer.swift in Sources */,
 				1C27089C0110F943DC74725E /* LeaderboardService.swift in Sources */,
 				3AEF1EBEFCCE4FE01814563C /* LeaderboardView.swift in Sources */,
 				2066D74046F3453E7574EFED /* LlmNpuEngine.swift in Sources */,
+				644C5CAED7EC2D0AF220EA74 /* LlmNpuModel.swift in Sources */,
 				B82899F146CB5440C5A838FB /* LlmSection.swift in Sources */,
 				32BDFF88CB6DD0B1893E6BB5 /* LlmStageView.swift in Sources */,
 				0D31AC57DD618E83E66925A9 /* LostSpeedView.swift in Sources */,
 				D3D429FDDCAE629C98561AC4 /* MemBench.swift in Sources */,
+				AE416999D4863AF5F943193F /* MetalArgmax.swift in Sources */,
+				ADCBA16A734651EE32C2C513 /* ModelLoader.swift in Sources */,
 				64278A5A87810555CB70685F /* MyRuns.swift in Sources */,
 				5401E44DC8D687CBF0BD4890 /* MyRunsView.swift in Sources */,
 				F823E5EA3ECE2D1797CDBA85 /* NeonCity.metal in Sources */,
@@ -2166,6 +2209,7 @@
 				373D46F4C7F7837D2522A802 /* ReviewPrompt.swift in Sources */,
 				657EF580C5B258EBAA5E58FB /* RunActivity.swift in Sources */,
 				D0EBDDD016B904BF73B1198E /* RunHistoryStore.swift in Sources */,
+				52097DDE7C50DA7D6FAA9243 /* SamplingConfig.swift in Sources */,
 				550C603FA4259E7B2C9E9F49 /* ShareCard.swift in Sources */,
 				0098073FDCD545F09F8719F5 /* ShareLinks.swift in Sources */,
 				9841CF07084D2629792EC530 /* SpeedCheck.swift in Sources */,

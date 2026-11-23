@@ -465,6 +465,9 @@ struct BenchmarkResultView: View {
             notes.append(LeaderboardService.isMac ? "another app was in front during the run, or the Mac was busy"
                          : "the phone was busy with background work")
         }
+        if flags & BenchFlag.npuModelMissing != 0 {
+            notes.append("the LLM test's Neural Engine model wasn't downloaded yet (once, over Wi-Fi) — run again once it is")
+        }
         return notes.isEmpty ? "Unverified." : "Unverified: " + notes.joined(separator: ", ") + "."
     }
 }

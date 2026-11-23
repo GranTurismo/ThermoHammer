@@ -63,6 +63,9 @@ enum BenchFlag {
     static let powerEvent = 1 << 2
     static let envCapped = 1 << 5
     static let cooldownTimeout = 1 << 7
+    /// The Neural Engine LLM's model wasn't on the device yet (LlmNpuModel): the LLM's NPU third is missing, not 0 — the
+    /// run is incomplete (Android's NPU_MODEL_MISSING, the same bit)
+    static let npuModelMissing = 1 << 10
 }
 
 // MARK: - GPU

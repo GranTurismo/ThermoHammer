@@ -143,6 +143,8 @@ struct LlmSection: BenchmarkSection {
             Self.clearStrikes("npu")
             npu = ran
         }
+        // a device that can run the model without it yet: incomplete, never submitted as "no NPU"
+        if npu.missingModel { r.validityFlags |= BenchFlag.npuModelMissing }
         let gpuRan = runs.contains { $0.accel == .gpu && $0.decode > 0 }
         r.llm = LlmResult(runs: runs, gpuName: gpuRan && !gpuName.isEmpty ? gpuName : nil, freeGb: freeGb, largestModel: largest, npu: npu)
         engine.publishLlm(nil, phase: .build, progress: 0, rate: -1, detail: "")

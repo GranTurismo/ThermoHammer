@@ -98,6 +98,7 @@ struct ContentView: View {
             if showPreflight {
                 PreflightOverlay(
                     engine: engine,
+                    benchmark: runBenchmark,
                     onProceed: {
                         withAnimation(.easeOut(duration: 0.2)) { showPreflight = false }
                         if runBenchmark { bench.start() }

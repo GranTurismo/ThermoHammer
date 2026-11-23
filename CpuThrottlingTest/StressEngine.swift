@@ -385,7 +385,7 @@ final class StressEngine: ObservableObject {
     }
 
     /// Runs off-main except the UIKit battery reads (bounced to main).
-    func runPreflight() async -> PreflightReport {
+    func runPreflight(benchmark: Bool = false) async -> PreflightReport {
         var gates: [GateResult] = []
         var hints = 0
 
@@ -440,6 +440,26 @@ final class StressEngine: ObservableObject {
         gates.append(GateResult(id: "bgload", title: "BACKGROUND LOAD", blocking: true,
                                 passed: loadOK,
                                 detail: loadOK ? "\(loadPct)% ambient" : "\(loadPct)% busy — close other apps"))
+        // The LLM test's Neural Engine model (scoring version 5), on the devices that can run it: downloaded once over
+        // Wi-Fi. Never blocking — a run without it is incomplete (can't be submitted), and the checklist says so first.
+        #if !targetEnvironment(simulator)
+        if benchmark, #available(iOS 18.0, macOS 15.0, *) {
+            let model = LlmNpuModel.shared
+            if LlmNpuModel.readyDirectory == nil { model.start() }
+            let state = await MainActor.run { model.state }
+            let ready = LlmNpuModel.readyDirectory != nil
+            let detail: String
+            switch state {
+            case _ where ready: detail = "Gemma 3 1B for the Neural Engine ready"
+            case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~0.7 GB — wait, or this run can't be submitted"
+            case .waitingForWifi: detail = "waiting for Wi-Fi (~0.7 GB) — or this run can't be submitted"
+            case .failed(let why): detail = "download failed (\(why.prefix(60))) — this run can't be submitted"
+            default: detail = "not downloaded yet — this run can't be submitted"
+            }
+            gates.append(GateResult(id: "npumodel", title: "LLM NPU MODEL", blocking: false, passed: ready, detail: detail))
+            if !ready { hints |= BenchFlag.npuModelMissing }
+        }
+        #endif
 
         return PreflightReport(gates: gates,
                                canRun: gates.allSatisfy { !$0.blocking || $0.passed },
