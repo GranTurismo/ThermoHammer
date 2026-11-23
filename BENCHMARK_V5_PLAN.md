@@ -327,3 +327,35 @@ Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdrago
   - A14/M1 can't load a 1,280-context chunked model (ANEMLL's limit), so those devices count NPU 0.
 - **Windows:** no NPU LLM engine; that third counts 0.
 - **New chips:** a chip without a Google file counts NPU 0 until we add its file (an app update for the pack plus the server's `NpuLlmChips`).
+
+## Release runbook (version 5)
+
+Nothing below has run. Steps 1–4 can happen in any order; step 5 is the switch.
+
+1. **Android NPU model decision (morning test):**
+   - On the Honor's test build, use the checklist picker to run LLM only. The report has two NPU lines:
+     - the chip's own file (Google, per chip);
+     - `LLM NPU GENERIC`: one file for every chip, compiled on the phone.
+   - If the generic file is about as fast, ship it: one pack for every chip, so new chips work on day one. Otherwise ship the per-chip pack.
+   - The 11T can try the generic file on MediaTek: import it with "NPU model for ThermoHammer Bench".
+2. **Android:**
+   - Put the chosen model file(s) in `gemma.npu.dir`.
+   - Run `./gradlew :ai:gemma_npu:linkGemmaModels`, then `THERMOHAMMER_VK_GLSLC=/opt/homebrew/bin/glslc ./gradlew :app:bundleRelease`. It refuses to build while a chip's file is missing.
+   - Upload to **internal testing** first and install from Play on the Honor. That's the only real test of AI pack delivery.
+   - Then production with **managed publishing** (held until step 5).
+3. **iPhone/Mac:**
+   - Put the model on the server: `ThermoHammerWeb/deploy/upload_model.sh <scratchpad>/anepack/gemma3-1b-it-lut4-ctx1280-v1.aar` (997 MB, SHA-256 `af5e93c1…`).
+   - Run `deploy/deploy.sh`; thweb gets the `models` volume and route.
+   - Check `curl -I https://thermohammer.gtgroup.dev/models/gemma3-1b-it-lut4-ctx1280-v1.aar` → 200.
+   - **The iPhone app must not go live before the model is online:** without it, every run on a capable device is incomplete.
+   - Archive and upload iOS and macOS 2.2.0 (46). Submit both with **manual release**.
+4. **Windows:**
+   - Packages: `ThermoHammerWindows/msix/out/ThermoHammer_2.2.0.0_{x64,arm64}.msix` (also in Downloads). Exports were checked against the app's imports.
+   - Run one VM test (Gemma shape on Vulkan, database warm-up).
+   - Partner Center submission with **manual publish**.
+5. **The switch, once all three stores have approved:**
+   1. Apply `ThermoHammer.Api/tools/migrate_v5_AddBenchmarkLlmNpu.sql` (adds 6 columns, idempotent; the version 4 server ignores them, so this can go first).
+   2. Merge `feature/v5-gpu-tile` into main and push. GitHub Actions deploys thapi with CurrentVersion 5, and version 4 apps get "update the app".
+   3. Release all three store versions.
+   4. Run `ThermoHammerWeb/deploy/deploy.sh`: the website's version 5 pages and the empty-board state.
+   5. Check: a version 5 submission from the Honor, the board, a run page, the "update" message from an old build.
