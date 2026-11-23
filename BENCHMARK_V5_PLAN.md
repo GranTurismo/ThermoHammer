@@ -279,3 +279,35 @@ Started 2026-11-22. Scenes and assets untouched; same picture. **Off by default 
   The alternative is Qwen3 0.6B (Apache 2.0, no gate), but it has no Snapdragon NPU build.
 - Whether a Gemma 3 1B NPU file exists for the Dimensity 9500 at the same precision as the Snapdragon one.
 - The Honor's own NPU speed for the LLM (unmeasured, maybe faster than its GPU).
+
+## Version 5 contract (2026-11-23, what every app and the server implement)
+
+Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdragon 8 Elite) **in Performance mode** scores 6,000 in every test, and all three apps ship together with the server switch.
+
+- **`VERSION = 5`** everywhere (`BenchmarkScore.VERSION`, `BenchmarkScoring.CurrentVersion`).
+- **References:** exactly those in `ThermoHammerAndroid/app/src/main/java/com/example/thermohammer/engine/Benchmark.kt` (commit 9e97eee) and in the server's `BenchmarkScoring`.
+  - Each platform repeats them and pins them with the same calibration test: Android `BenchmarkScoreTest`, `the reference phone's medians score 6000 on every test`; server `BenchmarkMappingTests.TheReferencePhonesMediansScore6000OnEveryTest`.
+  - Export: one 4K encoder's rate is the reference, so the Honor (no AV1 encoder, no 8K encoder) scores 3,000 on export.
+- **LLM, rule B:** Gemma 3 1B on every engine.
+  - **CPU and GPU:** llama.cpp with BenchCore's Gemma shape (`bc_llm_set_model(BC_LLM_MODEL_GEMMA3_1B)` before the runs).
+  - **NPU:** Android uses LiteRT-LM with Google's per-chip file (Play AI pack `gemma_npu`). iPhone/Mac uses ANEMLL on the Neural Engine. Windows has no NPU engine yet, so it counts 0 and the report says so.
+  - **Scoring:** each engine scores `6000 × sqrt(prefill/refPrefill × decode/refDecode)` (0 if either is 0) against its own engine's references:
+
+    | Engine | Prefill reference (tok/s) | Decode reference (tok/s) |
+    |---|---|---|
+    | CPU | 160 | 55 |
+    | GPU | 890 | 32 |
+    | NPU | 5,450 | 52 |
+
+  - LLM = (CPU + GPU + NPU) / 3.
+  - The "prefill/decode points" shown are the best engine's per phase (display only).
+- **Payload / signed text:** three fields after `llmFreeGb` and before `validityFlags`:
+  - `llmPrefillNpu` and `llmDecodeNpu` (2 decimals; 0 = no NPU result or a wrong answer);
+  - `llmNpu` (engine and model file, e.g. `LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750`; empty when none).
+  - Canonical example (all three apps' tests and the server's): see `BenchmarkScoreTest."canonical string is what the server re-derives"`.
+- **Phone Health parts:** `llm.cpu`, `llm.gpu` and `llm.npu` (each engine's points) replace `llm.prefill` and `llm.decode`.
+- **Database test:** each step (insert, update, query) warms up untimed until its rate levels off (`MemBench.warmUp`: 100 ms buckets; the last 5 within 10 % of each other and ≥ 85 % of the best; at most 4 s). The references assume this.
+- **Incomplete runs:**
+  - An Android run on a chip in `NpuModels.CHIPS` without its NPU model sets `ValidityFlag.NPU_MODEL_MISSING` (1 shl 10), and the server refuses it too.
+  - An older app version gets "The leaderboard moved to a new scoring version. Update ThermoHammer and run the benchmark again to submit."
+- **Release:** the apps go up held (Play managed publishing, App Store manual release, Partner Center manual publish). Once all three are approved, the server deploys (migration `AddBenchmarkLlmNpu`, adding 6 columns) and the apps are released together. The board starts over, because it lists only the current version.
