@@ -10,14 +10,14 @@
     <label>Device A
       <select name="a" data-pick="a" aria-label="First device">
         <option value="">Choose a device</option>
-        {% for d in site.devices %}<option value="{{ d.slug }}">{{ d.title }}{% if d.has_bench %} · {{ d.total | num }}{% else %} · {{ d.headline.stability | pct }} held{% endif %}</option>{% endfor %}
+        {% for d in site.devices if d.has_bench or d.has_stress %}<option value="{{ d.slug }}">{{ d.title }}{% if d.has_bench %} · {{ d.total | num }}{% else %} · {{ d.headline.stability | pct }} held{% endif %}</option>{% endfor %}
       </select>
     </label>
     <span class="vs">VS</span>
     <label>Device B
       <select name="b" data-pick="b" aria-label="Second device">
         <option value="">Choose a device</option>
-        {% for d in site.devices %}<option value="{{ d.slug }}">{{ d.title }}{% if d.has_bench %} · {{ d.total | num }}{% else %} · {{ d.headline.stability | pct }} held{% endif %}</option>{% endfor %}
+        {% for d in site.devices if d.has_bench or d.has_stress %}<option value="{{ d.slug }}">{{ d.title }}{% if d.has_bench %} · {{ d.total | num }}{% else %} · {{ d.headline.stability | pct }} held{% endif %}</option>{% endfor %}
       </select>
     </label>
     <button class="btn btn-primary" type="submit">Compare</button>

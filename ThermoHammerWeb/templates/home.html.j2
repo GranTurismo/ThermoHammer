@@ -60,7 +60,7 @@
     <div class="cards6">
       {% for key, short, label, field, color in SECTIONS %}
       {% set cat = CATALOG[key] %}
-      {% set lead = site.section_leaders | selectattr('key', 'equalto', key) | first %}
+      {% set lead = site.section_leaders | selectattr('key', 'equalto', key) | first | default(none) %}
       <article class="sec-card" style="--c:{{ color }}">
         <header><span class="tag">{{ short }}</span><h3>{{ label }}</h3></header>
         <p>{{ cat.blurb }}</p>
@@ -140,6 +140,7 @@
     <div class="boards">
       <div class="panel">
         <div class="panel-head"><span class="panel-title">Benchmark · total score</span><a class="panel-link" href="{{ url('/leaderboard/') }}">Full board</a></div>
+        {% if site.board %}
         <ol class="mini">
           {% for d in site.board[:5] %}
           <li>
@@ -150,6 +151,9 @@
           </li>
           {% endfor %}
         </ol>
+        {% else %}
+        <p class="mini-empty">{{ m.board_empty() }}</p>
+        {% endif %}
       </div>
       <div class="panel">
         {{ charts.spark_defs() | safe }}

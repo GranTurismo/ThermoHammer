@@ -144,7 +144,8 @@ class Builder:
             REFERENCE=REFERENCE, REFERENCE_TOTAL=REFERENCE_TOTAL, THERMAL_NAMES=THERMAL_NAMES, CATALOG=content.CATALOG,
             PHASES=content.PHASES, TEST_COUNT=sum(len(c["tests"]) for c in content.CATALOG.values()), capacity_hex=capacity_hex, ramp_hex=ramp_hex, percent_text=percent_text,
             built=site.built, changed=self.changed, year=site.built.year, A_COLOR=charts.A_COLOR, B_COLOR=charts.B_COLOR,
-            section_meta={s[0]: {"short": s[1], "label": s[2], "color": s[4]} for s in SECTIONS})
+            section_meta={s[0]: {"short": s[1], "label": s[2], "color": s[4]} for s in SECTIONS},
+            reference_text=content.reference)
 
         self._home(site, hero)
         self._leaderboards(site)
@@ -248,12 +249,19 @@ class Builder:
                    "url": cfg.abs_url("/leaderboard/"), "creator": {"@type": "Organization", "name": cfg.publisher},
                    "isAccessibleForFree": True, "dateModified": self.changed.strftime("%Y-%m-%d"),
                    "keywords": ["phone benchmark", "CPU throttling", "thermal throttling", "sustained performance"]}
+        if top:
+            description = (f"{len(site.board)} devices ranked by total benchmark score across CPU, memory, GPU, everyday "
+                           f"UX, AI and LLM. Top: {top.title} with {num(top.total)} points. Verified runs only, scored on "
+                           f"the server.")
+        elif site.earlier_versions:
+            description = (f"The ThermoHammer benchmark board restarted with scoring version {site.version} on "
+                           f"{day(site.version_since)}. Be among the first on it: verified runs only, scored on the server.")
+        else:
+            description = ("The ThermoHammer benchmark board: devices ranked by total score across CPU, memory, GPU, "
+                           "everyday UX, AI and LLM. Verified runs only, scored on the server.")
         self.page(
             "/leaderboard/", "leaderboard.html.j2", priority="0.9",
-            title="Benchmark leaderboard: phones and PCs ranked | ThermoHammer",
-            description=(f"{len(site.board)} devices ranked by total benchmark score across CPU, memory, GPU, everyday UX, "
-                         f"AI and LLM." + (f" Top: {top.title} with {num(top.total)} points." if top else "")
-                         + " Verified runs only, scored on the server."),
+            title="Benchmark leaderboard: phones and PCs ranked | ThermoHammer", description=description,
             og_image=self._og("leaderboard", self.cards.board(site)), og_alt="The ThermoHammer benchmark leaderboard",
             crumbs=[("Leaderboard", "/leaderboard/")], jsonld_blocks=[item_list, dataset])
 
@@ -295,15 +303,23 @@ class Builder:
             bits.append(f"{d.title} scores {num(d.total)} in the ThermoHammer benchmark"
                         + (f" (#{d.rank} of {len(site.board)})" if d.rank else "") + ": "
                         + ", ".join(f"{s['short']} {num(s['points'])}" for s in d.section_list) + ".")
-        else:
+        elif d.has_stress:
             title = f"{d.title} throttling test: holds {pct(d.headline.stability)} | ThermoHammer"
+        else:       # benchmark runs of an earlier scoring version only: the page stays, off the board
+            versions = sorted({r.benchmark_version for r in d.earlier_runs})
+            runs = len(d.earlier_runs)
+            title = f"{d.title} benchmark runs" + (f", scoring version {versions[-1]}" if versions else "") + " | ThermoHammer"
+            bits.append(f"{d.title} isn't on the current ThermoHammer board yet" + (
+                f": its {runs} verified benchmark run{'s were' if runs != 1 else ' was'} scored with version "
+                f"{' and '.join(map(str, versions))}, which isn't comparable with today's board." if versions else "."))
         if d.has_stress:
             r = d.headline
             bits.append(f"Under a {r.minutes}-minute stress test it holds {pct(r.stability)} of its speed.")
-        bits.append("Verified runs, full test numbers and comparisons.")
+        bits.append("Verified runs, full test numbers and comparisons." if d.has_bench or d.has_stress
+                    else "Verified runs and full test numbers.")
         neighbours = site.neighbours(d)
         self.page(
-            f"/devices/{d.slug}/", "device.html.j2", priority="0.8" if d.has_bench else "0.6",
+            f"/devices/{d.slug}/", "device.html.j2", priority="0.8" if d.has_bench else "0.6" if d.has_stress else "0.4",
             title=title, description=" ".join(bits),
             og_image=self._og(f"device-{d.slug}", self.cards.device(d, site)), og_alt=f"{d.title} on ThermoHammer",
             crumbs=[("Devices", "/devices/"), (d.title, f"/devices/{d.slug}/")],
@@ -332,18 +348,20 @@ class Builder:
         og_image = self._og(f"run-{run.id}", self.cards.bench_run(run))
         sections = ", ".join(f"{s['short']} {num(s['points'])}" for s in run.section_list if s["points"])
         crumbs = [("Devices", "/devices/"), (d.title, f"/devices/{d.slug}/"), (f"Run #{run.id}", f"/run/{run.id}/")]
+        scored = "" if run.current else f", scored with version {run.benchmark_version}"
         self.page(
             f"/run/{run.id}/", "run.html.j2", index=False,
             title=f"{d.title} scored {num(run.total)} on ThermoHammer (run #{run.id})",
-            description=f"A verified ThermoHammer benchmark run of a {d.title}: {num(run.total)} points ({sections}). "
-                        f"Can your {d.noun} beat it?",
+            description=f"A verified ThermoHammer benchmark run of a {d.title}{scored}: {num(run.total)} points ({sections}). "
+                        + (f"Can your {d.noun} beat it?" if run.current else "Not comparable with today's board."),
             og_image=og_image, og_alt=f"{d.title}: {num(run.total)} points on ThermoHammer", crumbs=crumbs,
             run=run, d=d, health=health, embed_path=f"/embed/run/{run.id}/")
         self.page(
             f"/cert/{run.id}/", "cert.html.j2", index=False,
             title=f"Health certificate: {d.title}, run #{run.id} | ThermoHammer",
             description=f"Verified ThermoHammer benchmark of a {d.title} on {day(run.created)}: {num(run.total)} points"
-                        + (f", {health['percent']:.0f}% of the median {d.title}." if health else "."),
+                        + (f", {health['percent']:.0f}% of the median {d.title}." if health else
+                           "." if run.current else f", scored with version {run.benchmark_version}."),
             og_image=og_image, og_alt=f"Health certificate for a {d.title}",
             crumbs=crumbs[:2] + [(f"Certificate #{run.id}", f"/cert/{run.id}/")],
             run=run, d=d, health=health, qr=self.qr(f"/cert/{run.id}/", f"QR code: this certificate, run #{run.id}"))
@@ -375,7 +393,8 @@ class Builder:
         bench_pairs = sorted((p for p in site.pairs if p.has_bench), key=lambda p: abs(p.a.total - p.b.total))
         stress_only = [p for p in site.pairs if not p.has_bench and p.same_test and p.a.headline.steady and p.b.headline.steady]
         stress_only.sort(key=lambda p: -abs(p.a.headline.stability - p.b.headline.stability))
-        picker = [{"s": d.slug, "n": d.title, "p": d.platform, "b": int(d.has_bench), "t": int(d.has_stress)} for d in site.devices]
+        picker = [{"s": d.slug, "n": d.title, "p": d.platform, "b": int(d.has_bench), "t": int(d.has_stress)}
+                  for d in site.devices if d.has_bench or d.has_stress]
         self.page(
             "/compare/", "compare_index.html.j2", priority="0.8",
             title="Compare phones head to head: benchmark and throttling | ThermoHammer",
@@ -421,12 +440,13 @@ class Builder:
                             "dateModified": self.changed.strftime("%Y-%m-%d")}])
 
     def _note_data(self, site: Site) -> dict | None:
-        """The numbers behind the power-mode note, read from the two runs themselves. None if they aren't there."""
-        honor = next((d for d in site.board if d.name == "HONOR 600 Pro"), None)
+        """The numbers behind the power-mode note, read from the two runs themselves. None if they aren't there.
+        The runs were scored with version 4, so the phone is looked up among all devices: on the board or not."""
+        honor = next((d for d in site.devices if d.name == "HONOR 600 Pro"), None)
         if not honor:
             return None
         balanced, performance = site.all_bench_runs.get(4), site.all_bench_runs.get(5)
-        if not balanced or not performance or balanced not in honor.bench_runs or performance not in honor.bench_runs:
+        if not balanced or not performance or balanced.device is not honor or performance.device is not honor:
             return None
         if performance.scores.get("cpu", 0) < balanced.scores.get("cpu", 0) * 1.5:
             return None
@@ -446,7 +466,10 @@ class Builder:
             return None
 
         gap = (performance.created - balanced.created).total_seconds() / 60 if balanced.created and performance.created else None
-        rival = next((d for d in site.board if d.name == "Samsung Galaxy S25 FE"), None)
+        rival = next((d for d in site.devices if d.name == "Samsung Galaxy S25 FE"), None)
+        # the rival as it stood then: its best run of the note's scoring version, never a run on another scale
+        rival_run = max((r for r in rival.all_runs if r.benchmark_version == balanced.benchmark_version),
+                        key=lambda r: r.total, default=None) if rival else None
         trace = site.all_stress_runs.get(1039)
         first = site.all_bench_runs.get(2)
         trace_early = trace_after = None
@@ -464,7 +487,8 @@ class Builder:
                 "total_ratio": performance.total / balanced.total,
                 "db_before": row_value(balanced, "mem", "Database", "Update"),
                 "db_after": row_value(performance, "mem", "Database", "Update"),
-                "rival": rival, "trace": trace, "trace_early": trace_early, "trace_after": trace_after, "first": first,
+                "rival": rival, "rival_run": rival_run, "trace": trace, "trace_early": trace_early,
+                "trace_after": trace_after, "first": first,
                 "path": "/notes/power-mode-doubles-cpu-score/"}
 
     def _notes(self, site: Site) -> None:
@@ -514,7 +538,7 @@ class Builder:
         self.put("llms.txt", self.env.get_template("llms.txt.j2").render())
         # the data behind the boards, for anyone who wants to chart it themselves
         self.put("data/leaderboard.json", json.dumps({
-            "updated": self.changed.isoformat(), "source": cfg.abs_url("/leaderboard/"),
+            "updated": self.changed.isoformat(), "source": cfg.abs_url("/leaderboard/"), "scoring_version": site.version,
             "benchmark": [{"rank": d.rank, "device": d.name, "platform": d.platform, "chip": d.chip, "gpu": d.gpu,
                            "os": d.os_text, "total": d.total, "sections": d.best.scores, "runs": d.run_count,
                            "url": cfg.abs_url(f"/devices/{d.slug}/")} for d in site.board],

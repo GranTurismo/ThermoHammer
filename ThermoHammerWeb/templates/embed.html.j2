@@ -13,7 +13,7 @@
 </head>
 <body class="embed">
 <a class="embed-head" href="{{ abs_url(link) }}" target="_blank" rel="noopener">
-  <span><b>{{ d.title }}</b><small>{% if kind == 'stress' %}{{ run.minutes }}-min {{ run.load }} stress test · {{ d.platform }} {{ run.os_version }}{% else %}Benchmark · {{ run.os_text }}{% endif %}{% if run.created %} · {{ run.created | day }}{% endif %}</small></span>
+  <span><b>{{ d.title }}</b><small>{% if kind == 'stress' %}{{ run.minutes }}-min {{ run.load }} stress test · {{ d.platform }} {{ run.os_version }}{% else %}Benchmark{% if not run.current %} · scoring version {{ run.benchmark_version }}{% endif %} · {{ run.os_text }}{% endif %}{% if run.created %} · {{ run.created | day }}{% endif %}</small></span>
   {% if kind == 'stress' %}<em style="color:{{ run.color }}">{{ run.stability | pct(0) }}<small>speed kept</small></em>{% else %}<em>{{ run.total | num }}<small>points</small></em>{% endif %}
 </a>
 {% if kind == 'stress' %}

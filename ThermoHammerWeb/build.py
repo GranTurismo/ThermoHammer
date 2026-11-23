@@ -36,7 +36,8 @@ def build_once(cfg: config.Config) -> str:
     builder = Builder(cfg, log=log)
     made = builder.build(site)
     result = builder.publish()
-    log(f"built {made['pages']} pages ({site.stats['devices']} devices, {site.stats['pairs']} comparisons, "
+    log(f"built {made['pages']} pages (scoring version {site.version}, {site.stats['devices']} devices, "
+        f"{len(site.board)} on the benchmark board, {site.stats['pairs']} comparisons, "
         f"{builder.cards.made} share images drawn) in {time.time() - started:.1f}s; "
         f"{result['written']} files written, {result['removed']} removed, {api.requests} API requests → {cfg.out}")
     return site.fingerprint
