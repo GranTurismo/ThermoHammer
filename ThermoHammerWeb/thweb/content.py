@@ -82,7 +82,7 @@ def faq(site) -> list[tuple[str, str]]:
     """Questions and answers for the home page (also given to search engines as structured data). Plain text only."""
     return [
         ("Is ThermoHammer free?",
-         "Yes. It is free on Google Play and the App Store, with no account and no ads."),
+         "Yes. It is free on Google Play, the App Store and the Microsoft Store, with no account and no ads."),
         ("Is a stress test safe for my phone?",
          "Yes. The test runs ordinary calculations and rendering at full load, the kind of work a long game or a video "
          "export does. The operating system stays in charge of every temperature limit; ThermoHammer only measures what "
@@ -102,9 +102,9 @@ def faq(site) -> list[tuple[str, str]]:
          "nothing else keeping it busy. A run that cannot be sent is saved on the device so you can submit it later. The "
          "board shows each device's best verified run."),
         ("Which devices does it run on?",
-         "Android phones and tablets (Android 7 and later) and iPhone and iPad (iOS 16 and later) run the same tests and "
-         "share one leaderboard. Windows PCs appear on the same board, labelled Windows; the Windows app is on its way to "
-         "the Microsoft Store."),
+         "Android phones and tablets (Android 7 and later), iPhone and iPad (iOS 16 and later) and Windows 10 and 11 PCs "
+         "run the same tests and share one leaderboard; Windows PCs are labelled Windows. On a PC, the graphics tests "
+         "need a Direct3D 11 graphics card."),
         ("What data does it send?",
          "No name, no email, no account. Submitting a result sends the measurements, the device model, its chip and its "
          "OS version to the leaderboard, and that is what you see on this site."),

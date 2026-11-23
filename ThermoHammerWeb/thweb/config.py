@@ -35,6 +35,7 @@ class Config:
     play_url = "https://play.google.com/store/apps/details?id=com.granturismo.thermohammer"
     appstore_url = "https://apps.apple.com/app/thermohammer/id6791439615"
     appstore_id = "6791439615"
+    msstore_url = "https://apps.microsoft.com/detail/9MTR6W70JP79"
     privacy_url = "https://gtgroup.dev/thpolicy.html"
     support_url = "https://gtgroup.dev/thermohammer.html"
     support_email = "kupatadze2000@outlook.com"

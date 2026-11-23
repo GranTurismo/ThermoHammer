@@ -10,7 +10,10 @@
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3v11m0 0-4.5-4.5M12 14l4.5-4.5M4.5 19.5h15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <span><small>Download on the</small>App Store</span>
   </a>
-  {% if not compact %}<span class="store-note"><b>Windows:</b> on its way to the Microsoft Store</span>{% endif %}
+  <a class="store" href="{{ cfg.msstore_url }}" rel="noopener" data-store="msstore">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.5 4.6 10.8 3.6v7.2H3.5zM12.2 3.4 20.5 2.2v8.6h-8.3zM3.5 12.2h7.3v7.2l-7.3-1zM12.2 12.2h8.3v8.6l-8.3-1.2z" fill="currentColor"/></svg>
+    <span><small>Get it from the</small>Microsoft Store</span>
+  </a>
 </div>
 {% endmacro %}
 

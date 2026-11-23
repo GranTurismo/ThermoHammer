@@ -205,11 +205,11 @@ class Builder:
              "description": "Phone and PC benchmark with a thermal throttling stress test and a public leaderboard.",
              "publisher": {"@type": "Organization", "name": cfg.publisher}},
             {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "ThermoHammer",
-             "applicationCategory": "UtilitiesApplication", "operatingSystem": "Android, iOS, iPadOS",
+             "applicationCategory": "UtilitiesApplication", "operatingSystem": "Android, iOS, iPadOS, Windows 10, Windows 11",
              "description": "A complete device benchmark (CPU, memory, GPU, everyday apps, AI and an on-device LLM) and a "
                             "controlled stress test that shows when a device throttles and how much speed it keeps.",
              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-             "installUrl": [cfg.play_url, cfg.appstore_url], "url": cfg.abs_url("/"),
+             "installUrl": [cfg.play_url, cfg.appstore_url, cfg.msstore_url], "url": cfg.abs_url("/"),
              "image": cfg.abs_url("/" + self.assets["img/icon-512.png"]),
              "author": {"@type": "Organization", "name": cfg.publisher}},
             {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
@@ -220,7 +220,7 @@ class Builder:
             title="ThermoHammer: phone benchmark and thermal throttling test",
             description=f"Benchmark your whole phone or PC in six sections, then stress it to see when it throttles and how "
                         f"much speed it keeps. {site.stats['devices']} devices and {site.stats['runs']} verified runs on the "
-                        f"public leaderboard. Free for Android and iPhone.",
+                        f"public leaderboard. Free for Android, iPhone and Windows.",
             jsonld_blocks=blocks, hero=hero, faq=faq, featured=featured, note=note,
             steady=hero[0] if hero else None, fader=hero[-1] if len(hero) > 1 else None)
 
