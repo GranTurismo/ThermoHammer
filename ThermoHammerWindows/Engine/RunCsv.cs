@@ -130,6 +130,10 @@ public static class RunCsv
         }
         if (r.Llm is { } llm)
         {
+            // version 5: each engine's points, a third of the section each (the NPU's is 0: no LLM engine on Windows yet); then the best
+            // engine's points at each phase, shown as on the phones
+            foreach (var a in LlmAccels.All) Pts("llm", $"{Key(a.ToString())}_points", llm.Points(a));
+            Pts("llm", "npu_points", llm.NpuPoints);
             Pts("llm", "prefill_points", llm.PrefillPoints);
             Pts("llm", "decode_points", llm.DecodePoints);
             foreach (var a in LlmAccels.All)

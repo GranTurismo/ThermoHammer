@@ -4,14 +4,15 @@ namespace ThermoHammer.Engine;
 // BENCHMARK — the same six sections and the same scoring as the Android app
 // (engine/Benchmark.kt), the iPhone app (BenchmarkModels.swift) and the server
 // (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI + LLM, every test 6000 points
-// on the Snapdragon 8 Elite reference phone. Change a number here only together
-// with those three.
+// on the Snapdragon 8 Elite reference phone (Honor VKP-NX9) in Performance mode —
+// the median of its runs of 2026-11-23, scoring version 5. Change a number here
+// only together with those three (BenchmarkScoreTests pins the same medians).
 // ─────────────────────────────────────────────────────────────────────────────
 
 public static class BenchmarkScore
 {
     /// <summary>Bump when a scene, the resolution or the scoring changes — scores compare only within a version.</summary>
-    public const int Version = 4;
+    public const int Version = 5;
     public const float WarmupS = 2, WindowS = 5;
 
     public static int Points(GpuTest t, double fps) => (int)Math.Round(fps * t.Weight(), MidpointRounding.AwayFromZero);
@@ -86,7 +87,8 @@ public static class GpuTests
     public static string Title(this GpuTest t) => t switch { GpuTest.LakeValley => "LAKE VALLEY", GpuTest.NeonCity => "NEON CITY", _ => "NEON CITY RT" };
     public static int Seconds(this GpuTest t) => t switch { GpuTest.LakeValley => 50, _ => 60 };
     public static bool RayTracing(this GpuTest t) => t == GpuTest.NeonCityRT;
-    public static double Weight(this GpuTest t) => t switch { GpuTest.LakeValley => 46.3, GpuTest.NeonCity => 228.0, _ => 448.0 };
+    /// <summary>fps → points: the reference phone's 129.85, 28.98 and 14.12 fps = 6000.</summary>
+    public static double Weight(this GpuTest t) => t switch { GpuTest.LakeValley => 46.21, GpuTest.NeonCity => 207.0, _ => 424.9 };
 }
 
 public sealed record GpuTestResult(GpuTest Test, bool Supported, double AvgFps, double LowFps, int Frames, float StabilityPct, int Points)
@@ -136,8 +138,8 @@ public sealed record CpuResult(List<CpuTestRun> Runs)
 
 public static class CpuScore
 {
-    // geometric-mean kernel ops/s worth 6000 points (the Honor, 2026-10-26 — see Benchmark.kt)
-    public const double RefMath = 1469, RefData = 647, RefCrypto = 580, RefMulti = 5003;
+    // geometric-mean kernel ops/s worth 6000 points (the Honor in Performance mode, 2026-11-23 — see Benchmark.kt)
+    public const double RefMath = 3039, RefData = 1533, RefCrypto = 1184, RefMulti = 8884;
     public static double Ref(CpuTest t) => t switch { CpuTest.Math => RefMath, CpuTest.Data => RefData, CpuTest.Crypto => RefCrypto, _ => RefMulti };
     public static int Points(CpuTest t, double value) => BenchmarkScore.Round(6000 * Math.Max(value, 0) / Ref(t));
     public static int Overall(IReadOnlyCollection<int> points) => BenchmarkScore.Geomean(points);
@@ -175,9 +177,10 @@ public sealed record MemResult(RamResult Ram, StorageResult Storage, DbResult Db
 
 public static class MemScore
 {
-    public const double RefRead = 57.8, RefWrite = 28.4, RefCopy = 18.7, RefLatency = 245.0;           // GB/s, ns
-    public const double RefSeqRead = 1750, RefSeqWrite = 1300, RefRandomRead = 29_000, RefRandomWrite = 13_400;
-    public const double RefInsert = 9700, RefUpdate = 36_000, RefQuery = 20_300;
+    public const double RefRead = 63.5, RefWrite = 28.3, RefCopy = 19.7, RefLatency = 134.0;           // GB/s, ns
+    public const double RefSeqRead = 1780, RefSeqWrite = 1309, RefRandomRead = 24_700, RefRandomWrite = 13_380;
+    // version 5: the database steps are timed after their warm-up (MemBench.WarmUp) — the old references timed the climb
+    public const double RefInsert = 15_700, RefUpdate = 389_000, RefQuery = 43_800;
 
     /// <summary>6000 × the geometric mean of value ÷ reference; 0 if any part is 0.</summary>
     private static int Geo(double[] ratios) =>
@@ -258,14 +261,15 @@ public sealed record UxResult(WebResult? Web, ScrollResult? Scroll, GalleryResul
 
 public static class UxScore
 {
-    public const double RefLayout = 1320, RefCanvas = 2730, RefCss = 1980, RefSvg = 3130, RefJs = 2160;
-    public const double RefScroll = 66_600;
-    public const double RefJpeg = 122, RefWebp = 99, RefAvif = 103;
-    public const double RefPhoto = 397;
-    public const double RefVideo = 298;
-    // PROVISIONAL until the Honor's version-4 report (as on Android, iOS and the server)
-    public const double RefVideo8k = 74.5, RefExport = 100, RefExport8k = 30;
-    public const double QrWeight = 10.67;
+    public const double RefLayout = 3061, RefCanvas = 4818, RefCss = 3061, RefSvg = 4898, RefJs = 4002;
+    public const double RefScroll = 66_560;
+    public const double RefJpeg = 229.3, RefWebp = 167.8, RefAvif = 173.6;
+    public const double RefPhoto = 350;
+    public const double RefVideo = 296;
+    // 8K decode: the mean of the Honor's HEVC (91.1) and AV1 (75.0) rates. Export: one of its 4K hardware encoders' rate (it has no
+    // AV1 encoder, so it scores two thirds of the 4K part); 8K export = a quarter of that (the same pixel rate), as it encodes no 8K
+    public const double RefVideo8k = 83.1, RefExport = 136.3, RefExport8k = 34.1;
+    public const double QrWeight = 5.122;   // zxing-cpp decodes/s → points: the Honor's 1,171.5/s = 6000
     /// <summary>dB on the lower third: honest encodes 29.7–33.9, a starved one 24.2 — below this the export is broken.</summary>
     public const double MinPsnr = 26;
 
@@ -326,9 +330,10 @@ public sealed record AiResult(List<AiRun> Runs, string? NpuRuntime, string? NpuP
 
 public static class AiScore
 {
-    public static readonly double[] RefCpu = [330, 18.2, 4.71, 2.65, 42, 2890];
-    public static readonly double[] RefGpu = [658, 85.5, 33.1, 92.8, 182, 1470];
-    public static readonly double[] RefNpu = [1690, 473, 229, 774, 993, 2100];
+    public static readonly double[] RefCpu = [543.6, 28.67, 7.73, 4.59, 64.5, 3968];
+    // version 5: the phone's GPU re-measured on the path that answers right (LiteRT's OpenGL backend on the Adreno 830)
+    public static readonly double[] RefGpu = [280.7, 36.7, 16.6, 38.8, 74.2, 582];
+    public static readonly double[] RefNpu = [1726, 485, 214.6, 689.3, 986, 2154];
     public static double Ref(AiTest t, AiAccel a) => (a switch { AiAccel.Cpu => RefCpu, AiAccel.Gpu => RefGpu, _ => RefNpu })[(int)t - 1];
     public static int Accel(AiAccel a, double[] ips) =>
         BenchmarkScore.Round(AiTests.All.Select((t, i) => 6000 * Math.Max(ips[i], 0) / Ref(t, a)).Sum() / AiTests.All.Length);
@@ -337,6 +342,7 @@ public static class AiScore
 
 // ── LLM ──
 
+/// <summary>The engines llama.cpp runs Gemma 3 1B on here. The third engine of version 5's rule, the NPU, has none on Windows yet (LlmScore.NoNpu).</summary>
 public enum LlmAccel { Cpu, Gpu }
 public enum LlmPhase { Build, Warmup, Prefill, Decode }
 
@@ -352,19 +358,49 @@ public sealed record LlmRun(LlmAccel Accel, double Prefill, double Decode, int T
 public sealed record LlmResult(List<LlmRun> Runs, string? GpuName, double FreeGb, int LargestModel, string? Error = null)
 {
     public LlmRun? Run(LlmAccel a) => Runs.FirstOrDefault(r => r.Accel == a);
+    /// <summary>One engine's points: its prompt and reply rates against the same engine's reference (LlmScore).</summary>
+    public int Points(LlmAccel a) => Run(a) is { } r ? LlmScore.Engine(a, r.Prefill, r.Decode) : 0;
+    /// <summary>The NPU's points: 0 — Windows has no LLM engine for the NPU yet, so that third counts 0 (LlmScore.NoNpu).</summary>
+    public int NpuPoints => 0;
+    /// <summary>The fastest engine at each phase — what a chat app on this PC could get (shown, not scored).</summary>
     public double Prefill => Runs.Count == 0 ? 0 : Runs.Max(r => r.Prefill);
     public double Decode => Runs.Count == 0 ? 0 : Runs.Max(r => r.Decode);
-    public int PrefillPoints => LlmScore.PrefillPoints(Prefill);
-    public int DecodePoints => LlmScore.DecodePoints(Decode);
-    public int Score => LlmScore.Overall(Prefill, Decode);
+    /// <summary>The best engine's points for each phase, against that engine's own reference (CSV, the report; shown, not scored).</summary>
+    public int PrefillPoints => Math.Max(Run(LlmAccel.Cpu) is { } c ? LlmScore.Phase(c.Prefill, LlmScore.RefCpuPrefill) : 0,
+        Run(LlmAccel.Gpu) is { } g ? LlmScore.Phase(g.Prefill, LlmScore.RefGpuPrefill) : 0);
+    public int DecodePoints => Math.Max(Run(LlmAccel.Cpu) is { } c ? LlmScore.Phase(c.Decode, LlmScore.RefCpuDecode) : 0,
+        Run(LlmAccel.Gpu) is { } g ? LlmScore.Phase(g.Decode, LlmScore.RefGpuDecode) : 0);
+    /// <summary>Version 5's rule: the CPU, the GPU and the NPU each count a third — an engine that can't run the task counts 0.</summary>
+    public int Score => LlmScore.Overall(Points(LlmAccel.Cpu), Points(LlmAccel.Gpu), NpuPoints);
 }
 
 public static class LlmScore
 {
-    public const double RefPrefill = 362.7, RefDecode = 17.23;
-    public static int PrefillPoints(double tps) => BenchmarkScore.Round(6000 * Math.Max(tps, 0) / RefPrefill);
-    public static int DecodePoints(double tps) => BenchmarkScore.Round(6000 * Math.Max(tps, 0) / RefDecode);
-    public static int Overall(double prefill, double decode) => BenchmarkScore.Geomean([PrefillPoints(prefill), DecodePoints(decode)]);
+    // Version 5: Gemma 3 1B (4-bit) on each engine — llama.cpp on the CPU and the GPU (seeded weights, the model's exact shape),
+    // an NPU runtime on the NPU (LiteRT-LM on Android) — each against the same engine's reference, then the three averaged (rule B,
+    // BENCHMARK_V5_PLAN.md). Tokens per second worth 6000 points per engine: the Honor VKP-NX9 in Performance mode (Benchmark.kt).
+    public const double RefCpuPrefill = 160, RefCpuDecode = 55;
+    public const double RefGpuPrefill = 890, RefGpuDecode = 32;
+    public const double RefNpuPrefill = 5450, RefNpuDecode = 52;
+
+    /// <summary>Why the NPU's third is 0 on every PC, as the result and the report say it.</summary>
+    public const string NoNpu = "no LLM engine on Windows yet — counts 0";
+
+    /// <summary>One phase's points against `reference` tokens/s.</summary>
+    public static int Phase(double tokensPerS, double reference) => BenchmarkScore.Round(6000 * Math.Max(tokensPerS, 0) / reference);
+
+    /// <summary>One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0.</summary>
+    public static int Engine(double prefill, double decode, double refPrefill, double refDecode) =>
+        !(prefill > 0) || !(decode > 0) ? 0 : BenchmarkScore.Round(6000 * Math.Sqrt(prefill / refPrefill * (decode / refDecode)));
+
+    public static int Engine(LlmAccel a, double prefill, double decode) => a == LlmAccel.Cpu
+        ? Engine(prefill, decode, RefCpuPrefill, RefCpuDecode)
+        : Engine(prefill, decode, RefGpuPrefill, RefGpuDecode);
+
+    public static int Npu(double prefill, double decode) => Engine(prefill, decode, RefNpuPrefill, RefNpuDecode);
+
+    /// <summary>Each engine counts a third; one the PC lacks or can't run the task on scores 0 there.</summary>
+    public static int Overall(int cpu, int gpu, int npu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0) + Math.Max(npu, 0)) / 3.0);
 }
 
 // ── the whole run ──

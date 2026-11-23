@@ -19,73 +19,6 @@ public sealed partial record BenchmarkRecord
     public static BenchmarkRecord From(BenchmarkResult r) => From(r, DeviceInfo.OsVersion, DeviceInfo.OsBuild, DeviceInfo.Model);
 }
 
-/// <summary>The request body of POST /benchmark — the field names the server (and the phone apps) use.</summary>
-public sealed class BenchmarkPayload
-{
-    public int SessionId;
-    public string Hash = "";
-    public int BenchmarkVersion;
-    public string DeviceManufacturer = "";
-    public string DeviceModel = "";
-    public int Os = DeviceInfo.OsPlatform;
-    public string OsVersion = "";
-    public string? OsBuild;
-    public string? SocModel;
-    public string GpuName = "";
-    public double Test1Fps, Test1LowFps, Test2Fps, Test2LowFps, Test3Fps, Test3LowFps;
-    public bool RayTracing;
-    public double WebLayout, WebCanvas, WebCss, WebSvg, WebJs;
-    public double QrRate;
-    public double? MlkitQrRate;
-    public double CpuMath, CpuData, CpuCrypto, CpuMulti;
-    public double ScrollSpeed, ScrollDropped;
-    public double GalleryJpeg, GalleryWebp, GalleryAvif;
-    public double PhotoEdit;
-    public double VideoAvc, VideoHevc, VideoVp9, VideoAv1;
-    public double Video8kHevc, Video8kAv1;
-    public int VideoHardware;
-    public double ExportAvc, ExportHevc, ExportAv1, Export8kHevc;
-    public double ExportAvcPsnr, ExportHevcPsnr, ExportAv1Psnr, Export8kHevcPsnr;
-    public int ExportHardware;
-    public double AiClassifyCpu, AiClassifyGpu, AiClassifyNpu, AiDetectCpu, AiDetectGpu, AiDetectNpu;
-    public double AiSegmentCpu, AiSegmentGpu, AiSegmentNpu, AiUpscaleCpu, AiUpscaleGpu, AiUpscaleNpu;
-    public double AiDepthCpu, AiDepthGpu, AiDepthNpu, AiSoundCpu, AiSoundGpu, AiSoundNpu;
-    public string? AiNpuRuntime;
-    public double MemRead, MemWrite, MemCopy, MemLatency;
-    public double StorageSeqRead, StorageSeqWrite, StorageRandomRead, StorageRandomWrite;
-    public bool StorageDirect;
-    public double DbInsert, DbUpdate, DbQuery;
-    public double LlmPrefillCpu, LlmDecodeCpu, LlmPrefillGpu, LlmDecodeGpu;
-    public string? LlmGpu;
-    public double LlmFreeGb;
-    public int ValidityFlags;
-    public string? AppVersion;
-
-    /// <summary>Exactly what the server re-derives and verifies (BenchmarkScoring.Canonical).</summary>
-    public string Canonical()
-    {
-        static string F2(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
-        string[] parts =
-        [
-            "bench", BenchmarkVersion.ToString(CultureInfo.InvariantCulture), DeviceManufacturer, DeviceModel, OsVersion, GpuName,
-            F2(Test1Fps), F2(Test1LowFps), F2(Test2Fps), F2(Test2LowFps), F2(Test3Fps), F2(Test3LowFps), RayTracing ? "1" : "0",
-            F2(WebLayout), F2(WebCanvas), F2(WebCss), F2(WebSvg), F2(WebJs), F2(QrRate), F2(MlkitQrRate ?? 0),
-            F2(CpuMath), F2(CpuData), F2(CpuCrypto), F2(CpuMulti), F2(ScrollSpeed), F2(ScrollDropped),
-            F2(GalleryJpeg), F2(GalleryWebp), F2(GalleryAvif), F2(PhotoEdit), F2(VideoAvc), F2(VideoHevc), F2(VideoVp9), F2(VideoAv1),
-            F2(Video8kHevc), F2(Video8kAv1), VideoHardware.ToString(CultureInfo.InvariantCulture), F2(ExportAvc), F2(ExportHevc), F2(ExportAv1), F2(Export8kHevc),
-            F2(ExportAvcPsnr), F2(ExportHevcPsnr), F2(ExportAv1Psnr), F2(Export8kHevcPsnr), ExportHardware.ToString(CultureInfo.InvariantCulture),
-            F2(AiClassifyCpu), F2(AiClassifyGpu), F2(AiClassifyNpu), F2(AiDetectCpu), F2(AiDetectGpu), F2(AiDetectNpu),
-            F2(AiSegmentCpu), F2(AiSegmentGpu), F2(AiSegmentNpu), F2(AiUpscaleCpu), F2(AiUpscaleGpu), F2(AiUpscaleNpu),
-            F2(AiDepthCpu), F2(AiDepthGpu), F2(AiDepthNpu), F2(AiSoundCpu), F2(AiSoundGpu), F2(AiSoundNpu), AiNpuRuntime ?? "",
-            F2(MemRead), F2(MemWrite), F2(MemCopy), F2(MemLatency), F2(StorageSeqRead), F2(StorageSeqWrite),
-            F2(StorageRandomRead), F2(StorageRandomWrite), StorageDirect ? "1" : "0", F2(DbInsert), F2(DbUpdate), F2(DbQuery),
-            F2(LlmPrefillCpu), F2(LlmDecodeCpu), F2(LlmPrefillGpu), F2(LlmDecodeGpu), LlmGpu ?? "", F2(LlmFreeGb),
-            ValidityFlags.ToString(CultureInfo.InvariantCulture),
-        ];
-        return string.Join("|", parts);
-    }
-}
-
 public sealed record BenchmarkSubmitResponse(int Id, int Score, int Rank);
 
 /// <summary>One machine's best benchmark run, as GET /benchmark/leaderboard returns it.</summary>
@@ -139,7 +72,7 @@ public static class BenchmarkUpload
         static double Low(double low, double fps) => Math.Min(low, fps);
         var p = new BenchmarkPayload
         {
-            SessionId = session.Id, BenchmarkVersion = r.Version, DeviceManufacturer = DeviceInfo.Clip(DeviceInfo.Manufacturer), DeviceModel = DeviceInfo.Clip(DeviceInfo.Model),
+            SessionId = session.Id, BenchmarkVersion = r.Version, Os = DeviceInfo.OsPlatform, DeviceManufacturer = DeviceInfo.Clip(DeviceInfo.Manufacturer), DeviceModel = DeviceInfo.Clip(DeviceInfo.Model),
             OsVersion = DeviceInfo.Clip(DeviceInfo.OsVersion), OsBuild = DeviceInfo.ClipOrNull(DeviceInfo.OsBuild),
             SocModel = DeviceInfo.ClipOrNull(DeviceInfo.ShortCpu(DeviceInfo.CpuName)), GpuName = gpu,
             Test1Fps = r.Test1Fps, Test1LowFps = Low(r.Test1LowFps, r.Test1Fps), Test2Fps = r.Test2Fps, Test2LowFps = Low(r.Test2LowFps, r.Test2Fps),
@@ -164,6 +97,7 @@ public static class BenchmarkUpload
             DbInsert = r.DbInsert, DbUpdate = r.DbUpdate, DbQuery = r.DbQuery,
             LlmPrefillCpu = l.PrefillCpu, LlmDecodeCpu = l.DecodeCpu, LlmPrefillGpu = l.PrefillGpu, LlmDecodeGpu = l.DecodeGpu,
             LlmGpu = DeviceInfo.ClipOrNull(l.Gpu), LlmFreeGb = l.FreeGb,
+            LlmPrefillNpu = 0, LlmDecodeNpu = 0, LlmNpu = null,     // no NPU engine for the LLM on Windows yet: its third counts 0
             ValidityFlags = r.ValidityFlags,
             AppVersion = DeviceInfo.ClipOrNull(AppVersion),
         };
@@ -315,14 +249,15 @@ public static class BenchmarkReport
         }
         if (r.Llm is { } llm)
         {
-            Line($"LLM · {Pts(llm.Score)} pts = prefill {Pts(llm.PrefillPoints)} ({F(llm.Prefill)} tok/s) · decode {Pts(llm.DecodePoints)} ({F(llm.Decode)} tok/s) · " +
+            Line($"LLM · {Pts(llm.Score)} pts = CPU {Pts(llm.Points(LlmAccel.Cpu))} · GPU {Pts(llm.Points(LlmAccel.Gpu))} · NPU {Pts(llm.NpuPoints)} (each a third; Gemma 3 1B on every engine) · " +
                  $"{F(llm.FreeGb)} GB free, largest model {llm.LargestModel}B" + (llm.Error is { } le ? $" · not run: {le}" : ""));
             foreach (var a in LlmAccels.All)
             {
                 if (llm.Run(a) is { Decode: > 0 } run)
-                    Line($"LLM {a.Label()} · prefill {F(run.Prefill)} tok/s · decode {F(run.Decode)} tok/s · " + (a == LlmAccel.Gpu ? (llm.GpuName ?? "?") : $"{run.Threads} threads (prompt {run.BatchThreads})"));
+                    Line($"LLM {a.Label()} · {Pts(llm.Points(a))} pts · prefill {F(run.Prefill)} tok/s · decode {F(run.Decode)} tok/s · " + (a == LlmAccel.Gpu ? (llm.GpuName ?? "?") : $"{run.Threads} threads (prompt {run.BatchThreads})"));
                 else Line($"LLM {a.Label()} · 0 ({llm.Run(a)?.Error ?? "not run"})");
             }
+            Line($"LLM NPU · 0 ({LlmScore.NoNpu})");
         }
         foreach (var why in r.NotYet) Line($"Not run: {why}");
         return s.ToString();

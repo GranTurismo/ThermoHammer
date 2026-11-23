@@ -260,12 +260,17 @@ public sealed class BenchmarkResultView : Grid
                 Metric(a == LlmAccel.Cpu ? "THREADS" : "GPU", a == LlmAccel.Cpu ? (run is { Threads: > 0 } ? run.Threads.ToString() : "—") : (llm.GpuName ?? "—")[..Math.Min(14, (llm.GpuName ?? "—").Length)], Forge.Ink1)));
             if (llm.Error == null && run?.Error is { } err) content.Add(Note($"{a.Label()}: {err}", missing));
         }
+        // the third engine of version 5's rule: the phones run Gemma 3 1B on their NPU; Windows has no such engine yet
+        content.Add(Note($"NPU: {LlmScore.NoNpu}.", missing));
+        content.Add(Note($"CPU {llm.Points(LlmAccel.Cpu).N0()} · GPU {llm.Points(LlmAccel.Gpu).N0()} · NPU {llm.NpuPoints.N0()} points — each a third", Forge.Ink1));
         if (llm.Error != null) content.Add(Note($"Not run: {llm.Error}.", missing));
         content.Add(Note(llm.LargestModel > 0
             ? $"Largest common model that fits in the memory Windows has free now: {llm.LargestModel}B (4-bit, {llm.FreeGb:0.0} GB)."
             : $"Memory free now: {llm.FreeGb:0.0} GB — too little for even a 1B model.", Forge.Ink1));
-        content.Add(Note($"Prefill reads a 512-token prompt; decode writes the reply token by token. The faster of the CPU and the GPU counts for each: {LlmScore.RefPrefill:0} and {LlmScore.RefDecode:0.0} tokens/s = 6000 points. The weights come from a seed — the words are random, the work is real."));
-        return Card("LLM · LLAMA 3.2 3B · 4-BIT", "PROMPT · REPLY", llm.Score, BenchColor.Llm, content.ToArray());
+        content.Add(Note("The same task on every engine: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token (decode). " +
+            "llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real). Each engine is measured " +
+            "against its own reference and counts a third; one the PC can't run counts 0."));
+        return Card("LLM · GEMMA 3 1B · 4-BIT", "PROMPT · REPLY", llm.Score, BenchColor.Llm, content.ToArray());
     }
 
     private FrameworkElement GpuCard(GpuTestResult g) => Card($"GPU TEST {g.Test.Number()}", g.Test.Title(), g.Points, BenchColor.Gpu(g.Test),

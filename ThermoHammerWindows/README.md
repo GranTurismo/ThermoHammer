@@ -18,8 +18,9 @@ and `Assets/` (the editing photos as JPEG, the ONNX models).
 
 The ONNX models are made from the phones' `.tflite` files by `BenchmarkScene/build_onnx_models.py`.
 
-Unit tests for the logic with no Windows calls in it (share links and texts, CSV export, the stress curve, FIND MY LOST SPEED, the
-benchmark's update impact): `dotnet test Tests` — plain .NET, so they run on a Mac too.
+Unit tests for the logic with no Windows calls in it (the benchmark's scoring and signed payload, share links and texts, CSV export,
+the stress curve, FIND MY LOST SPEED, the benchmark's update impact, the DLLs' export lists): `dotnet test Tests` — plain .NET, so they
+run on a Mac too.
 
 ## Microsoft Store
 
@@ -37,7 +38,7 @@ note, trying a package on a PC). The version is `<Version>` in `ThermoHammer.csp
 | UX photo editing | Direct3D 11 (`Engine/Ux/PhotoEditScene.cs`) |
 | UX video, export | Media Foundation: DXVA decoders, hardware encoders through the sink writer, a D3D11 video processor between them |
 | AI | ONNX Runtime from Windows ML (self-contained): CPU (int8), DirectML on the GPU (float16), and the NPU (int8) through the vendor's provider (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI) that Windows ML downloads on Windows 11 24H2+ (`Engine/Ai/AiNpu.cs`: only on a PC that has an NPU, only the NPU providers, the first run may download one). **The NPU row has never run on real NPU hardware**; where it can't run it says why and scores 0 |
-| LLM | llama.cpp through `benchllm.dll`: CPU and Vulkan; the Vulkan device is matched to the adapter the other GPU tests use (`Engine/Llm/LlmGpuChoice.cs`) |
+| LLM | Gemma 3 1B's shape (seeded weights, `bc_llm_set_model`) in llama.cpp through `benchllm.dll`: CPU and Vulkan; the Vulkan device is matched to the adapter the other GPU tests use (`Engine/Llm/LlmGpuChoice.cs`). The NPU, the third engine of scoring version 5, has no LLM engine on Windows yet and counts 0 |
 
 The benchmark runs full screen on the window's monitor: the browser tests render a fixed 1920×1080 physical pixels on the phones, and the
 stage is as big as the window, so a small window would render fewer pixels and score higher. A section that crashed the app twice in the same build
