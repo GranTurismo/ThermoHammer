@@ -55,14 +55,36 @@ builds need the API's `createdAt`/`osBuild` fields on `GET /leaderboard` (added 
 lines are simply left out. Device pages also show **"Did an update change it?"**, the median score per OS version,
 once a model has benchmark runs on two versions.
 
-Tests for the derived numbers: `.venv/bin/python -m unittest discover -s tests`.
+### Scoring versions
+
+The API's board (`GET /benchmark/leaderboard`) and model statistics (`GET /benchmark/model`) list only runs of the
+server's current scoring version (`BenchmarkScoring.CurrentVersion`), while `GET /benchmark/{id}` serves every verified
+run with its `benchmarkVersion`. Points of two versions are not comparable, so:
+
+- The site's version is the highest `benchmarkVersion` among the board's runs. An empty board with runs on record has
+  restarted on a newer version than any of them (the next one): that is the state right after a switch.
+- Only runs of that version rank or compare: the board, each device's best, comparisons, section leaders, Phone Health
+  and "Did an update change it?". Runs of an earlier version keep their run, certificate and embed pages with a note on
+  how they were scored, and are listed on their device's page in a table of their own.
+- A device whose runs are all from an earlier version keeps its page, marked "not on the current board yet". With an
+  empty board, the home page and the leaderboard say when the board restarted.
+- Run ids are walked whether or not the board names any; the highest id seen is kept in `.cache/api/` so known ids stay
+  cached, and the walk stops after six missing ids in a row beyond it.
+- What 6,000 points stood for in each version is `REFERENCES` in `thweb/content.py`. Add the new version's reference
+  there when the scoring changes again.
+
+Tests: `.venv/bin/python -m unittest discover -s tests`. `tests/test_versions.py` builds whole sites from made-up API
+answers (no network): the board as it is, right after a switch (empty board, version 4 runs only) and with both
+versions.
 
 ## Changing things
 
 - **Copy**: page text is in `templates/`; the test list and FAQ are in `thweb/content.py`. The test descriptions
   mirror the apps' Diagnostics screen, so change them there first.
 - **The lab note** (`templates/note_power_mode.html.j2`) reads its numbers from benchmark runs #4 and #5 and stress
-  run #1039. If those runs ever disappear from the API, the note is left out rather than shown with wrong numbers.
+  run #1039. They were scored with version 4, so the HONOR is found among all devices, on the board or not. If those
+  runs ever disappear from the API, the note is left out rather than shown with wrong numbers.
+- **Terms of use** are `templates/terms.html.j2` (`/terms/`), including the Gemma notice for the LLM test.
 - **A new screenshot**: put the PNG in `assets-src/screens/`, run `.venv/bin/python tools/prepare_assets.py`, and
   reference it in `templates/home.html.j2`.
 - **A device name**: add a line to `data/device_aliases.tsv`. The stored name stays visible on the device's page.
