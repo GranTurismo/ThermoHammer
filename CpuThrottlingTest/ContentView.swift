@@ -87,7 +87,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Forge.bg.ignoresSafeArea()
+            Forge.bg.forgeGrain().ignoresSafeArea()     // the grain on the background only, as on Android
 
             // a Mac window (or an iPad): a sidebar and the instrument laid out across the window; a phone: one column
             GeometryReader { geo in
@@ -156,7 +156,6 @@ struct ContentView: View {
                 .zIndex(13)
             }
         }
-        .forgeGrain()
         .overlay { benchmarkLayer }   // above the grain: the stage is clean black
         .overlay { appLayer }         // above the benchmark's result, which opens some of them
         .overlay {

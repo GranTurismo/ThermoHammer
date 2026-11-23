@@ -230,6 +230,10 @@ enum BenchmarkUpload {
     /** Submits a run and marks it submitted with its leaderboard id — what its link and its certificate point at. */
     @MainActor
     static func submitAndRemember(_ r: BenchmarkRecord) async throws -> BenchmarkSubmitResponse {
+        // never the same run twice: the server would take it as a second run of this model
+        if BenchmarkHistoryStore.shared.record(r.id)?.submitted == true {
+            throw NSError(domain: "BenchmarkUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "This run is already on the leaderboard."])
+        }
         do {
             let res = try await submit(r)
             BenchmarkHistoryStore.shared.markSubmitted(r.id, serverId: res.id)

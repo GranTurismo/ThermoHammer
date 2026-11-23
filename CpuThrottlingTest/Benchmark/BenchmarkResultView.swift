@@ -15,6 +15,8 @@ struct BenchmarkResultView: View {
 
     /// The run's leaderboard id once submitted (here or from its certificate): its link, its certificate.
     private var serverId: Int? { record.flatMap { history.record($0.id)?.serverId } }
+    /// Already on the leaderboard (here, from its certificate or from MY RUNS): no second submit button.
+    private var submitted: Bool { record.flatMap { history.record($0.id)?.submitted } ?? false }
 
     /// The run as the share card and the presentation show it.
     private var card: BenchmarkCard {
@@ -407,6 +409,11 @@ struct BenchmarkResultView: View {
             if let record, record.complete, !result.isVerified {
                 Text("Only verified runs can be submitted. This one is kept on your \(LeaderboardService.isMac ? "Mac" : "iPhone") for your own comparisons.")
                     .font(ThermoFont.mono(9)).foregroundColor(Forge.ink1).multilineTextAlignment(.center)
+            } else if let record, record.complete, submitted {
+                // submitted here, the answer is shown above; submitted from the certificate, say so here
+                if submitMessage == nil {
+                    Text("SUBMITTED · ON THE LEADERBOARD").font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Forge.phaseMeasured)
+                }
             } else if let record, record.complete, !network.isConnected, submitMessage == nil {
                 VStack(spacing: 4) {
                     Text("NO INTERNET CONNECTION").font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Ramp.at(0.5))

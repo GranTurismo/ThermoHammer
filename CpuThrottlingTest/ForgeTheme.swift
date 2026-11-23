@@ -195,24 +195,29 @@ extension View {
     }
 }
 
-/// Filmic grain — pre-rendered monochrome noise, tiled once.
+/**
+ * Filmic grain — pre-rendered monochrome noise, tiled: 2–3 % on the background, as on Android (ThermoTheme.forgeGrain).
+ * One noise pixel per screen pixel. Put it on the background, under the content (ContentView), never over the text.
+ */
 struct ForgeGrain: ViewModifier {
-    private static let noiseImage: UIImage = {
-        let size = 128
+    @Environment(\.displayScale) private var displayScale
+
+    private static let noise: CGImage = {
+        let size = 128, alpha = 28                       // ≈ 11 %, × the 0.22 opacity below ≈ 2.4 %
         var rng = SystemRandomNumberGenerator()
         var px = [UInt8](repeating: 0, count: size * size * 4)
         for i in 0..<(size * size) {
-            let v = UInt8.random(in: 0...255, using: &rng)
-            px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v; px[i * 4 + 3] = 28
+            // premultiplied, as the bitmap says: the colour × alpha. The bare colour (up to 255 over alpha 28) made each
+            // pixel up to 22 % white instead of 2–3 %: grey static over the black on an iPhone
+            let v = UInt8((Int.random(in: 0...255, using: &rng) * alpha + 127) / 255)
+            px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v; px[i * 4 + 3] = UInt8(alpha)
         }
-        let data = Data(px)
-        let provider = CGDataProvider(data: data as CFData)!
-        let img = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32,
-                          bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
-                          bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                          provider: provider, decode: nil, shouldInterpolate: false,
-                          intent: .defaultIntent)!
-        return UIImage(cgImage: img).resizableImage(withCapInsets: .zero, resizingMode: .tile)
+        let provider = CGDataProvider(data: Data(px) as CFData)!
+        return CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32,
+                       bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                       provider: provider, decode: nil, shouldInterpolate: false,
+                       intent: .defaultIntent)!
     }()
 
     @ViewBuilder func body(content: Content) -> some View {
@@ -220,7 +225,7 @@ struct ForgeGrain: ViewModifier {
             content                    // on a Mac's lower-density screen the grain reads as static: none there
         } else {
             content.overlay(
-                Image(uiImage: ForgeGrain.noiseImage)
+                Image(decorative: ForgeGrain.noise, scale: displayScale)
                     .resizable(resizingMode: .tile)
                     .allowsHitTesting(false)
                     .opacity(0.22)
