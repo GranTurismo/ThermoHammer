@@ -152,7 +152,7 @@ public static class MemTests
     public static readonly MemTest[] All = [MemTest.Ram, MemTest.Storage, MemTest.Database];
     public static int Number(this MemTest t) => (int)t;
     public static string Title(this MemTest t) => t switch { MemTest.Ram => "RAM", MemTest.Storage => "STORAGE", _ => "DATABASE" };
-    public static int Seconds(this MemTest t) => t switch { MemTest.Ram => 10, MemTest.Storage => 12, _ => 8 };
+    public static int Seconds(this MemTest t) => t switch { MemTest.Ram => 10, MemTest.Storage => 12, _ => 14 };   // the database's steps each warm up first (MemBench.WarmUp)
     public static string[] Labels(this MemTest t) => t switch
     {
         MemTest.Ram => ["READ", "WRITE", "COPY", "LATENCY"],

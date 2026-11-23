@@ -18,6 +18,7 @@ public sealed class MemBench
 {
     private const double Slice = 0.25, Mb = 1_000_000;
     private const int RandomThreads = 4, Chats = 40, History = 20_000;
+    private const double DbWarmMaxS = 4.0;      // the most a database step warms up, untimed (WarmUp)
 
     /// <summary>Read, write and copy bandwidth with every core streaming, then the latency of one random access.</summary>
     public RamResult Ram(Func<bool> isActive, Action<MemProgress> onProgress)
@@ -83,9 +84,32 @@ public sealed class MemBench
     }
 
     /// <summary>
+    /// Runs `op` untimed until its rate stops rising: 100 ms buckets until the last five agree within 10 % and none is far
+    /// below the best so far, at most <see cref="DbWarmMaxS"/> — Android's MemBench.warmUp, which the version 5 references
+    /// assume. SQLite's rate climbs for a second or two before it levels off (the reference phone's updates: about 15k/s at
+    /// first, a steady 400k/s after 1.2–2.1 s, a different climb each time), so a step timed from a cold start measured the climb.
+    /// </summary>
+    private static void WarmUp(Func<bool> isActive, Action op)
+    {
+        long t0 = Clock.Ns();
+        var recent = new Queue<int>();
+        int best = 0;
+        while (isActive() && Clock.Ns() - t0 < (long)(DbWarmMaxS * 1e9))
+        {
+            long b0 = Clock.Ns();
+            int n = 0;
+            while (Clock.Ns() - b0 < 100_000_000L) { op(); n++; }
+            best = Math.Max(best, n);
+            recent.Enqueue(n);
+            if (recent.Count > 5) recent.Dequeue();
+            if (recent.Count == 5 && recent.Min() >= 0.9 * recent.Max() && recent.Min() >= 0.85 * best) return;
+        }
+    }
+
+    /// <summary>
     /// SQLite like a messaging app (WAL, synchronous NORMAL — the phones' system settings): a chat history of 20,000
     /// messages, then new messages saved one transaction each, messages marked read one transaction each, and chats
-    /// opened (the latest 30 messages of a random chat, read row by row).
+    /// opened (the latest 30 messages of a random chat, read row by row). Each step warms up untimed first (WarmUp).
     /// </summary>
     public DbResult Database(Func<bool> isActive, Action<MemProgress> onProgress)
     {
@@ -120,21 +144,26 @@ public sealed class MemBench
             db.Exec("COMMIT");
             string detail = "SQLITE · WAL · SYSTEM SETTINGS";
             var plan = new Plan(MemTest.Database, [2.5, 2, 2], onProgress);
+            WarmUp(isActive, Add);
             double inserts = plan.Run(0, "TX/S", MemAccess.RandomWrite, detail, isActive, s => PerSecond(s, Add));
             using var update = db.Prepare("UPDATE messages SET unread = 0 WHERE id = ?");
-            double updates = plan.Run(1, "TX/S", MemAccess.RandomWrite, detail, isActive, s => PerSecond(s, () =>
+            void MarkRead()
             {
                 update.Reset();
                 update.Bind(1, 1 + rnd.Below(History));
                 update.Step();
-            }));
+            }
+            WarmUp(isActive, MarkRead);
+            double updates = plan.Run(1, "TX/S", MemAccess.RandomWrite, detail, isActive, s => PerSecond(s, MarkRead));
             using var query = db.Prepare("SELECT id, sender, body, sent FROM messages WHERE chat = ? ORDER BY sent DESC LIMIT 30");
-            double queries = plan.Run(2, "CHATS/S", MemAccess.RandomRead, "SQLITE · LATEST 30 MESSAGES OF A CHAT", isActive, s => PerSecond(s, () =>
+            void OpenChat()
             {
                 query.Reset();
                 query.Bind(1, rnd.Below(Chats));
                 while (query.Step()) query.ColumnText(2);
-            }));
+            }
+            WarmUp(isActive, OpenChat);
+            double queries = plan.Run(2, "CHATS/S", MemAccess.RandomRead, "SQLITE · LATEST 30 MESSAGES OF A CHAT", isActive, s => PerSecond(s, OpenChat));
             return new DbResult(inserts, updates, queries);
         }
         finally
