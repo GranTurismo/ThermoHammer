@@ -7,6 +7,7 @@ internal static unsafe partial class LlmNative
 {
     private const string Dll = "benchllm";
     public const int Prompt = 512, Seed = 3;
+    public const int ModelGemma3_1B = 1;     // BC_LLM_MODEL_GEMMA3_1B: version 5's model on every engine
 
     /// <summary>
     /// Runs before the first call into benchllm.dll, whichever it is: llama.cpp reads the GPU choice once, when it first lists
@@ -14,6 +15,8 @@ internal static unsafe partial class LlmNative
     /// </summary>
     static LlmNative() => LlmGpuChoice.Select();
 
+    /// <summary>The model shape the next bc_llm_create builds (process-wide): Llama 3.2 3B's unless set.</summary>
+    [LibraryImport(Dll)] public static partial void bc_llm_set_model(int model);
     [LibraryImport(Dll)] public static partial long bc_llm_weight_bytes();
     [LibraryImport(Dll)] private static partial IntPtr bc_llm_gpu_name();
     [LibraryImport(Dll)] private static partial IntPtr bc_llm_gpu_api();

@@ -166,7 +166,7 @@ public sealed class LlmStageView : Instrument
             x += r.Width + 10;
         }
         y += 36;
-        dc.DrawText($"{LlmSection.Model} · 1.8 GB · 28 LAYERS", 9, Forge.Ink1, new Point(0, y), tracking: 1.5);
+        dc.DrawText($"{LlmSection.Model} · 0.6 GB · 26 LAYERS", 9, Forge.Ink1, new Point(0, y), tracking: 1.5);
         y += 22;
         dc.DrawText("PROMPT · 512 TOKENS · ONE BATCH" + (prompts > 0 ? $" · ×{prompts}" : ""), 9, phase == LlmPhase.Prefill ? Accent : Forge.Ink2,
             new Point(0, y), w: Forge.W.Bold, tracking: 1.5);

@@ -3,28 +3,30 @@ using System.Runtime.InteropServices;
 namespace ThermoHammer.Engine.Llm;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM BENCHMARK — a 3B language model through llama.cpp, on the CPU and the GPU
-// (Vulkan) — the phones' LlmSection.
+// LLM BENCHMARK — Gemma 3 1B through llama.cpp, on the CPU and the GPU (Vulkan)
+// — the phones' LlmSection, scoring version 5.
 //
-//   The model has Llama 3.2 3B's exact shape in 4-bit (Q4_0, 1.8 GB), its
-//   weights generated from a seed when the test starts (BenchCore/llm): nothing
-//   is downloaded, the app carries no weights, and every op takes the real
-//   model's time. Building it is not timed. Then:
+//   The model has Gemma 3 1B's exact shape in 4-bit (Q4_0, 0.6 GB), its
+//   weights generated from a seed when the test starts (BenchCore/llm,
+//   bc_llm_set_model): nothing is downloaded, the app carries no weights, and
+//   every op takes the real model's time. Building it is not timed. Then:
 //     prefill — the 512-token prompt in one batch, again until 3 s are measured;
 //     decode  — 32-token replies, token by token, until 4 s are measured.
 //   The CPU first tries thread counts; the GPU first runs a prompt and a reply
-//   to build its pipelines.
+//   to build its pipelines. The phones run the same model on their NPU as the
+//   section's third engine; Windows has no such engine yet, so that third is 0.
 // ─────────────────────────────────────────────────────────────────────────────
 
 public sealed unsafe class LlmSection : IBenchmarkSection
 {
     public const double PrefillS = 3, DecodeS = 4;
     public const int Reply = 32, WarmupTokens = 4;
-    public const double NeedFree = 2_600_000_000;      // the model, its context and its buffers
-    public const ulong NeedRam = 5_000_000_000;        // the phones' number: a "6 GB" machine reports about 5.5 GB (a PC with 6 GB, about 5.9)
+    // Gemma 3 1B's 0.56 GB of weights, its context and its buffers: the same 0.8 GB of room the 3B model had (1.8 + 0.8 GB)
+    public const double NeedFree = 1_400_000_000;
+    public const ulong NeedRam = 3_000_000_000;        // the phones' number for Gemma 3 1B: a "4 GB" machine reports about 3.6 GB
     public const double NoticeS = 3;                   // how long "not run" stays up when the test can't run
     public const double SkipNoticeS = 2;               // how long "crashed the app twice" stays up, per accelerator
-    public const string Model = "LLAMA 3.2 3B · Q4_0";
+    public const string Model = "GEMMA 3 1B · Q4_0";
 
     // markers "build:accel" (CrashGuard); an accelerator is skipped after two runs that never finished, as on iOS
     private static readonly CrashGuard Guard = new("llm");
@@ -45,7 +47,7 @@ public sealed unsafe class LlmSection : IBenchmarkSection
     {
         var m = Win32.Memory();
         if (Environment.GetEnvironmentVariable("THERMOHAMMER_LLM_FORCE") == "1") return null;   // checks under Wine, which can't report the CPU's features
-        if (m.TotalPhys < NeedRam) return $"needs a PC with 6 GB of RAM (this one has {m.TotalPhys / 1e9:0.0} GB)";    // the phones' wording and number (5.0 GB)
+        if (m.TotalPhys < NeedRam) return $"needs a PC with 4 GB of RAM (this one has {m.TotalPhys / 1e9:0.0} GB)";    // the phones' wording and number (3.0 GB)
         if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == Architecture.X64 && !IsProcessorFeaturePresent(40))   // AVX2
             return "the CPU lacks the AVX2 instructions the model's kernels use";
         if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == Architecture.Arm64 && !IsProcessorFeaturePresent(43))  // dot product
@@ -128,9 +130,12 @@ public sealed unsafe class LlmSection : IBenchmarkSection
         string where = gpu ? $"GPU · {(gpuApi.Length > 0 ? gpuApi.ToUpperInvariant() : "VULKAN")}" : "CPU";
         void Show(LlmPhase phase, double progress, double rate, string detail, int[]? reply = null, int prompts = 0) =>
             show(phase, progress, rate, detail, reply, prompts);
-        Show(LlmPhase.Build, 0, -1, $"{where} · BUILDING THE MODEL · 1.8 GB OF WEIGHTS FROM A SEED");
+        Show(LlmPhase.Build, 0, -1, $"{where} · BUILDING THE MODEL · 0.6 GB OF WEIGHTS FROM A SEED");
         var err = new byte[512];
         IntPtr h;
+        // version 5's model on every engine (BenchCore builds Llama 3.2 3B's shape unless asked): set before each build, as the
+        // phones do — process-wide, and nothing else in this app builds a model
+        LlmNative.bc_llm_set_model(LlmNative.ModelGemma3_1B);
         fixed (byte* e = err) h = LlmNative.bc_llm_create(gpu ? 1 : 0, threads, LlmNative.Seed, e, err.Length);
         if (h == IntPtr.Zero)
         {

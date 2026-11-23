@@ -1,6 +1,7 @@
 ; benchllm.dll's exports: the C API of BenchCore/include/bench_llm.h (everything else stays inside the DLL)
 LIBRARY benchllm
 EXPORTS
+    bc_llm_set_model
     bc_llm_weight_bytes
     bc_llm_set_cache_dir
     bc_llm_gpu_name
