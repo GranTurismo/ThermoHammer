@@ -33,6 +33,9 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./public:/srv:ro
+      # the LLM test's Neural Engine model for iPhones and Macs (deploy/upload_model.sh): beside the generated site,
+      # which thweb-gen rewrites, so nothing there ever touches it
+      - ./models:/models:ro
     read_only: true
     tmpfs:
       - /config

@@ -23,6 +23,16 @@
 	@embed path /embed/*
 	header @embed Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors *"
 
+	# /models/: the LLM test's Neural Engine model for iPhones and Macs (CpuThrottlingTest/Benchmark/LLM/LlmNpuModel.swift),
+	# ~1 GB, checked by its SHA-256 in the app. A new build gets a new name, so a file never changes. Served as is: it's
+	# already compressed, and a download that stopped can resume (ranges).
+	handle_path /models/* {
+		root * /models
+		header Cache-Control "public, max-age=31536000, immutable"
+		header Content-Type "application/octet-stream"
+		file_server
+	}
+
 	# everything under /assets/ has a content hash in its name, so it never changes
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"

@@ -17,7 +17,11 @@ final class LlmNpuModel: NSObject, ObservableObject, URLSessionDownloadDelegate,
 
     /** The archive's name doubles as its version: a new conversion gets a new name, never a changed file. */
     static let archiveName = "gemma3-1b-it-lut4-ctx1280-v1.aar"
-    static let downloadURL = URL(string: "https://thermohammer.gtgroup.dev/models/\(archiveName)")!
+    /** Where it comes from; TH_NPU_MODEL_URL overrides it for a local test server (the SHA-256 check still applies). */
+    static var downloadURL: URL {
+        if let s = ProcessInfo.processInfo.environment["TH_NPU_MODEL_URL"], let url = URL(string: s) { return url }
+        return URL(string: "https://thermohammer.gtgroup.dev/models/\(archiveName)")!
+    }
     static let sha256 = "af5e93c140f1a3b991b50062776b49626094213630a995f78c33b8d610e4ad2c"
     static let sizeBytes: Int64 = 996_866_911
 
