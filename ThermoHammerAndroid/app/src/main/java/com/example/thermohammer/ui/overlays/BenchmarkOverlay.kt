@@ -725,6 +725,10 @@ private fun LlmCard(llm: LlmResult) {
             "the NPU runs Google's own file for the chip and must answer a fixed question right. Each engine is measured " +
             "against its own reference and counts a third; one the phone can't run counts 0.",
             style = ThermoType.annotation(8f, Forge.ink2))
+        // the notice Gemma's terms ask of anyone passing its files on (the NPU file comes with the app from Play)
+        Text("Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms. " +
+            "Terms of use: thermohammer.gtgroup.dev/terms",
+            style = ThermoType.annotation(7f, Forge.ink2))
     }
 }
 

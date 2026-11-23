@@ -27,6 +27,13 @@ val gemmaFiles = mapOf(
     "Mediatek_MT6991" to "Gemma3-1B-IT_q4_ekv1280_mt6991.litertlm",   // Dimensity 9400
     "Mediatek_MT6993" to "Gemma3-1B-IT_q4_ekv1280_mt6993.litertlm")   // Dimensity 9500
 
+val NOTICE = """Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms
+
+This folder holds Google's Gemma 3 1B (instruction-tuned) model, built by Google for this chip's NPU
+(huggingface.co/litert-community/Gemma3-1B-IT), unmodified. ThermoHammer runs it only for its LLM benchmark test.
+Use of Gemma is also subject to the Gemma Prohibited Use Policy: ai.google.dev/gemma/prohibited_use_policy
+"""
+
 val assetsDir: File = layout.projectDirectory.dir("src/main/assets").asFile
 /** Where each file sits in the pack: gemma#group_<group>/<file>. */
 val packed: Map<String, File> = gemmaFiles.map { (group, name) -> name to File(assetsDir, "gemma#group_$group/$name") }.toMap()
@@ -40,6 +47,7 @@ tasks.register("linkGemmaModels") {
     description = "Links the downloaded Gemma NPU files into the AI pack's assets (gemma.npu.dir in local.properties)."
     val files = packed
     val from = sourceDir
+    val notice = NOTICE
     doLast {
         val missing = ArrayList<String>()
         for ((name, target) in files) {
@@ -48,6 +56,8 @@ tasks.register("linkGemmaModels") {
             target.parentFile.mkdirs()
             target.delete()
             java.nio.file.Files.createSymbolicLink(target.toPath(), source.toPath())
+            // Gemma's terms (section 3.1): a "Notice" text file goes with every copy passed on
+            File(target.parentFile, "NOTICE.txt").writeText(notice)
         }
         logger.lifecycle(if (missing.isEmpty()) "All ${files.size} Gemma NPU files are in the pack."
             else "Not in $from (their chips get no model): ${missing.joinToString()}")
