@@ -2,17 +2,20 @@ import Foundation
 import os
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM BENCHMARK — a 3B language model through llama.cpp, on the CPU and the
-// GPU (Metal) — Android's engine/llm/LlmBench.kt and runLlm.
+// LLM BENCHMARK — version 5: Gemma 3 1B on three engines, each scored against
+// its own reference (rule B) — Android's engine/llm/LlmBench.kt and runLlm.
 //
-//   The model has Llama 3.2 3B's exact shape in 4-bit (Q4_0, 1.8 GB), its
-//   weights generated from a seed when the test starts (BenchCore/llm): nothing
-//   is downloaded, the app carries no weights, and every op takes the real
-//   model's time. Building it is not timed. Then:
+//   CPU and GPU (Metal): llama.cpp with Gemma 3 1B's exact shape in 4-bit
+//   (Q4_0, 0.56 GB), its weights generated from a seed when the test starts
+//   (BenchCore/llm, bc_llm_set_model): nothing is downloaded, the app carries
+//   no weights, and every op takes the real model's time. Building it is not
+//   timed. Then:
 //     prefill — the 512-token prompt in one batch, again until 3 s are measured;
 //     decode  — 32-token replies, token by token, until 4 s are measured.
 //   The CPU first tries thread counts; the GPU first runs a prompt and a reply
 //   to build its pipelines.
+//   NPU: the real model on the Neural Engine, through LlmNpuEngine (the hook
+//   its engine fills in), the same task and a question it must answer right.
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum LlmPhase { case build, warmup, prefill, decode }
@@ -22,10 +25,15 @@ struct LlmSection: BenchmarkSection {
     static let decodeS = 4.0
     static let reply = 32
     static let warmupTokens = 4
-    static let needRam: UInt64 = 5_000_000_000      // iPhones sold with 6 GB report about 5.6 GB
-    static let needFree = 2_600_000_000.0           // the model, its context and its buffers
+    // Gemma 3 1B has 0.56 GB of weights (Llama 3.2 3B's shape had 1.8 GB): an iPhone sold with 4 GB (about 3.7 GB
+    // reported) has room, as on Android (3 GB)
+    static let needRam: UInt64 = 3_000_000_000
+    // the model, its context and its buffers: a CPU run's footprint peaked 0.91 GB above the app's (simulator,
+    // 2026-11-23) where Llama 3.2 3B's shape took 2.26 GB, which had 2.6 GB here — the same margin
+    static let needFree = 1_100_000_000.0
     static let noticeS = 3.0                        // how long "not run" stays up when the test can't run
-    static let model = "LLAMA 3.2 3B · Q4_0"
+    static let model = "GEMMA 3 1B · Q4_0"
+    static let npuSeconds = 16                      // the stage's estimate of the NPU engine's run (CPU 20 s, GPU 16 s)
     #if targetEnvironment(simulator)
     static let simulator = true
     #else
@@ -40,10 +48,11 @@ struct LlmSection: BenchmarkSection {
     }
 
     /**
-     * Accelerators whose run never finished twice in this build — llama.cpp's crashes can't be caught, so
-     * BenchmarkEngine's marker was left behind — as in AiSection: one unfinished run could still be chance.
+     * Engines ("cpu", "gpu", "npu") whose run never finished twice in this build — llama.cpp's and the Neural Engine's
+     * crashes can't be caught, so BenchmarkEngine's marker was left behind — as in AiSection: one unfinished run could
+     * still be chance.
      */
-    private static func crashedAccels() -> Set<LlmAccel> {
+    private static func crashedEngines() -> Set<String> {
         let d = UserDefaults.standard
         var strikes = d.stringArray(forKey: crashedKey) ?? []
         if let running = d.string(forKey: runningKey) {
@@ -51,12 +60,18 @@ struct LlmSection: BenchmarkSection {
             d.set(strikes, forKey: crashedKey)
             d.removeObject(forKey: runningKey)
         }
-        var count: [LlmAccel: Int] = [:]
+        var count: [String: Int] = [:]
         for s in strikes {
             let p = s.split(separator: ":")
-            if p.count == 2, p[0] == build, let accel = LlmAccel.allCases.first(where: { "\($0)" == p[1] }) { count[accel, default: 0] += 1 }
+            if p.count == 2, p[0] == build { count[String(p[1]), default: 0] += 1 }
         }
         return Set(count.filter { $0.value >= 2 }.map(\.key))
+    }
+
+    /** This engine ran to the end: its earlier unfinished runs were something else. */
+    private static func clearStrikes(_ engine: String) {
+        let d = UserDefaults.standard
+        d.set((d.stringArray(forKey: crashedKey) ?? []).filter { !$0.hasSuffix(":\(engine)") }, forKey: crashedKey)
     }
 
     /** What iOS still lets this app allocate (the simulator has no such limit: half the Mac's memory there). */
@@ -74,7 +89,7 @@ struct LlmSection: BenchmarkSection {
     /** Why the model can't run on this phone at all, or nil. */
     static func problem(free: Double) -> String? {
         let ram = ProcessInfo.processInfo.physicalMemory
-        if ram < needRam { return String(format: "needs an iPhone with 6 GB of RAM (this one has %.1f GB)", Double(ram) / 1e9) }
+        if ram < needRam { return String(format: "needs an iPhone with 4 GB of RAM (this one has %.1f GB)", Double(ram) / 1e9) }
         if sysctlFlag("hw.optional.arm.FEAT_DotProd") == false || sysctlFlag("hw.optional.arm.FEAT_FP16") == false {
             return "the CPU lacks the ARMv8.2 dot-product instructions the model's kernels use"
         }
@@ -96,26 +111,59 @@ struct LlmSection: BenchmarkSection {
             engine.publishLlm(nil, phase: .build, progress: 0, rate: -1, detail: "")
             return
         }
-        let crashed = Self.crashedAccels()
+        let crashed = Self.crashedEngines()
         let gpuName = String(cString: bc_llm_gpu_name())
         var runs: [LlmRun] = []
         var threads: Int32 = 4
+        // version 5's model on llama.cpp's engines; process-wide in BenchCore, so put back when done (bench_llm.h)
+        bc_llm_set_model(Int32(BC_LLM_MODEL_GEMMA3_1B))
+        defer { bc_llm_set_model(Int32(BC_LLM_MODEL_LLAMA32_3B)) }
         for accel in LlmAccel.allCases {
             guard engine.isActive else { return }
-            let skip = crashed.contains(accel) ? "crashed the app twice in this version"
+            let skip = crashed.contains("\(accel)") ? "crashed the app twice in this version"
                 : accel == .gpu && gpuName.isEmpty ? "llama.cpp found no Metal GPU it can run on"
-                : accel == .gpu && Self.simulator ? "the simulator's Metal can't take the model's 1.8 GB of buffers" : nil
+                : accel == .gpu && Self.simulator ? "not measured in the simulator" : nil
             if let skip { runs.append(LlmRun(accel: accel, prefill: 0, decode: 0, error: skip)); continue }
             BenchmarkEngine.setRunningMarker("\(Self.build):\(accel)", forKey: Self.runningKey)
             defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
             guard let run = Self.measure(accel, threads: threads, engine: engine) else { return }   // stopped
-            UserDefaults.standard.set((UserDefaults.standard.stringArray(forKey: Self.crashedKey) ?? []).filter { !$0.hasSuffix(":\(accel)") }, forKey: Self.crashedKey)
+            Self.clearStrikes("\(accel)")
             if run.threads > 0 { threads = Int32(run.threads) }
             runs.append(run)
         }
+        // the third engine, the Neural Engine: after llama.cpp's runs, whose models are freed by now
+        let npu: LlmNpuRun
+        if crashed.contains("npu") {
+            let why = "crashed the app twice in this version"
+            npu = LlmNpuRun(prefill: 0, decode: 0, right: false, error: why, lines: ["LLM NPU · \(LlmNpuEngine.engineName) · not run: \(why)"])
+        } else {
+            BenchmarkEngine.setRunningMarker("\(Self.build):npu", forKey: Self.runningKey)
+            defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
+            guard let ran = Self.runNpu(engine) else { return }   // stopped
+            Self.clearStrikes("npu")
+            npu = ran
+        }
         let gpuRan = runs.contains { $0.accel == .gpu && $0.decode > 0 }
-        r.llm = LlmResult(runs: runs, gpuName: gpuRan && !gpuName.isEmpty ? gpuName : nil, freeGb: freeGb, largestModel: largest)
+        r.llm = LlmResult(runs: runs, gpuName: gpuRan && !gpuName.isEmpty ? gpuName : nil, freeGb: freeGb, largestModel: largest, npu: npu)
         engine.publishLlm(nil, phase: .build, progress: 0, rate: -1, detail: "")
+    }
+
+    /**
+     * The NPU engine (LlmNpuEngine.run, async), awaited from this worker thread. Nil if the benchmark was stopped
+     * meanwhile: the engine's task is cancelled and its result, whenever it comes, dropped.
+     */
+    private static func runNpu(_ engine: BenchmarkEngine) -> LlmNpuRun? {
+        final class Outcome: @unchecked Sendable { var run: LlmNpuRun? }   // written once, before `done` is signalled
+        let outcome = Outcome(), done = DispatchSemaphore(value: 0)
+        engine.publishLlmNpu(progress: 0, detail: "NPU · GEMMA 3 1B · PREPARING")
+        let task = Task.detached(priority: .userInitiated) {
+            outcome.run = await LlmNpuEngine.run { label, fraction in engine.publishLlmNpu(progress: fraction, detail: label) }
+            done.signal()
+        }
+        while done.wait(timeout: .now() + 0.1) == .timedOut {
+            if !engine.isActive { task.cancel(); return nil }
+        }
+        return outcome.run
     }
 
     /** Prefill and decode tokens/s on `accel`; a run that fails keeps its reason. Nil if the run was stopped. */
@@ -125,7 +173,7 @@ struct LlmSection: BenchmarkSection {
         func show(_ phase: LlmPhase, _ progress: Double, _ rate: Double, _ detail: String, reply: [Int] = [], prompts: Int = 0) {
             engine.publishLlm(accel, phase: phase, progress: progress, rate: rate, detail: detail, reply: reply, prompts: prompts)
         }
-        show(.build, 0, -1, "\(whereText) · BUILDING THE MODEL · 1.8 GB OF WEIGHTS FROM A SEED")
+        show(.build, 0, -1, "\(whereText) · BUILDING THE MODEL · 0.6 GB OF WEIGHTS FROM A SEED")
         var err = [CChar](repeating: 0, count: 512)
         guard let h = bc_llm_create(gpu ? 1 : 0, threads, UInt64(BC_LLM_SEED), &err, Int32(err.count)) else {
             return LlmRun(accel: accel, prefill: 0, decode: 0, error: String(cString: err).isEmpty ? "the model could not be built" : String(cString: err))

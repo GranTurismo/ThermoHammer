@@ -4,7 +4,8 @@ import SwiftUI
 // LLM STAGE — the context the model works on: the 512-token prompt lighting up
 // as each pass reads it in one batch, then the reply written token by token
 // (the ids, coloured per token). The weights come from a seed, so the words are
-// random; the work is the real model's. (Android's LlmStage.)
+// random; the work is the real model's. (Android's LlmStage.) The NPU engine
+// runs the real model on its own and reports only its line and progress.
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct LlmStageView: View {
@@ -14,13 +15,13 @@ struct LlmStageView: View {
     private static let promptCols = 32, promptRows = 16, replyCols = 8
 
     var body: some View {
-        let accel = engine.llmAccel ?? .cpu
+        let step = engine.llmStep?.number ?? 1
         // the iPhone stage is portrait: the prompt above, the reply below
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                ForEach(LlmAccel.allCases, id: \.rawValue) { a in
-                    let now = a == accel, done = a.rawValue < accel.rawValue
-                    Text((done ? "✓ " : "") + a.label)
+                ForEach(Array(["CPU", "GPU", "NPU"].enumerated()), id: \.offset) { i, label in
+                    let now = i + 1 == step, done = i + 1 < step
+                    Text((done ? "✓ " : "") + label)
                         .font(ThermoFont.mono(9, weight: .bold)).tracking(1.5)
                         .foregroundColor(now ? accent : Forge.ink2)
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -30,7 +31,7 @@ struct LlmStageView: View {
                 }
                 Spacer()
             }
-            Text("\(LlmSection.model) · 1.8 GB · 28 LAYERS").font(ThermoFont.mono(9)).tracking(1.5).foregroundColor(Forge.ink1)
+            Text(engine.llmNpu ? "GEMMA 3 1B · NEURAL ENGINE · THE REAL MODEL" : "\(LlmSection.model) · 0.6 GB · 26 LAYERS").font(ThermoFont.mono(9)).tracking(1.5).foregroundColor(Forge.ink1)
                 .lineLimit(1).minimumScaleFactor(0.7)
             VStack(alignment: .leading, spacing: 6) {
                 Text("PROMPT · 512 TOKENS · ONE BATCH" + (engine.llmPrompts > 0 ? " · ×\(engine.llmPrompts)" : ""))
@@ -47,7 +48,8 @@ struct LlmStageView: View {
                     .frame(height: 150)
             }
             Spacer(minLength: 0)
-            Text("WEIGHTS FROM A SEED: THE WORDS ARE RANDOM, THE WORK IS THE REAL MODEL'S")
+            Text(engine.llmNpu ? "THE REAL MODEL: ITS REPLY TO A FIXED QUESTION MUST BE RIGHT"
+                 : "WEIGHTS FROM A SEED: THE WORDS ARE RANDOM, THE WORK IS THE REAL MODEL'S")
                 .font(ThermoFont.mono(8)).tracking(1.2).foregroundColor(Forge.ink2).lineLimit(2)
         }
         .padding(.vertical, 6)

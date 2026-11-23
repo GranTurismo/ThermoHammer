@@ -32,7 +32,7 @@ struct BenchmarkStageView: View {
     @ObservedObject var engine: BenchmarkEngine
 
     private var accent: Color {
-        engine.llmAccel != nil ? BenchColor.llm : engine.cpuTest != nil ? BenchColor.cpu : engine.memTest != nil ? BenchColor.mem : engine.aiTest != nil ? BenchColor.ai
+        engine.llmOnStage ? BenchColor.llm : engine.cpuTest != nil ? BenchColor.cpu : engine.memTest != nil ? BenchColor.mem : engine.aiTest != nil ? BenchColor.ai
             : engine.gpuTest.map(BenchColor.gpu) ?? engine.uxTest.map(BenchColor.ux) ?? Forge.phaseCooldown
     }
 
@@ -44,7 +44,7 @@ struct BenchmarkStageView: View {
                     .padding(.horizontal, 20).padding(.top, 8)
                 Spacer(minLength: 12)
                 Group {
-                    if engine.llmAccel != nil {
+                    if engine.llmOnStage {
                         LlmStageView(engine: engine, accent: BenchColor.llm)
                     } else if let test = engine.cpuTest {
                         CpuStageView(test: test, progress: engine.cpuProgress, accent: BenchColor.cpu)
@@ -110,7 +110,7 @@ struct BenchmarkStageView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(engine.cpuTest != nil ? "CPU BENCHMARK" : engine.memTest != nil ? "MEM BENCHMARK" : engine.gpuTest != nil ? "GPU BENCHMARK"
-                     : engine.uxTest != nil ? "UX BENCHMARK" : engine.aiTest != nil ? "AI BENCHMARK" : engine.llmAccel != nil ? "LLM BENCHMARK" : "BENCHMARK")
+                     : engine.uxTest != nil ? "UX BENCHMARK" : engine.aiTest != nil ? "AI BENCHMARK" : engine.llmOnStage ? "LLM BENCHMARK" : "BENCHMARK")
                     .font(ThermoFont.mono(9, weight: .bold)).tracking(2).foregroundColor(accent)
                 if let t = engine.cpuTest {
                     Text("CPU TEST \(t.number)/\(CpuTest.allCases.count) · \(t.title)").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
@@ -127,8 +127,8 @@ struct BenchmarkStageView: View {
                 } else if let t = engine.aiTest {
                     Text("AI TEST \(t.number)/\(AiTest.allCases.count) · \(t.title)").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
                     Text(engine.aiDetail).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
-                } else if let a = engine.llmAccel {
-                    Text("LLM TEST \(a.rawValue + 1)/\(LlmAccel.allCases.count) · \(a.label) · LLAMA 3.2 3B").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
+                } else if let s = engine.llmStep {
+                    Text("LLM TEST \(s.number)/\(BenchmarkEngine.llmSeconds.count) · \(s.label) · GEMMA 3 1B").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
                     Text(engine.llmDetail).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
                 } else {
                     Text("GETTING READY").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
@@ -152,7 +152,7 @@ struct BenchmarkStageView: View {
         if engine.gpuTest != nil, engine.gpuFps >= 0 { return (engine.gpuFps, "FPS") }
         if engine.uxTest != nil, engine.uxValue >= 0 { return (engine.uxValue, engine.uxUnit) }
         if engine.aiTest != nil, engine.aiRate >= 0 { return (engine.aiRate, "INF/S") }
-        if engine.llmAccel != nil, engine.llmRate >= 0 { return (engine.llmRate, "TOK/S") }
+        if engine.llmOnStage, engine.llmRate >= 0 { return (engine.llmRate, "TOK/S") }
         return nil
     }
 }
@@ -347,7 +347,7 @@ struct BenchProgressBar: View {
     private var segments: [(Int, Color)] {
         CpuTest.allCases.map { ($0.seconds, BenchColor.cpu) } + MemTest.allCases.map { ($0.seconds, BenchColor.mem) } +
             GpuTest.allCases.map { ($0.seconds, BenchColor.gpu($0)) } + UxTest.allCases.map { ($0.seconds, BenchColor.ux($0)) } +
-            AiTest.allCases.map { ($0.seconds, BenchColor.ai) } + LlmAccel.allCases.map { ($0.seconds, BenchColor.llm) }
+            AiTest.allCases.map { ($0.seconds, BenchColor.ai) } + BenchmarkEngine.llmSeconds.map { ($0, BenchColor.llm) }
     }
 
     private var elapsed: Double {
@@ -371,9 +371,9 @@ struct BenchProgressBar: View {
             return cpuTotal + memTotal + gpuTotal + uxTotal + Double(AiTest.allCases.filter { $0.number < t.number }.reduce(0) { $0 + $1.seconds }) + engine.aiProgress * Double(t.seconds)
         }
         let aiTotal = Double(AiTest.allCases.reduce(0) { $0 + $1.seconds })
-        if let a = engine.llmAccel {
-            return cpuTotal + memTotal + gpuTotal + uxTotal + aiTotal + Double(LlmAccel.allCases.filter { $0.rawValue < a.rawValue }.reduce(0) { $0 + $1.seconds })
-                + engine.llmProgress * Double(a.seconds)
+        if let s = engine.llmStep {
+            return cpuTotal + memTotal + gpuTotal + uxTotal + aiTotal + Double(BenchmarkEngine.llmSeconds.prefix(s.number - 1).reduce(0, +))
+                + engine.llmProgress * Double(s.seconds)
         }
         return 0
     }
@@ -386,7 +386,7 @@ struct BenchProgressBar: View {
             HStack {
                 Text(engine.cpuTest.map { "CPU TEST \($0.number) · \($0.title)" } ?? engine.memTest.map { "MEM TEST \($0.number) · \($0.title)" }
                      ?? engine.gpuTest.map { "GPU TEST \($0.number) · \($0.title)" } ?? engine.uxTest.map { "UX TEST \($0.number) · \($0.title)" }
-                     ?? engine.aiTest.map { "AI TEST \($0.number) · \($0.title)" } ?? engine.llmAccel.map { "LLM TEST \($0.rawValue + 1) · \($0.label)" } ?? "PREPARING")
+                     ?? engine.aiTest.map { "AI TEST \($0.number) · \($0.title)" } ?? engine.llmStep.map { "LLM TEST \($0.number) · \($0.label)" } ?? "PREPARING")
                     .font(ThermoFont.mono(9, weight: .bold)).tracking(1.5).foregroundColor(Forge.ink0)
                 Spacer()
                 Text("\(Int(done / total * 100))%").font(ThermoFont.mono(9)).foregroundColor(Forge.ink1)

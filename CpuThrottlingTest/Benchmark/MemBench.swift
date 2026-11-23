@@ -23,6 +23,7 @@ final class MemBench {
     private static let randomThreads: Int32 = 4
     private static let chats = 40
     private static let history = 20_000
+    private static let dbWarmMaxS = 4.0         // the most a database step warms up, untimed (warmUp)
 
     /** Read, write and copy bandwidth with every core streaming, then the latency of one random access. */
     func ram(isActive: () -> Bool, onProgress: @escaping (MemProgress) -> Void) throws -> RamResult {
@@ -83,7 +84,7 @@ final class MemBench {
     /**
      * SQLite like a messaging app (WAL, synchronous NORMAL — Android's own settings): a chat history of 20,000
      * messages, then new messages saved one transaction each, messages marked read one transaction each, and chats
-     * opened (the latest 30 messages of a random chat, read row by row).
+     * opened (the latest 30 messages of a random chat, read row by row). Each step warms up untimed first (warmUp).
      */
     func database(isActive: () -> Bool, onProgress: @escaping (MemProgress) -> Void) throws -> DbResult {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent("membench.db").path
@@ -125,26 +126,49 @@ final class MemBench {
         try exec("COMMIT")
         let detail = "SQLITE · WAL · SYSTEM SETTINGS"
         let plan = Plan(test: .database, seconds: [2.5, 2, 2], onProgress: onProgress)
+        plan.warmUp(0, "TX/S", .randomWrite, detail, isActive) { add() }
         let inserts = plan.run(0, "TX/S", .randomWrite, detail, isActive) { s in Self.perSecond(s) { add() } }
         let update = try prepare("UPDATE messages SET unread = 0 WHERE id = ?")
         defer { sqlite3_finalize(update) }
-        let updates = plan.run(1, "TX/S", .randomWrite, detail, isActive) { s in
-            Self.perSecond(s) {
-                sqlite3_reset(update)
-                sqlite3_bind_int64(update, 1, 1 + Int64(rnd.below(Self.history)))
-                sqlite3_step(update)
-            }
+        func markRead() {
+            sqlite3_reset(update)
+            sqlite3_bind_int64(update, 1, 1 + Int64(rnd.below(Self.history)))
+            sqlite3_step(update)
         }
+        plan.warmUp(1, "TX/S", .randomWrite, detail, isActive) { markRead() }
+        let updates = plan.run(1, "TX/S", .randomWrite, detail, isActive) { s in Self.perSecond(s) { markRead() } }
         let query = try prepare("SELECT id, sender, body, sent FROM messages WHERE chat = ? ORDER BY sent DESC LIMIT 30")
         defer { sqlite3_finalize(query) }
-        let queries = plan.run(2, "CHATS/S", .randomRead, "SQLITE · LATEST 30 MESSAGES OF A CHAT", isActive) { s in
-            Self.perSecond(s) {
-                sqlite3_reset(query)
-                sqlite3_bind_int64(query, 1, Int64(rnd.below(Self.chats)))
-                while sqlite3_step(query) == SQLITE_ROW { _ = sqlite3_column_text(query, 2) }
-            }
+        func openChat() {
+            sqlite3_reset(query)
+            sqlite3_bind_int64(query, 1, Int64(rnd.below(Self.chats)))
+            while sqlite3_step(query) == SQLITE_ROW { _ = sqlite3_column_text(query, 2) }
         }
+        let chatDetail = "SQLITE · LATEST 30 MESSAGES OF A CHAT"
+        plan.warmUp(2, "CHATS/S", .randomRead, chatDetail, isActive) { openChat() }
+        let queries = plan.run(2, "CHATS/S", .randomRead, chatDetail, isActive) { s in Self.perSecond(s) { openChat() } }
         return DbResult(insert: inserts, update: updates, query: queries)
+    }
+
+    /**
+     * Runs `op` untimed until its rate stops rising — Android's MemBench.warmUp, which version 5's database references
+     * assume: 100 ms buckets until the last five agree within 10 % and none is far below the best so far, at most
+     * `dbWarmMaxS`. SQLite's rate on a phone climbs for a second or two before it levels off, a different climb each
+     * time, so a step timed from a cold start measured the climb (the Honor's updates: 47k–211k/s cold, 397k–404k/s
+     * after this).
+     */
+    private static func warmUp(_ isActive: () -> Bool, _ op: () -> Void) {
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        var recent: [Int] = [], best = 0
+        while isActive() && DispatchTime.now().uptimeNanoseconds - t0 < UInt64(dbWarmMaxS * 1e9) {
+            let b0 = DispatchTime.now().uptimeNanoseconds
+            var n = 0
+            while DispatchTime.now().uptimeNanoseconds - b0 < 100_000_000 { op(); n += 1 }
+            best = max(best, n)
+            recent.append(n)
+            if recent.count > 5 { recent.removeFirst() }
+            if recent.count == 5, let lo = recent.min(), let hi = recent.max(), Double(lo) >= 0.9 * Double(hi), Double(lo) >= 0.85 * Double(best) { return }
+        }
     }
 
     private static func perSecond(_ seconds: Double, _ op: () -> Void) -> Double {
@@ -161,6 +185,13 @@ final class MemBench {
         let seconds: [Double]
         let onProgress: (MemProgress) -> Void
         var total: Double { seconds.reduce(0, +) }
+
+        /// Warms measurement `index` up (MemBench.warmUp), untimed — the stage says so meanwhile.
+        func warmUp(_ index: Int, _ unit: String, _ access: MemAccess, _ detail: String, _ isActive: () -> Bool, op: () -> Void) {
+            onProgress(MemProgress(measure: test.labels[index], fraction: seconds.prefix(index).reduce(0, +) / total, rate: -1, unit: unit,
+                                   access: access, detail: "WARMING UP, UNTIMED · " + detail))
+            MemBench.warmUp(isActive, op)
+        }
 
         /// Runs `slice` (seconds → its rate) until the planned time is up, or for as long as `more` says; returns
         /// the time-weighted mean rate.

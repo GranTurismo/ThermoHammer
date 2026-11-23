@@ -344,7 +344,7 @@ struct BenchmarkResultView: View {
 
     @ViewBuilder private func llmCard(_ llm: LlmResult) -> some View {
         let missing = Ramp.at(0.85)
-        card("LLM · LLAMA 3.2 3B · 4-BIT", "PROMPT · REPLY", llm.score, BenchColor.llm) {
+        card("LLM · GEMMA 3 1B · 4-BIT", "PROMPT · REPLY", llm.score, BenchColor.llm) {
             ForEach(LlmAccel.allCases, id: \.self) { a in
                 let run = llm.run(a)
                 HStack {
@@ -355,12 +355,25 @@ struct BenchmarkResultView: View {
                 }
                 if llm.error == nil, let e = run?.error { note("\(a.label): \(e)", missing) }
             }
+            // the third engine: the Neural Engine, running the real model — its rates count only with the right answer
+            if let n = llm.npu {
+                let ok = llm.npuCounted != nil
+                HStack {
+                    metric("NPU PREFILL TOK/S", ok ? tokensPerS(n.prefill) : "—", ok ? Forge.ink0 : missing); Spacer()
+                    metric("NPU DECODE TOK/S", ok ? tokensPerS(n.decode) : "—", ok ? Forge.ink0 : missing); Spacer()
+                    metric("ANSWER", n.error != nil ? "—" : n.right ? "RIGHT" : "WRONG", ok ? Forge.ink1 : missing)
+                }
+                if let e = n.error { note("NPU: \(e)", missing) }
+            }
+            note("CPU \(llm.points(.cpu).formatted()) · GPU \(llm.points(.gpu).formatted()) · NPU \(llm.npuPoints.formatted()) points — each a third.", Forge.ink1)
             if let e = llm.error { note("Not run: \(e).", missing) }
             note(llm.largestModel > 0
                  ? String(format: "Largest common model that fits in the memory iOS lets the app take now: %dB (4-bit, %.1f GB).", llm.largestModel, llm.freeGb)
                  : String(format: "Memory the app can take now: %.1f GB — too little for even a 1B model.", llm.freeGb), Forge.ink1)
-            note(String(format: "Prefill reads a 512-token prompt; decode writes the reply token by token. The faster of the CPU and the GPU counts for each: %.0f and %.1f tokens/s = 6000 points. The weights come from a seed — the words are random, the work is real.",
-                        LlmScore.refPrefill, LlmScore.refDecode))
+            note("The same task on every engine: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token (decode). " +
+                 "llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real); the Neural Engine " +
+                 "runs the real model and must answer a fixed question right. Each engine is measured against its own reference and counts a " +
+                 "third; one the device can't run counts 0.")
         }
     }
 

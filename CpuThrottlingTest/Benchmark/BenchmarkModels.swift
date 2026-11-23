@@ -3,13 +3,14 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK — the same six sections and the same scoring as the Android app
 // (engine/Benchmark.kt) and the server (BenchmarkScoring.cs): CPU + MEM + GPU
-// + UX + AI + LLM, every test 6000 points on the Snapdragon 8 Elite reference phone.
-// Change a number here only together with those two.
+// + UX + AI + LLM, every test 6000 points on the reference phone (Honor VKP-NX9,
+// Snapdragon 8 Elite) in Performance mode — scoring version 5. Change a number
+// here only together with those two (BenchmarkScoreTests pins them).
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum BenchmarkScore {
     /// Bump when a scene, the resolution or the scoring changes — scores compare only within a version.
-    static let version = 4
+    static let version = 5
     /// Frames that start before this (s) are driver/shader warm-up and not scored.
     static let warmupS: Float = 2
     static let windowS: Float = 5
@@ -66,14 +67,14 @@ enum BenchFlag {
 
 // MARK: - GPU
 
-/// One GPU test: its scene, timeline length and the weight that turns fps into points (129.5 / 26.3 / 13.4 fps → 6000).
+/// One GPU test: its scene, timeline length and the weight that turns fps into points (129.85 / 28.98 / 14.12 fps → 6000).
 enum GpuTest: Int, CaseIterable {
     case lakeValley = 1, neonCity = 2, neonCityRT = 3
 
     var number: Int { rawValue }
     var title: String { ["", "LAKE VALLEY", "NEON CITY", "NEON CITY RT"][rawValue] }
     var seconds: Int { [0, 50, 60, 60][rawValue] }
-    var weight: Double { [0, 46.3, 228.0, 448.0][rawValue] }
+    var weight: Double { [0, 46.21, 207.0, 424.9][rawValue] }
     var rayTracing: Bool { self == .neonCityRT }
 }
 
@@ -134,8 +135,8 @@ struct CpuResult {
 }
 
 enum CpuScore {
-    // geometric-mean kernel ops/s worth 6000 points (the Honor, 2026-10-26 — see Benchmark.kt)
-    static let refMath = 1469.0, refData = 647.0, refCrypto = 580.0, refMulti = 5003.0
+    // geometric-mean kernel ops/s worth 6000 points (the Honor in Performance mode, the median of 11 runs on 2026-11-23 — see Benchmark.kt)
+    static let refMath = 3039.0, refData = 1533.0, refCrypto = 1184.0, refMulti = 8884.0
 
     static func ref(_ t: CpuTest) -> Double {
         switch t { case .math: return refMath; case .data: return refData; case .crypto: return refCrypto; case .multi: return refMulti }
@@ -151,7 +152,7 @@ enum MemTest: Int, CaseIterable {
 
     var number: Int { rawValue }
     var title: String { ["", "RAM", "STORAGE", "DATABASE"][rawValue] }
-    var seconds: Int { [0, 10, 12, 8][rawValue] }
+    var seconds: Int { [0, 10, 12, 14][rawValue] }      // the database's steps each warm up untimed first (MemBench.warmUp)
     var labels: [String] {
         switch self {
         case .ram: return ["READ", "WRITE", "COPY", "LATENCY"]
@@ -176,9 +177,11 @@ struct MemResult {
 }
 
 enum MemScore {
-    static let refRead = 57.8, refWrite = 28.4, refCopy = 18.7, refLatency = 245.0           // GB/s, ns
-    static let refSeqRead = 1750.0, refSeqWrite = 1300.0, refRandomRead = 29_000.0, refRandomWrite = 13_400.0
-    static let refInsert = 9700.0, refUpdate = 36_000.0, refQuery = 20_300.0
+    // the Honor in Performance mode, the median of 11 runs on 2026-11-23 (Benchmark.kt)
+    static let refRead = 63.5, refWrite = 28.3, refCopy = 19.7, refLatency = 134.0           // GB/s, ns
+    static let refSeqRead = 1780.0, refSeqWrite = 1309.0, refRandomRead = 24_700.0, refRandomWrite = 13_380.0
+    // timed after each step's warm-up (MemBench.warmUp): the version 4 references timed SQLite's climb
+    static let refInsert = 15_700.0, refUpdate = 389_000.0, refQuery = 43_800.0
 
     /// 6000 × the geometric mean of value ÷ reference; 0 if any part is 0.
     private static func geo(_ ratios: [Double]) -> Int {
@@ -371,16 +374,18 @@ struct UxResult {
 }
 
 enum UxScore {
-    static let refLayout = 1320.0, refCanvas = 2730.0, refCss = 1980.0, refSvg = 3130.0, refJs = 2160.0
-    static let refScroll = 66_600.0
-    static let refJpeg = 122.0, refWebp = 99.0, refAvif = 103.0
-    static let refPhoto = 397.0
-    static let refVideo = 298.0
-    // PROVISIONAL until the Honor's version-4 report (as on Android and the server)
-    static let refVideo8k = 74.5        // 8K frames/s, mean of HEVC and AV1
-    static let refExport = 100.0        // encoded 4K frames/s, mean of H.264, HEVC, AV1
-    static let refExport8k = 30.0       // encoded 8K frames/s, HEVC
-    static let qrWeight = 10.67         // zxing-cpp decodes/s → points (562/s → 6000, as on Android)
+    // the Honor in Performance mode, the median of 11 runs on 2026-11-23 (Benchmark.kt)
+    static let refLayout = 3061.0, refCanvas = 4818.0, refCss = 3061.0, refSvg = 4898.0, refJs = 4002.0
+    static let refScroll = 66_560.0
+    static let refJpeg = 229.3, refWebp = 167.8, refAvif = 173.6
+    static let refPhoto = 350.0
+    static let refVideo = 296.0
+    // 8K decode: the mean of its HEVC and AV1 rates. Export: one of its 4K hardware encoders' rate (it has no AV1 encoder,
+    // so it scores two thirds of the 4K part); 8K export = a quarter of that (the same pixel rate), as it encodes no 8K
+    static let refVideo8k = 83.1        // 8K frames/s, mean of HEVC and AV1
+    static let refExport = 136.3        // encoded 4K frames/s, mean of H.264, HEVC, AV1
+    static let refExport8k = 34.1       // encoded 8K frames/s, HEVC
+    static let qrWeight = 5.122         // zxing-cpp decodes/s → points (the Honor's 1,171.5/s → 6000, as on Android)
 
     static func webPoints(_ r: WebResult) -> Int {
         let parts = [r.layout / refLayout, r.canvas / refCanvas, r.css / refCss, r.svg / refSvg, r.js / refJs]
@@ -450,9 +455,10 @@ struct AiResult {
 }
 
 enum AiScore {
-    static let refCpu = [330.0, 18.2, 4.71, 2.65, 42.0, 2890.0]
-    static let refGpu = [658.0, 85.5, 33.1, 92.8, 182.0, 1470.0]
-    static let refNpu = [1690.0, 473.0, 229.0, 774.0, 993.0, 2100.0]
+    // the Honor in Performance mode (Benchmark.kt): its GPU on LiteRT's OpenGL path, the one that answers right there
+    static let refCpu = [543.6, 28.67, 7.73, 4.59, 64.5, 3968.0]
+    static let refGpu = [280.7, 36.7, 16.6, 38.8, 74.2, 582.0]
+    static let refNpu = [1726.0, 485.0, 214.6, 689.3, 986.0, 2154.0]
 
     static func ref(_ t: AiTest, _ a: AiAccel) -> Double {
         let i = t.rawValue - 1
@@ -469,7 +475,7 @@ enum AiScore {
 
 // MARK: - LLM
 
-/** Where the model runs: the CPU (ggml's Arm dot-product kernels) or every layer on the GPU (llama.cpp's Metal backend). */
+/** Where llama.cpp runs the model: the CPU (ggml's Arm dot-product kernels) or every layer on the GPU (its Metal backend). */
 enum LlmAccel: Int, CaseIterable {
     case cpu, gpu
     var label: String { ["CPU", "GPU"][rawValue] }
@@ -485,23 +491,55 @@ struct LlmResult {
     let freeGb: Double                // memory iOS still let the app take when the test began (reported)
     let largestModel: Int             // the largest common 4-bit model that fits in it, billions of parameters (reported)
     var error: String? = nil          // why the test couldn't run at all
+    /** The third engine, the Neural Engine (LlmNpuEngine); nil: it wasn't tried (the test couldn't run at all). */
+    var npu: LlmNpuRun? = nil
     func run(_ a: LlmAccel) -> LlmRun? { runs.first { $0.accel == a } }
-    /// The faster of the CPU and the GPU at each — what a chat app on this phone would get.
-    var prefill: Double { runs.map(\.prefill).max() ?? 0 }
-    var decode: Double { runs.map(\.decode).max() ?? 0 }
-    var prefillPoints: Int { LlmScore.prefillPoints(prefill) }
-    var decodePoints: Int { LlmScore.decodePoints(decode) }
-    var score: Int { LlmScore.overall(prefill, decode) }
+    /** One engine's points: its prompt and reply rates against the same engine's reference (LlmScore). */
+    func points(_ a: LlmAccel) -> Int { run(a).map { LlmScore.engine(a, $0.prefill, $0.decode) } ?? 0 }
+    /** The NPU's result when it counts: it ran, and answered the check question right. */
+    var npuCounted: LlmNpuRun? { npu.flatMap { $0.right && $0.error == nil ? $0 : nil } }
+    /** The NPU's points; 0 when it didn't run, failed, or answered the check question wrongly. */
+    var npuPoints: Int { npuCounted.map { LlmScore.npu($0.prefill, $0.decode) } ?? 0 }
+    private var rates: [(Double, Double)] { runs.map { ($0.prefill, $0.decode) } + (npuCounted.map { [($0.prefill, $0.decode)] } ?? []) }
+    /// The fastest engine at each — what a chat app on this device could get (shown, not scored).
+    var prefill: Double { rates.map(\.0).max() ?? 0 }
+    var decode: Double { rates.map(\.1).max() ?? 0 }
+    /// The best engine's points for each phase, against that engine's own reference (CSV, the report).
+    var prefillPoints: Int {
+        max(run(.cpu).map { LlmScore.phase($0.prefill, LlmScore.refCpuPrefill) } ?? 0, run(.gpu).map { LlmScore.phase($0.prefill, LlmScore.refGpuPrefill) } ?? 0,
+            npuPoints > 0 ? LlmScore.phase(npu!.prefill, LlmScore.refNpuPrefill) : 0)
+    }
+    var decodePoints: Int {
+        max(run(.cpu).map { LlmScore.phase($0.decode, LlmScore.refCpuDecode) } ?? 0, run(.gpu).map { LlmScore.phase($0.decode, LlmScore.refGpuDecode) } ?? 0,
+            npuPoints > 0 ? LlmScore.phase(npu!.decode, LlmScore.refNpuDecode) : 0)
+    }
+    /// Version 5's rule B: the CPU, the GPU and the NPU each count a third — an engine that can't run the task counts 0.
+    var score: Int { LlmScore.overall(points(.cpu), points(.gpu), npuPoints) }
 }
 
 enum LlmScore {
-    // tokens/s worth 6000 points — the Snapdragon 8 Elite's faster path, its GPU (see Benchmark.kt)
-    static let refPrefill = 362.7, refDecode = 17.23
+    // Version 5: Gemma 3 1B (4-bit) on each engine, each against the same engine's reference, then the three averaged
+    // (rule B, BENCHMARK_V5_PLAN.md). Tokens/s worth 6000 points per engine: the Honor VKP-NX9 in Performance mode, the
+    // median of its test runs of 2026-11-23 (Benchmark.kt, BenchmarkScoring.cs)
+    static let refCpuPrefill = 160.0, refCpuDecode = 55.0
+    static let refGpuPrefill = 890.0, refGpuDecode = 32.0
+    static let refNpuPrefill = 5450.0, refNpuDecode = 52.0
 
-    static func prefillPoints(_ tokensPerS: Double) -> Int { Int((6000 * max(tokensPerS, 0) / refPrefill).rounded()) }
-    static func decodePoints(_ tokensPerS: Double) -> Int { Int((6000 * max(tokensPerS, 0) / refDecode).rounded()) }
-    /// Geometric mean of prefill and decode — each the faster of the CPU and the GPU; 0 if either is 0.
-    static func overall(_ prefill: Double, _ decode: Double) -> Int { geomean([prefillPoints(prefill), decodePoints(decode)]) }
+    /// One phase's points against `ref` tokens/s.
+    static func phase(_ tokensPerS: Double, _ ref: Double) -> Int { Int((6000 * max(tokensPerS, 0) / ref).rounded()) }
+    /// One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0.
+    static func engine(_ prefill: Double, _ decode: Double, _ refPrefill: Double, _ refDecode: Double) -> Int {
+        prefill > 0 && decode > 0 ? Int((6000 * ((prefill / refPrefill) * (decode / refDecode)).squareRoot()).rounded()) : 0
+    }
+    static func engine(_ a: LlmAccel, _ prefill: Double, _ decode: Double) -> Int {
+        switch a {
+        case .cpu: return engine(prefill, decode, refCpuPrefill, refCpuDecode)
+        case .gpu: return engine(prefill, decode, refGpuPrefill, refGpuDecode)
+        }
+    }
+    static func npu(_ prefill: Double, _ decode: Double) -> Int { engine(prefill, decode, refNpuPrefill, refNpuDecode) }
+    /// Each engine counts a third; one the device lacks or can't run the task on scores 0 there.
+    static func overall(_ cpu: Int, _ gpu: Int, _ npu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0) + max(npu, 0)) / 3).rounded()) }
 }
 
 // MARK: - The whole run

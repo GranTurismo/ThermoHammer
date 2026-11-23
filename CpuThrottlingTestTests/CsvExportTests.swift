@@ -60,4 +60,17 @@ final class CsvExportTests: XCTestCase {
         XCTAssertEqual(lines.last!, ["score", "total", "\(r.total)", "points"])
         XCTAssertFalse(lines.contains { $0[0] == "gpu" })                           // a section the run doesn't have
     }
+
+    func testBenchmarkLlmRowsHaveEachEngine() {
+        var r = BenchmarkResult()
+        r.llm = LlmResult(runs: [LlmRun(accel: .cpu, prefill: 80, decode: 27.5, threads: 6)], gpuName: nil, freeGb: 7.25, largestModel: 8,
+                          npu: LlmNpuRun(prefill: 5450, decode: 52, right: true, model: "gemma-3-1b"))
+        let lines = rows(CsvExport.benchmark(r))
+        XCTAssertTrue(lines.allSatisfy { $0.count == 4 })
+        for row in [["llm", "cpu_points", "\(r.llm!.points(.cpu))", "points"], ["llm", "npu_points", "6000", "points"],
+                    ["llm", "cpu_prefill", "80.00", "tokens/s"], ["llm", "gpu_decode", "0.00", "tokens/s"],
+                    ["llm", "npu_prefill", "5450.00", "tokens/s"], ["llm", "npu_decode", "52.00", "tokens/s"]] {
+            XCTAssertTrue(lines.contains(row), "\(row)")
+        }
+    }
 }
