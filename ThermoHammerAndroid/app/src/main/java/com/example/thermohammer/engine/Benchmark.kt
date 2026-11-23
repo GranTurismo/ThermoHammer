@@ -21,6 +21,12 @@ import kotlin.math.sqrt
 
 enum class RunKind { BENCHMARK, STRESS }
 
+/**
+ * The benchmark's six sections, in run order — test builds can run any of them alone (the pre-flight checklist's picker,
+ * or adb: `--es benchOnly llm,ai`). A partial run is never verified: the sections it skipped score 0.
+ */
+enum class BenchSection(val label: String) { CPU("CPU"), MEM("MEM"), GPU("GPU"), UX("UX"), AI("AI"), LLM("LLM") }
+
 /** One GPU test: its scene, timeline length and the weight that turns fps into points — the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5) = 6000 (BenchmarkScoring.cs repeats them). */
 enum class BenchmarkTest(val number: Int, val scene: GpuSceneId, val title: String, val seconds: Int,
                          val weight: Double, val rayTracing: Boolean = false) {
@@ -59,7 +65,9 @@ data class BenchmarkResult(
     val llm: LlmResult? = null,
     val startCpuShare: Float = 1f,           // share of the CPU the app got when the tests began
     val quietWaitSec: Int = 0,               // how long it waited for background work to finish first
-    val npuLlm: List<String>? = null         // test builds: an LLM on the NPU through LiteRT-LM (report only)
+    val npuLlm: List<String>? = null,        // test builds: an LLM on the NPU through LiteRT-LM (report only)
+    /** Test builds: the sections a partial run was limited to (null = the whole benchmark). */
+    val only: Set<BenchSection>? = null
 ) {
     val isVerified: Boolean get() = validityFlags == 0
     val uxScore: Int get() = ux?.score ?: 0

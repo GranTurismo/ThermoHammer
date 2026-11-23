@@ -13,6 +13,7 @@ object BenchmarkReport {
             appendLine("$device · Android $android · SoC $soc · GPU ${r.gpuName.ifBlank { "?" }}")
             appendLine("TOTAL %,d = CPU %,d + MEM %,d + GPU %,d + UX %,d + AI %,d + LLM %,d · validity flags %d".format(
                 r.total, r.cpuScore, r.memScore, r.gpuScore, r.uxScore, r.aiScore, r.llmScore, r.validityFlags))
+            r.only?.let { s -> appendLine("PARTIAL RUN (test build) · only ${BenchSection.entries.filter { it in s }.joinToString(", ") { it.label }} · the rest scores 0") }
             appendLine("Start · CPU share %.0f%% · waited %d s for background work".format(r.startCpuShare * 100, r.quietWaitSec))
             r.cpu?.let { cpu ->
                 for (t in CpuTest.entries) {
@@ -32,7 +33,8 @@ object BenchmarkReport {
             }
             for (t in r.tests) {
                 if (!t.supported) {
-                    appendLine("GPU %d %s · 0 pts · not run: %s".format(t.test.number, t.test.title, r.rayTracingProblem ?: "unsupported"))
+                    appendLine("GPU %d %s · 0 pts · not run: %s".format(t.test.number, t.test.title,
+                        if (r.only != null && BenchSection.GPU !in r.only) "skipped (partial run)" else r.rayTracingProblem ?: "unsupported"))
                     continue
                 }
                 appendLine("GPU %d %s · %,d pts · avg %.2f fps · 1%% low %.2f · stability %.0f%% · %d frames · temp %s→%s °C".format(

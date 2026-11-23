@@ -156,7 +156,8 @@ abstract class LiteRtLmNpuAssets : DefaultTask() {
         val trees = aars.files.map { archives.zipTree(it) }
         files.sync {
             for (tree in trees) from(tree) {
-                include("jni/arm64-v8a/libLiteRtDispatch_*.so")
+                // the dispatch library runs a model compiled for the chip; the compiler plugin compiles one on the device
+                include("jni/arm64-v8a/libLiteRtDispatch_*.so", "jni/arm64-v8a/libLiteRtCompilerPlugin_*.so")
                 eachFile { path = "litertlm-npu/$name" }
             }
             into(outputDir)

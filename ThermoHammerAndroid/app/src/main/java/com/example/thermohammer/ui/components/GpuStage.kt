@@ -144,7 +144,9 @@ fun GpuStage(
                 Spacer(Modifier.height(4.dp))
                 if (llm != null) {
                     Text(
-                        "LLM TEST ${llm.ordinal + 1}/${LlmAccel.entries.size} · ${llm.label} · GEMMA 3 1B",
+                        // the NPU engine runs after llama.cpp's two (its steps' labels start with NPU)
+                        if (state.llmDetail.startsWith("NPU") || state.llmDetail.startsWith("GENERIC")) "LLM TEST 3/3 · NPU · GEMMA 3 1B"
+                        else "LLM TEST ${llm.ordinal + 1}/${LlmAccel.entries.size + 1} · ${llm.label} · GEMMA 3 1B",
                         style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono,
                             fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     )

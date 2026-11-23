@@ -37,6 +37,16 @@ object NpuModels {
     /** Rough download size for the checklist: Snapdragon files are ~690 MB, Dimensity ~1,030 MB. */
     fun sizeMb(soc: String = soc()): Int = if (soc.startsWith("mt")) 1030 else 690
 
+    /**
+     * Google's generic Gemma 3 1B build (4-bit, the same file for every phone): test builds run it on the NPU too, compiled
+     * on the device by the chip maker's LiteRT plugin, beside the chip's own file — would one file for every chip be as
+     * fast as Google's per-chip builds? (report only)
+     */
+    const val GENERIC = "gemma3-1b-it-int4.litertlm"
+
+    fun genericTestFile(context: Context): File? =
+        if (com.example.thermohammer.TestBuild.PROBES) File(testDir(context), GENERIC).takeIf { it.isFile } else null
+
     /** Test builds' own folder (NpuModelImportActivity, adb): a sideloaded copy gets no AI pack. */
     fun testDir(context: Context): File =
         File(context.getExternalFilesDir(null) ?: context.filesDir, "npu-llm").apply { mkdirs() }

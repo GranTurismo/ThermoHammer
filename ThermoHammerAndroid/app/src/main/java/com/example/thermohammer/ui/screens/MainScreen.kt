@@ -159,6 +159,8 @@ private fun DiagnosticsScreenWrapper(
 ) {
     val state by engine.state.collectAsState()
     var showPreTest by remember { mutableStateOf(false) }
+    // test builds: the benchmark sections to run (the checklist's picker); every section by default
+    var benchSections by remember { mutableStateOf(com.example.thermohammer.engine.BenchSection.entries.toSet()) }
     var preflightReport by remember { mutableStateOf<com.example.thermohammer.engine.PreflightReport?>(null) }
     var preflightChecking by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -383,7 +385,8 @@ private fun DiagnosticsScreenWrapper(
                     val record = BenchmarkRecord.of(result, java.util.UUID.randomUUID().toString(), System.currentTimeMillis())
                     val reportText = benchReportText(result, record.timestamp)
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        benchStore.add(record)
+                        // a partial run (test builds) isn't a score of this phone: its report is kept, not its numbers
+                        if (result.only == null) benchStore.add(record)
                         // its full report, for COPY REPORT in MY RUNS later (the history keeps only the numbers)
                         com.example.thermohammer.data.BenchmarkReportStore(context)
                             .save(record.id, reportText, benchStore.all().map { it.id }.toSet(), record.score, record.timestamp)
@@ -731,11 +734,14 @@ private fun DiagnosticsScreenWrapper(
             com.example.thermohammer.ui.overlays.PreTestOverlay(
                 report = preflightReport,
                 checking = preflightChecking,
+                sections = benchSections.takeIf { com.example.thermohammer.TestBuild.PROBES && selectedKind == RunKind.BENCHMARK },
+                onSectionsChange = { benchSections = it },
                 onCancel = { showPreTest = false },
                 onProceed = {
                     showPreTest = false
                     engine.clearSession()
-                    if (selectedKind == RunKind.BENCHMARK) engine.startBenchmark()
+                    if (selectedKind == RunKind.BENCHMARK)
+                        engine.startBenchmark(only = benchSections.takeIf { com.example.thermohammer.TestBuild.PROBES })
                     else engine.startTest(selectedDuration, selectedThreadingType, selectedMode)
                 }
             )

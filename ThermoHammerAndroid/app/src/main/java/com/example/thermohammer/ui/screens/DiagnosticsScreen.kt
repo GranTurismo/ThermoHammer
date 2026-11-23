@@ -669,7 +669,7 @@ private fun BenchmarkSections(rayTracingProblem: String?, rayTracingChecked: Boo
         Triple("GPU", BenchmarkTest.entries.size, benchmarkColor(null)),
         Triple("UX", UxTest.entries.size, uxColor(null)),
         Triple("AI", com.example.thermohammer.engine.AiTest.entries.size, aiColor()),
-        Triple("LLM", com.example.thermohammer.engine.LlmAccel.entries.size, llmColor())
+        Triple("LLM", com.example.thermohammer.engine.LlmAccel.entries.size + 1, llmColor())     // + the NPU engine
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("WHAT IT RUNS", modifier = Modifier.weight(1f), style = ThermoType.annotation(8f, Forge.ink2))
@@ -841,8 +841,24 @@ private fun BenchmarkTestRows(rayTracingProblem: String?, rayTracingChecked: Boo
             Text("${a.seconds}s", style = ThermoType.data(10f, Forge.ink1))
         }
     }
-    Text("The LLM runs llama.cpp on a model built from a seed in memory — nothing is downloaded. The faster of the CPU " +
-        "and the GPU counts; it needs a phone with 6 GB of RAM.",
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val color = llmColor()
+        Box(
+            Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("L3", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text("LLM · NPU", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
+            Text("Gemma 3 1B on the phone's NPU through Google's LiteRT-LM · it must also answer a fixed question right",
+                style = ThermoType.annotation(8f, Forge.ink2))
+        }
+    }
+    Text("The CPU and GPU runs use llama.cpp with weights built from a seed in memory, so nothing is downloaded. The NPU " +
+        "runs Google's Gemma file for the chip, which Google Play delivers with the app. Each engine counts a third " +
+        "against the reference phone's same engine; one the phone can't run scores 0. The LLM needs 4 GB of RAM.",
         style = ThermoType.annotation(8f, Forge.ink2))
 }
 

@@ -24,7 +24,9 @@ class NpuModelImportActivity : Activity() {
         // adb shell am start -n <package>/com.example.thermohammer.NpuModelImportActivity -a com.example.thermohammer.RUN_NPU_LLM_PROBE
         // — this activity is exported and in the foreground, so it may start the probe's unexported service
         if (intent?.action == NpuLlmProbeService.ACTION_RUN) {
-            val started = runCatching { startService(Intent(this, NpuLlmProbeService::class.java).setAction(NpuLlmProbeService.ACTION_RUN)) }
+            // extra "file": a model's path to run instead of the chip's own (e.g. a generic one, compiled on the device)
+            val started = runCatching { startService(Intent(this, NpuLlmProbeService::class.java).setAction(NpuLlmProbeService.ACTION_RUN)
+                .apply { intent.getStringExtra("file")?.let { putExtra("file", it) } }) }
             Toast.makeText(this, if (started.isSuccess) "NPU LLM probe started (logcat: NpuLlmProbe)"
                 else "NPU LLM probe not started: ${started.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
             finish(); return

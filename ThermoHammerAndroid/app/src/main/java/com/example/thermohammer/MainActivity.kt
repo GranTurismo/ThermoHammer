@@ -39,6 +39,13 @@ class MainActivity : ComponentActivity() {
         // debug builds: `adb shell am start … --es benchFrom video|export` runs the benchmark from that UX test
         if (savedInstanceState == null && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
             intent.getStringExtra("benchFrom")?.let { engine.startBenchmark(it) }
+        // test builds: `adb shell am start -n <package>/com.example.thermohammer.MainActivity --es benchOnly llm,ai` runs
+        // just those benchmark sections (the checklist's picker, without the checklist)
+        if (savedInstanceState == null && com.example.thermohammer.TestBuild.PROBES)
+            intent.getStringExtra("benchOnly")?.let { list ->
+                val only = list.split(',').mapNotNull { n -> com.example.thermohammer.engine.BenchSection.entries.firstOrNull { it.name.equals(n.trim(), true) } }.toSet()
+                if (only.isNotEmpty()) engine.startBenchmark(only = only)
+            }
 
         // The LLM test's NPU model (version 5): Play downloads it after the install (fast-follow); asking again here
         // restarts a download that stopped, so it's on the phone by the first benchmark. Nothing on other chips.

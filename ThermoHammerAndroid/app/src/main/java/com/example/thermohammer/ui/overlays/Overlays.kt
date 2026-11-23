@@ -174,6 +174,9 @@ fun PreTestOverlay(
     isCellularActive: Boolean? = null,
     report: com.example.thermohammer.engine.PreflightReport? = null,
     checking: Boolean = false,
+    /** Test builds' benchmark: the sections to run (a picker above the buttons); null hides it. */
+    sections: Set<com.example.thermohammer.engine.BenchSection>? = null,
+    onSectionsChange: (Set<com.example.thermohammer.engine.BenchSection>) -> Unit = {},
     onCancel: () -> Unit,
     onProceed: () -> Unit
 ) {
@@ -278,13 +281,39 @@ fun PreTestOverlay(
                 )
             }
 
+            if (sections != null) {
+                Spacer(Modifier.height(14.dp))
+                Text("TEST BUILD · RUN ONLY", style = ThermoType.label(8f).copy(color = Forge.ink2))
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                    for (s in com.example.thermohammer.engine.BenchSection.entries) {
+                        val on = s in sections
+                        Box(
+                            Modifier.weight(1f)
+                                .background(if (on) Forge.phaseMeasured.copy(alpha = 0.22f) else Forge.ink0.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                .clickable { onSectionsChange(if (on) sections - s else sections + s) }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(s.label, style = TextStyle(color = if (on) Forge.phaseMeasured else Forge.ink2, fontSize = 10.sp,
+                                fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
+                        }
+                    }
+                }
+                if (sections.size < com.example.thermohammer.engine.BenchSection.entries.size) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("a partial run is never verified: the sections it skips score 0",
+                        style = ThermoType.annotation(7f, Forge.ink2), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
             OverlayDivider()
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.weight(1f)) { SecondaryButton("CANCEL", onCancel) }
                 Box(Modifier.weight(1f)) {
-                    val enabled = !checking && (report == null || report.canRun)
+                    val enabled = !checking && (report == null || report.canRun) && (sections == null || sections.isNotEmpty())
                     Button(
                         onClick = onProceed,
                         enabled = enabled,

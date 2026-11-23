@@ -604,10 +604,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     /** Debug builds only (MainActivity's `benchFrom` extra): start at that UX test, skipping what comes before. */
     private var benchFrom: String? = null
 
-    fun startBenchmark(from: String? = null) {
+    /** Test builds: the sections this run is limited to (null = all of them). */
+    @Volatile private var benchOnly: Set<BenchSection>? = null
+
+    fun startBenchmark(from: String? = null, only: Set<BenchSection>? = null) {
         if (_state.value.isRunning) return
         clearRunMarkers()
         benchFrom = from
+        benchOnly = only?.takeIf { it.isNotEmpty() && it.size < BenchSection.entries.size }
         activeThreadCount = 0
         val startBatt = StressProbes.battery(appContext)
         startBrightness = StressProbes.screenBrightness(appContext)
@@ -652,6 +656,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private suspend fun runBenchmark() {
         var flags = 0
         val from = benchFrom
+        val only = benchOnly
+        fun want(s: BenchSection) = only == null || s in only
+        // a partial run (test builds) is never a verified one: the sections it skipped score 0
+        if (only != null) flags = flags or ValidityFlag.TEST_PROBES
+        llmGpuCool = null                      // the last run's, if this one skips the LLM
         // Getting ready: cool, and nothing else eating the CPU. If the phone was busy, that work
         // may have warmed it again, so the temperature is checked once more. A phone that doesn't get down to the
         // target (many idle at 45–50 °C) isn't flagged: the wait is a courtesy, not a condition.
@@ -666,17 +675,17 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         _state.update { it.copy(benchPlan = plan) }
         benchStartNs = System.nanoTime()
         runTelemetryOpen.set(true)
-        com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkStarted(partial = from != null)
+        com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkStarted(partial = from != null || only != null)
         if (from == null) com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "cpu")
-        val cpu = if (from == null) runCpu() ?: return else null
+        val cpu = if (from == null && want(BenchSection.CPU)) runCpu() ?: return else null
         if (from == null) com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "mem")
-        val mem = if (from == null) runMem() ?: return else null
+        val mem = if (from == null && want(BenchSection.MEM)) runMem() ?: return else null
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "gpu")
         val results = ArrayList<BenchmarkTestResult>()
         val runStartNs = System.nanoTime()
         for (test in BenchmarkTest.entries) {
             if (!_state.value.isRunning) return
-            if (from != null) { results += BenchmarkTestResult.unsupported(test); continue }
+            if (from != null || !want(BenchSection.GPU)) { results += BenchmarkTestResult.unsupported(test); continue }
             if (test !in plan) {                       // no ray tracing on this phone: the test scores 0
                 results += BenchmarkTestResult.unsupported(test)
                 continue
@@ -723,27 +732,29 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             results += summary
         }
         val gpuScore = BenchmarkScore.overall(results)
-        val gpuName = gpuBench.gpuName.ifEmpty { vkBench.gpuName }
+        // (skipped the GPU section: the AI section still needs the GPU's name to pick its settings)
+        val gpuName = gpuBench.gpuName.ifEmpty { vkBench.gpuName }.ifEmpty { if (want(BenchSection.AI)) GlRenderer.name() else "" }
         if (!_state.value.isRunning) return
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ux")
-        val ux = runUx(from) ?: return
+        val ux = if (want(BenchSection.UX)) runUx(from) ?: return else null
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ai")
-        val ai = runAi(gpuName) ?: return
+        val ai = if (want(BenchSection.AI)) runAi(gpuName) ?: return else null
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "llm")
-        val settled = settleForLlm() ?: return
-        val llamaRuns = runLlm() ?: return
+        val wantLlm = want(BenchSection.LLM)
+        val settled = if (wantLlm) settleForLlm() ?: return else null
+        val llamaRuns = if (wantLlm) runLlm() ?: return else null
         // version 5: the LLM's third engine, the NPU — Google's own Gemma 3 1B file for the chip through LiteRT-LM, in a
         // process of its own, after the same short cooldown the GPU part had. No NPU path: it counts 0 (LlmResult.npuPoints)
         var npuCool: String? = null
-        val npuRun = if (com.example.thermohammer.engine.llm.NpuLlmProbe.AVAILABLE && llamaRuns.error == null) {
+        val npuRun = if (llamaRuns != null && com.example.thermohammer.engine.llm.NpuLlmProbe.AVAILABLE && llamaRuns.error == null) {
             npuCool = coolForLlm("the LLM GPU test") ?: return
             npuLlmRun()
         } else null
         if (!_state.value.isRunning) return
-        val llm = llamaRuns.copy(npu = npuRun)
+        val llm = llamaRuns?.copy(npu = npuRun)
         // a supported chip without its model can't give the NPU third: incomplete, never submitted as "no NPU"
         if (npuRun?.missingModel == true) flags = flags or ValidityFlag.NPU_MODEL_MISSING
-        val npuLlm = listOfNotNull("LLM settle · $settled", llmGpuCool?.let { "LLM settle · before the GPU test · $it" },
+        val npuLlm = listOfNotNull(settled?.let { "LLM settle · $it" }, llmGpuCool?.let { "LLM settle · before the GPU test · $it" },
             npuCool?.let { "LLM settle · before the NPU test · $it" }) + npuRun?.lines.orEmpty()
         // a test build's run never goes to the live leaderboard (its scoring is version 5's, the server's isn't yet)
         if (com.example.thermohammer.TestBuild.PROBES) flags = flags or ValidityFlag.TEST_PROBES
@@ -760,14 +771,18 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             llm = llm,
             startCpuShare = quiet.share,
             quietWaitSec = quiet.waitedSec,
-            npuLlm = npuLlm
+            npuLlm = npuLlm,
+            only = only
         )
         if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
             status = "completed", totalScore = result.total, verified = result.isVerified,
             durationSec = ((System.nanoTime() - benchStartNs) / 1_000_000_000L).toInt()
         )
         _state.update {
+            // the run's length (the screen saves and shows a finished run only when it's above 0; only the GPU section
+            // ticks it while running, so a partial run without GPU would otherwise end unseen)
             it.copy(benchResult = result, validityFlags = flags, wasCompleted = true, benchProgress = 1f,
+                elapsedSeconds = maxOf(it.elapsedSeconds, ((System.nanoTime() - benchStartNs) / 1_000_000_000L).toInt(), 1),
                 cpuTest = null, memTest = null, uxTest = null, qrFrames = null, qrFound = null, aiTest = null, aiVisual = null,
                 llmAccel = null, llmReply = emptyList())
         }
@@ -1877,9 +1892,20 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private suspend fun npuLlmRun(): LlmNpuRun {
         _state.update { it.copy(llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0,
             llmDetail = "NPU · LITERT-LM · GEMMA 3 1B · PREPARING") }
-        return com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext) { label, fraction ->
+        val run = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext) { label, fraction ->
             _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
         }
+        // test builds, report only: the same task with Google's generic file (one for every chip), compiled for this NPU
+        // on the phone — would it be as fast as the chip's own build? The first compile can take minutes; it's cached after
+        val generic = com.example.thermohammer.engine.llm.NpuModels.genericTestFile(appContext) ?: return run
+        if (!_state.value.isRunning) return run
+        val g = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext, generic, stepTimeoutMs = 20 * 60_000L) { label, fraction ->
+            _state.update { it.copy(llmProgress = fraction, llmDetail = "GENERIC · $label") }
+        }
+        val verdict = if (g.error == null && g.right) "prompt %.2f tok/s · reply %.2f tok/s · answer right".format(g.prefill, g.decode)
+            else "no result: ${g.error ?: "wrong answer"}"
+        return run.copy(lines = run.lines + "LLM NPU GENERIC (report only) · ${generic.name} compiled on the phone · $verdict" +
+            g.lines.map { "  generic · $it" })
     }
 
     private fun gpuFpsDelta(dtNs: Long, runner: GpuRunner = gpuBench): Double {

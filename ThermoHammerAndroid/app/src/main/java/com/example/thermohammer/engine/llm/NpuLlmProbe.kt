@@ -60,11 +60,16 @@ object NpuLlmProbe {
      * [run] in the probe's own process; `onStep` on the main thread. Its report lines, or one saying the process
      * crashed or hung on which step.
      */
-    suspend fun runIsolated(context: Context, onStep: (String, Float) -> Unit): LlmNpuRun = withContext(Dispatchers.Main.immediate) {
+    /**
+     * `model`: a file to run instead of the chip's own (test builds: Google's generic build, compiled on the device);
+     * `stepTimeoutMs`: how long one step may go without news (an on-device compile of a whole LLM can take minutes).
+     */
+    suspend fun runIsolated(context: Context, model: File? = null, stepTimeoutMs: Long = STEP_TIMEOUT_MS,
+                            onStep: (String, Float) -> Unit): LlmNpuRun = withContext(Dispatchers.Main.immediate) {
         fun failed(why: String) = LlmNpuRun(0.0, 0.0, false, error = why, lines = listOf("$HEAD · $why"))
         // the model is found here, in the app's process (Play's AI pack), and handed to the engine's process
         val soc = NpuModels.soc()
-        val model = NpuModels.modelFile(context)
+        @Suppress("NAME_SHADOWING") val model = model ?: NpuModels.modelFile(context)
         if (model == null) {
             val why = if (NpuModels.supported(soc))
                 "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone — Google Play " +
@@ -78,7 +83,7 @@ object NpuLlmProbe {
         var watchdog: Job? = null
         fun arm() {
             watchdog?.cancel()
-            watchdog = launch { delay(STEP_TIMEOUT_MS); done.complete(failed("stopped: no answer for ${STEP_TIMEOUT_MS / 1000} s on: $step")) }
+            watchdog = launch { delay(stepTimeoutMs); done.complete(failed("stopped: no answer for ${stepTimeoutMs / 1000} s on: $step")) }
         }
         val replies = Messenger(Handler(Looper.getMainLooper()) { msg ->
             when (msg.what) {
@@ -137,6 +142,12 @@ object NpuLlmProbe {
         val dir = File(context.codeCacheDir, "litertlm-npu").apply { deleteRecursively(); mkdirs() }
         val name = "libLiteRtDispatch_$vendor.so"
         context.assets.open("litertlm-npu/$name").use { input -> File(dir, name).outputStream().use { input.copyTo(it) } }
+        // the vendor's on-device compiler: a model not built for this chip ahead of time is compiled here (JIT), once,
+        // and LiteRT-LM caches the result in its cache folder
+        val plugin = "libLiteRtCompilerPlugin_$vendor.so"
+        val hasPlugin = runCatching {
+            context.assets.open("litertlm-npu/$plugin").use { input -> File(dir, plugin).outputStream().use { input.copyTo(it) } }
+        }.isSuccess
         var linked = 0
         for (lib in File(context.applicationInfo.nativeLibraryDir).listFiles().orEmpty()) {
             if (lib.name.startsWith("libQnn") || lib.name.startsWith("libneuron")) {
@@ -144,7 +155,7 @@ object NpuLlmProbe {
                 linked++
             }
         }
-        return dir to "LiteRT 2.4 dispatch library + $linked of the app's runtime libraries"
+        return dir to "LiteRT 2.4 dispatch library${if (hasPlugin) " and compiler plugin" else ""} + $linked of the app's runtime libraries"
     }
 
     private fun Throwable.why(): String = (message ?: javaClass.simpleName).lines().first().take(240)
@@ -268,7 +279,7 @@ class NpuLlmProbeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RUN) Handler(worker.looper).post {
             // error level: some phones (Honor) keep nothing below it from an app
-            NpuLlmProbe.run(this, null, { true }) { label, _ -> android.util.Log.e("NpuLlmProbe", "step: $label") }
+            NpuLlmProbe.run(this, intent.getStringExtra("file"), { true }) { label, _ -> android.util.Log.e("NpuLlmProbe", "step: $label") }
                 .lines.forEach { android.util.Log.e("NpuLlmProbe", it) }
             android.util.Log.e("NpuLlmProbe", "done")
             exit()
