@@ -25,7 +25,7 @@ run on a Mac too.
 ## Microsoft Store
 
 `msix/build.sh` makes the x64 and ARM64 MSIX packages the Store takes (see `msix/README.md`: Partner Center identity, the unsigned-package
-note, trying a package on a PC). The version is `<Version>` in `ThermoHammer.csproj`, kept equal to the phones' (2.1.7).
+note, trying a package on a PC). The version is `<Version>` in `ThermoHammer.csproj`, kept equal to the phones' (2.2.0).
 
 ## What runs where
 
