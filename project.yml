@@ -74,7 +74,8 @@ targets:
         product: FirebaseCrashlytics
       - package: Firebase
         product: FirebaseAnalyticsCore
-    # the LLM test needs ~2.4 GB: on 6 GB iPhones iOS's default limit for one app leaves too little room
+    # the LLM test: about 1 GB for llama.cpp's Gemma 3 1B, then the Neural Engine's own model — iOS's default limit for
+    # one app leaves smaller iPhones little room
     entitlements:
       path: CpuThrottlingTest/CpuThrottlingTest.entitlements
       properties:

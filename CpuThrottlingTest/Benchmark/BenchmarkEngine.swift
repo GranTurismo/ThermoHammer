@@ -45,7 +45,8 @@ final class BenchmarkEngine: ObservableObject {
     @Published private(set) var aiRate = -1.0
     @Published private(set) var aiDetail = ""
     @Published private(set) var aiVisual: AiVisual?
-    @Published private(set) var llmAccel: LlmAccel?     // where the model runs now — the stage is up while set
+    @Published private(set) var llmAccel: LlmAccel?     // where llama.cpp runs the model now — the stage is up while set
+    @Published private(set) var llmNpu = false          // the LLM's third engine, the Neural Engine, is running (LlmNpuEngine)
     @Published private(set) var llmPhase: LlmPhase = .build
     @Published private(set) var llmProgress = 0.0       // 0..1 through this accelerator
     @Published private(set) var llmRate = -1.0          // tokens/s so far
@@ -191,10 +192,29 @@ final class BenchmarkEngine: ObservableObject {
     func publishLlm(_ accel: LlmAccel?, phase: LlmPhase, progress: Double, rate: Double, detail: String, reply: [Int] = [], prompts: Int = 0) {
         ui {
             self.uxTest = nil; self.aiTest = nil; self.aiVisual = nil
-            self.llmAccel = accel; self.llmPhase = phase; self.llmProgress = progress; self.llmRate = rate
+            self.llmAccel = accel; self.llmNpu = false; self.llmPhase = phase; self.llmProgress = progress; self.llmRate = rate
             self.llmDetail = detail; self.llmReply = reply; self.llmPrompts = prompts
         }
     }
+
+    /** The LLM's NPU engine on the stage: how far it is (0…1) and its own line (LlmNpuEngine's progress). */
+    func publishLlmNpu(progress: Double, detail: String) {
+        ui {
+            self.llmAccel = nil; self.llmNpu = true; self.llmPhase = .build; self.llmProgress = min(1, max(0, progress)); self.llmRate = -1
+            self.llmDetail = detail; self.llmReply = []; self.llmPrompts = 0
+        }
+    }
+
+    /// The LLM test is on the stage (llama.cpp's CPU or GPU run, or the NPU engine).
+    var llmOnStage: Bool { llmAccel != nil || llmNpu }
+
+    /// The LLM engine on the stage: its number (1 CPU, 2 GPU, 3 NPU), name and planned seconds; nil when none is.
+    var llmStep: (number: Int, label: String, seconds: Int)? {
+        llmNpu ? (3, "NPU", LlmSection.npuSeconds) : llmAccel.map { ($0.rawValue + 1, $0.label, $0.seconds) }
+    }
+
+    /// Every LLM engine's planned seconds, in run order (the progress bar).
+    static let llmSeconds = LlmAccel.allCases.map(\.seconds) + [LlmSection.npuSeconds]
 
     /** The UX test on the stage now: its progress, what it's doing and its live number. */
     func publishUx(_ test: UxTest?, progress: Double = 0, detail: String = "", value: Double = -1, unit: String = "") {
@@ -331,7 +351,7 @@ final class BenchmarkEngine: ObservableObject {
             self.cpuTest = nil; self.memTest = nil; self.gpuTest = nil; self.uxTest = nil; self.webPage = nil
             self.videoFrame = nil; self.qrFrame = nil; self.qrFound = nil; self.stageTitle = ""
             self.aiTest = nil; self.aiAccel = nil; self.aiVisual = nil
-            self.llmAccel = nil; self.llmReply = []
+            self.llmAccel = nil; self.llmNpu = false; self.llmReply = []
             self.inBackground = false
             self.error = error
             self.result = r
