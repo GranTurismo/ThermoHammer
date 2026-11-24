@@ -103,7 +103,7 @@ prep() { # export -> calibrate -> quantize, once for all SoCs (Qualcomm and
   if [ ! -f "$WORK/common/calib/.done" ]; then
     log "stage 2 calibrate ($NUM_PROMPTS prompts, $DECODE_STEPS decode steps)"
     run_prep calibrate --cache $CACHE_LEN --num_prompts "$NUM_PROMPTS" --decode_steps "$DECODE_STEPS"
-    touch "$WORK/common/calib/.done"
+    [ -f "$WORK/common/calib/.done" ] || { echo "calibration left no .done marker" >&2; exit 1; }   # pipeline.py writes it
   fi
   log "stage 3 quantize (int$WEIGHT_BITS FC weights, int16 activations)"
   run_prep quantize --quant "$(w common/quantized.litertlm)" --weight_bits "$WEIGHT_BITS"

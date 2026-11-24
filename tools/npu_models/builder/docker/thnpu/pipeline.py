@@ -153,6 +153,8 @@ def cmd_calibrate(a):
       ema_smoothing_factor=0.1,
       kv_cache_max_len=a.cache,
   )
+  # the marker build.sh checks; written here, by whoever owns the folder (in Docker that's root, not the CI user)
+  open(os.path.join(a.work, "calib", ".done"), "w").close()
   log("calibrate done")
 
 
