@@ -16,20 +16,33 @@ from pathlib import Path
 from .api import Api
 
 REFERENCE = 6000          # points per section on the reference phone
-REFERENCE_TOTAL = REFERENCE * 6
 
 PLATFORMS = {1: ("iOS", "ios"), 2: ("Android", "android"), 3: ("macOS", "macos"), 4: ("Windows", "windows")}
 
-# key, short label, long label, the board's field, accent (the apps' own section colours)
+# The benchmark's sections since scoring version 5: key, short label, long label, the board's field, accent (the apps'
+# own section colours)
 SECTIONS = [
     ("cpu", "CPU", "CPU", "cpuScore", "#E8C547"),
     ("mem", "MEM", "Memory", "memScore", "#F2A65A"),
     ("gpu", "GPU", "GPU", "score", "#9D7BFF"),
     ("ux", "UX", "Everyday UX", "uxScore", "#3DE8C2"),
     ("ai", "AI", "AI", "aiScore", "#C792EA"),
-    ("llm", "LLM", "LLM", "llmScore", "#B5E853"),
 ]
 SECTION_KEYS = [s[0] for s in SECTIONS]
+# Scoring versions up to 4 also had an LLM test (a language model on the CPU and the GPU), part of their totals. Their
+# runs keep it on their own pages; version 5 dropped it.
+LLM_SECTION = ("llm", "LLM", "LLM", "llmScore", "#B5E853")
+LAST_LLM_VERSION = 4
+
+
+def sections_of(version: int) -> list[tuple]:
+    """The sections a scoring version's total is made of."""
+    return SECTIONS + [LLM_SECTION] if 0 < version <= LAST_LLM_VERSION else SECTIONS
+
+
+def reference_total(version: int) -> int:
+    """The reference phone's total in a scoring version: 6,000 per section."""
+    return REFERENCE * len(sections_of(version))
 
 DURATION_MIN = {0: 5, 1: 15, 2: 30}
 HEALTH_MIN_RUNS = 3       # verified runs of a model before one run is judged against them (PhoneHealth.MIN_RUNS)
@@ -240,11 +253,12 @@ class BenchRun:
 
     @property
     def section_list(self) -> list[dict]:
-        """The six sections of this run, against the 6,000-point reference (as Device.section_list does for the best)."""
+        """The sections of this run's scoring version, against the 6,000-point reference (as Device.section_list does
+        for the best)."""
         return [{"key": key, "short": short, "label": long_, "points": self.scores.get(key, 0),
                  "ratio": self.scores.get(key, 0) / REFERENCE, "color": color,
                  "share": self.scores.get(key, 0) / self.total if self.total else 0}
-                for key, short, long_, _, color in SECTIONS]
+                for key, short, long_, _, color in sections_of(self.benchmark_version)]
 
     @property
     def os_text(self) -> str:
@@ -351,11 +365,11 @@ class Device:
 
     @property
     def section_list(self) -> list[dict]:
-        """The six sections of the best run, with how they stand against the 6,000-point reference."""
+        """The sections of the best run, with how they stand against the 6,000-point reference."""
         if not self.best:
             return []
         out = []
-        for key, short, long_, _, color in SECTIONS:
+        for key, short, long_, _, color in sections_of(self.best.benchmark_version):
             pts = self.best.scores.get(key, 0)
             out.append({"key": key, "short": short, "label": long_, "points": pts, "ratio": pts / REFERENCE, "color": color,
                         "share": pts / self.best.total if self.best.total else 0})
@@ -561,7 +575,7 @@ def compare(a: Device, b: Device) -> Comparison | None:
     first, second = sorted((a, b), key=lambda d: d.slug)
     c = Comparison(a=first, b=second, slug=f"{first.slug}-vs-{second.slug}")
     if first.best and second.best:
-        accent = {s[0]: s[4] for s in SECTIONS}
+        accent = {s[0]: s[4] for s in SECTIONS + [LLM_SECTION]}
         for sa, sb in _union(first.best.sections, second.best.sections, lambda s: s["key"]):
             groups = []
             for ga, gb in _union((sa or {}).get("groups", []), (sb or {}).get("groups", []), lambda g: g["title"]):
@@ -813,7 +827,7 @@ def load_site(api: Api, data_dir: Path, max_pairs: int = 5000, log=print) -> Sit
         pairs.sort(key=lambda p: p.slug)
 
     leaders = []
-    for key, short, long_, _, color in SECTIONS:
+    for key, short, long_, _, color in sections_of(version):
         top = max(board, key=lambda d: d.best.scores.get(key, 0), default=None)
         if top:
             leaders.append({"key": key, "short": short, "label": long_, "color": color, "device": top,

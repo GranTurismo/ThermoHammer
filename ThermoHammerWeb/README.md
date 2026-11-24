@@ -84,7 +84,7 @@ versions.
 - **The lab note** (`templates/note_power_mode.html.j2`) reads its numbers from benchmark runs #4 and #5 and stress
   run #1039. They were scored with version 4, so the HONOR is found among all devices, on the board or not. If those
   runs ever disappear from the API, the note is left out rather than shown with wrong numbers.
-- **Terms of use** are `templates/terms.html.j2` (`/terms/`), including the Gemma notice for the LLM test.
+- **Terms of use** are `templates/terms.html.j2` (`/terms/`), including the Gemma notice for the LLM test that apps before scoring version 5 ran.
 - **A new screenshot**: put the PNG in `assets-src/screens/`, run `.venv/bin/python tools/prepare_assets.py`, and
   reference it in `templates/home.html.j2`.
 - **A device name**: add a line to `data/device_aliases.tsv`. The stored name stays visible on the device's page.

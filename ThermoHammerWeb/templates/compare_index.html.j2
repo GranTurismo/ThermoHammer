@@ -3,7 +3,7 @@
 {% block main %}
 <section class="wrap page-head">
   <h1>Compare two devices</h1>
-  <p class="lede">Total score, six sections, every test, and both throttling curves on one chart. Each comparison has its own link.</p>
+  <p class="lede">Total score, {{ SECTIONS_WORD }} sections, every test, and both throttling curves on one chart. Each comparison has its own link.</p>
 </section>
 <section class="wrap page-body">
   <form class="panel brackets picker" data-picker data-base="{{ url('/compare/') }}">

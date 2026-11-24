@@ -39,8 +39,8 @@
   {% set top = [d.strongest.points, REFERENCE] | max %}
   <div class="grid2">
     <figure class="panel brackets">
-      <div class="panel-head"><span class="panel-title">Six sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
-      {{ charts.radar(d.best.scores, 380, d.title ~ ': section scores against the 6,000-point reference') | safe }}
+      <div class="panel-head"><span class="panel-title">{{ number_word(d.section_list | length) | capitalize }} sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
+      {{ charts.radar(d.section_list, 380, d.title ~ ': section scores against the 6,000-point reference') | safe }}
     </figure>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">Against the reference</span><span class="panel-note">best verified run</span></div>
@@ -65,7 +65,7 @@
     <div><dt>Median of its runs</dt><dd>{{ d.stats.total.median | num }}</dd></div>
     <div><dt>Best over median</dt><dd>+{{ percent_text((d.total / d.stats.total.median - 1) * 100) }}</dd></div>
     {% endif %}
-    <div><dt>Against the reference</dt><dd>{{ (d.total / REFERENCE_TOTAL) | times }} <small>of 36,000</small></dd></div>
+    <div><dt>Against the reference</dt><dd>{{ (d.total / REFERENCE_TOTAL) | times }} <small>of {{ REFERENCE_TOTAL | num }}</small></dd></div>
     {% if d.best.created %}<div><dt>Best run</dt><dd>{{ d.best.created | day }}</dd></div>{% endif %}
     {% if d.best.app_version %}<div><dt>App version</dt><dd>{{ d.best.app_version }}</dd></div>{% endif %}
   </dl>

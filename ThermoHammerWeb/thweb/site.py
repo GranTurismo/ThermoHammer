@@ -15,8 +15,25 @@ from markupsafe import Markup
 
 from . import charts, content, og
 from .config import ROOT, Config
-from .model import (REFERENCE, REFERENCE_TOTAL, SECTIONS, THERMAL_NAMES, BenchRun, Comparison, Device, Site,
-                    StressRun, capacity_hex, percent_text, ramp_hex)
+from .model import (LLM_SECTION, REFERENCE, SECTIONS, THERMAL_NAMES, BenchRun, Comparison, Device, Site, StressRun,
+                    capacity_hex, percent_text, ramp_hex, reference_total, sections_of)
+
+NUMBER_WORDS = {5: "five", 6: "six"}
+# how a section is named inside a sentence ("CPU, memory, GPU, everyday UX and AI")
+IN_TEXT = {"cpu": "CPU", "mem": "memory", "gpu": "GPU", "ux": "everyday UX", "ai": "AI", "llm": "LLM"}
+
+
+def sections_text(version: int) -> str:
+    """The sections of a scoring version as a sentence names them, e.g. "CPU, memory, GPU, everyday UX and AI"."""
+    names = [IN_TEXT[s[0]] for s in sections_of(version)]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def sections_word(version: int) -> str:
+    """How many sections a scoring version has, in words: "five" since version 5."""
+    n = len(sections_of(version))
+    return NUMBER_WORDS.get(n, str(n))
+
 
 TEXT_TYPES = {".css", ".js", ".svg", ".json", ".txt", ".xml", ".html", ".webmanifest"}
 
@@ -140,11 +157,14 @@ class Builder:
 
         hero = self._hero_runs(site)
         self.env.globals.update(
-            cfg=cfg, site=site, url=cfg.url, abs_url=cfg.abs_url, asset=self.asset, charts=charts, SECTIONS=SECTIONS,
-            REFERENCE=REFERENCE, REFERENCE_TOTAL=REFERENCE_TOTAL, THERMAL_NAMES=THERMAL_NAMES, CATALOG=content.CATALOG,
+            cfg=cfg, site=site, url=cfg.url, abs_url=cfg.abs_url, asset=self.asset, charts=charts,
+            # the board's sections (five since scoring version 5); an earlier run's own are sections_of(its version)
+            SECTIONS=sections_of(site.version), sections_of=sections_of, SECTIONS_WORD=sections_word(site.version),
+            SECTIONS_TEXT=sections_text(site.version), number_word=lambda n: NUMBER_WORDS.get(n, str(n)),
+            REFERENCE=REFERENCE, REFERENCE_TOTAL=reference_total(site.version), THERMAL_NAMES=THERMAL_NAMES, CATALOG=content.CATALOG,
             PHASES=content.PHASES, TEST_COUNT=sum(len(c["tests"]) for c in content.CATALOG.values()), capacity_hex=capacity_hex, ramp_hex=ramp_hex, percent_text=percent_text,
             built=site.built, changed=self.changed, year=site.built.year, A_COLOR=charts.A_COLOR, B_COLOR=charts.B_COLOR,
-            section_meta={s[0]: {"short": s[1], "label": s[2], "color": s[4]} for s in SECTIONS},
+            section_meta={s[0]: {"short": s[1], "label": s[2], "color": s[4]} for s in SECTIONS + [LLM_SECTION]},
             reference_text=content.reference)
 
         self._home(site, hero)
@@ -208,8 +228,8 @@ class Builder:
              "publisher": {"@type": "Organization", "name": cfg.publisher}},
             {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "ThermoHammer",
              "applicationCategory": "UtilitiesApplication", "operatingSystem": "Android, iOS, iPadOS, Windows 10, Windows 11",
-             "description": "A complete device benchmark (CPU, memory, GPU, everyday apps, AI and an on-device LLM) and a "
-                            "controlled stress test that shows when a device throttles and how much speed it keeps.",
+             "description": "A complete device benchmark (CPU, memory, GPU, everyday apps and AI) and a controlled "
+                            "stress test that shows when a device throttles and how much speed it keeps.",
              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
              "installUrl": [cfg.play_url, cfg.appstore_url, cfg.msstore_url], "url": cfg.abs_url("/"),
              "image": cfg.abs_url("/" + self.assets["img/icon-512.png"]),
@@ -220,7 +240,7 @@ class Builder:
         self.page(
             "/", "home.html.j2", priority="1.0",
             title="ThermoHammer: phone benchmark and thermal throttling test",
-            description=f"Benchmark your whole phone or PC in six sections, then stress it to see when it throttles and how "
+            description=f"Benchmark your whole phone or PC in {sections_word(site.version)} sections, then stress it to see when it throttles and how "
                         f"much speed it keeps. {site.stats['devices']} devices and {site.stats['runs']} verified runs on the "
                         f"public leaderboard. Free for Android, iPhone and Windows.",
             jsonld_blocks=blocks, hero=hero, faq=faq, featured=featured, note=note,
@@ -251,15 +271,14 @@ class Builder:
                    "isAccessibleForFree": True, "dateModified": self.changed.strftime("%Y-%m-%d"),
                    "keywords": ["phone benchmark", "CPU throttling", "thermal throttling", "sustained performance"]}
         if top:
-            description = (f"{len(site.board)} devices ranked by total benchmark score across CPU, memory, GPU, everyday "
-                           f"UX, AI and LLM. Top: {top.title} with {num(top.total)} points. Verified runs only, scored on "
-                           f"the server.")
+            description = (f"{len(site.board)} devices ranked by total benchmark score across {sections_text(site.version)}. "
+                           f"Top: {top.title} with {num(top.total)} points. Verified runs only, scored on the server.")
         elif site.earlier_versions:
             description = (f"The ThermoHammer benchmark board restarted with scoring version {site.version} on "
                            f"{day(site.version_since)}. Be among the first on it: verified runs only, scored on the server.")
         else:
-            description = ("The ThermoHammer benchmark board: devices ranked by total score across CPU, memory, GPU, "
-                           "everyday UX, AI and LLM. Verified runs only, scored on the server.")
+            description = (f"The ThermoHammer benchmark board: devices ranked by total score across "
+                           f"{sections_text(site.version)}. Verified runs only, scored on the server.")
         self.page(
             "/leaderboard/", "leaderboard.html.j2", priority="0.9",
             title="Benchmark leaderboard: phones and PCs ranked | ThermoHammer", description=description,
@@ -399,8 +418,8 @@ class Builder:
         self.page(
             "/compare/", "compare_index.html.j2", priority="0.8",
             title="Compare phones head to head: benchmark and throttling | ThermoHammer",
-            description=f"Pick any two of {site.stats['devices']} tested devices and see them side by side: total score, six "
-                        f"sections, every test, and how each holds its speed under load.",
+            description=f"Pick any two of {site.stats['devices']} tested devices and see them side by side: total score, "
+                        f"{sections_word(site.version)} sections, every test, and how each holds its speed under load.",
             crumbs=[("Compare", "/compare/")], bench_pairs=bench_pairs[:12], stress_pairs=stress_only[:9],
             picker_json=Markup(json.dumps(picker, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")))
         for p in site.pairs:
@@ -410,7 +429,7 @@ class Builder:
         a, b = p.a, p.b
         if p.has_bench:
             desc = (f"{p.headline}: {num(a.total)} against {num(b.total)} points. {p.sections_line}. "
-                    f"CPU, memory, GPU, everyday UX, AI and LLM compared test by test.")
+                    f"{sections_text(site.version)} compared test by test.")   # starts with "CPU"
         else:
             desc = (f"{a.title} holds {pct(a.headline.stability)} of its speed under sustained load, {b.title} "
                     f"{pct(b.headline.stability)}. Both throttling curves on one chart.")
@@ -432,8 +451,9 @@ class Builder:
         self.page(
             "/how-it-works/", "how.html.j2", priority="0.8",
             title="How ThermoHammer tests and scores a device",
-            description="What each of the six benchmark sections measures, how points are calculated against the 6,000-point "
-                        "reference, what counts as a verified run, and how the stress test measures throttling.",
+            description=f"What each of the {sections_word(site.version)} benchmark sections measures, how points are calculated "
+                        "against the 6,000-point reference, what counts as a verified run, and how the stress test measures "
+                        "throttling.",
             crumbs=[("How it works", "/how-it-works/")],
             jsonld_blocks=[{"@context": "https://schema.org", "@type": "TechArticle",
                             "headline": "How ThermoHammer tests and scores a device", "url": self.cfg.abs_url("/how-it-works/"),
@@ -452,7 +472,7 @@ class Builder:
         if performance.scores.get("cpu", 0) < balanced.scores.get("cpu", 0) * 1.5:
             return None
         rows = []
-        for key, short, long_, _, color in SECTIONS:
+        for key, short, long_, _, color in sections_of(balanced.benchmark_version):
             x, y = balanced.scores.get(key, 0), performance.scores.get(key, 0)
             rows.append({"key": key, "label": long_, "color": color, "a": x, "b": y, "ratio": y / x if x else 0})
 
@@ -521,8 +541,8 @@ class Builder:
         ai_models = [name.split(" · ")[0] for _, _, name in content.CATALOG["ai"]["tests"]]
         self.page(
             "/terms/", "terms.html.j2", priority="0.3", title="Terms of use | ThermoHammer",
-            description="ThermoHammer is free and provided as is. The leaderboard may refuse or remove runs. The LLM test "
-                        "runs Google's Gemma 3 1B, provided under the Gemma Terms of Use.",
+            description="ThermoHammer is free and provided as is. The leaderboard may refuse or remove runs. The AI section "
+                        "runs open models, each under its own licence.",
             crumbs=[("Terms of use", "/terms/")], ai_models=ai_models)
 
     # ── everything else ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from html import escape
 
-from .model import RAMP, REFERENCE, SECTIONS, THERMAL_NAMES, StressRun, ramp_hex
+from .model import LLM_SECTION, RAMP, REFERENCE, SECTIONS, THERMAL_NAMES, StressRun, ramp_hex
 
 A_COLOR = "#00E6FF"     # the apps' comparison pair: A cyan, B amber
 B_COLOR = "#FFAB00"
@@ -163,8 +163,10 @@ def _duo(a: StressRun, b: StressRun, name_a: str, name_b: str, width: int, heigh
     return "".join(out)
 
 
-def _hex_points(cx: float, cy: float, radii: list[float]) -> list[tuple[float, float]]:
-    return [(cx + r * math.cos(math.radians(-90 + i * 60)), cy + r * math.sin(math.radians(-90 + i * 60)))
+def _axis_points(cx: float, cy: float, radii: list[float]) -> list[tuple[float, float]]:
+    """One point per axis, the first straight up, the rest clockwise at equal angles."""
+    step = 360 / len(radii)
+    return [(cx + r * math.cos(math.radians(-90 + i * step)), cy + r * math.sin(math.radians(-90 + i * step)))
             for i, r in enumerate(radii)]
 
 
@@ -172,50 +174,54 @@ def _poly(points: list[tuple[float, float]]) -> str:
     return " ".join(f"{_f(x)},{_f(y)}" for x, y in points)
 
 
-def radar(scores: dict[str, int], size: int = 380, title: str = "") -> str:
-    """One device's six sections on a common scale, with the 6,000-point reference drawn as a dashed hexagon."""
+def radar(sections: list[dict], size: int = 380, title: str = "") -> str:
+    """One run's sections (BenchRun.section_list: five since scoring version 5, six with the LLM before) on a common
+    scale, with the 6,000-point reference drawn dashed."""
     cx = cy = size / 2
     radius = size / 2 - 58
-    values = [max(0, scores.get(k, 0)) for k, *_ in SECTIONS]
+    values = [max(0, s["points"]) for s in sections]
+    n = len(values)
     top = max(max(values), REFERENCE) or 1
     label = title or "Section scores against the 6,000-point reference"
     out = [f'<svg class="radar" viewBox="0 0 {size} {size}" role="img" aria-label="{escape(label)}" xmlns="http://www.w3.org/2000/svg">',
            f"<title>{escape(label)}</title>"]
     for ring in (0.25, 0.5, 0.75, 1.0):
-        out.append(f'<polygon points="{_poly(_hex_points(cx, cy, [radius * ring] * 6))}" fill="none" stroke="{GRID}"/>')
-    for px, py in _hex_points(cx, cy, [radius] * 6):
+        out.append(f'<polygon points="{_poly(_axis_points(cx, cy, [radius * ring] * n))}" fill="none" stroke="{GRID}"/>')
+    for px, py in _axis_points(cx, cy, [radius] * n):
         out.append(f'<line x1="{cx}" y1="{cy}" x2="{_f(px)}" y2="{_f(py)}" stroke="{GRID}"/>')
-    ref = _hex_points(cx, cy, [radius * REFERENCE / top] * 6)
+    ref = _axis_points(cx, cy, [radius * REFERENCE / top] * n)
     out.append(f'<polygon points="{_poly(ref)}" fill="none" stroke="{INK1}" stroke-opacity=".7" stroke-dasharray="4 5" stroke-width="1.2"/>')
-    shape = _hex_points(cx, cy, [radius * v / top for v in values])
+    shape = _axis_points(cx, cy, [radius * v / top for v in values])
     out.append(f'<polygon points="{_poly(shape)}" fill="rgba(61,232,194,.16)" stroke="#3DE8C2" stroke-width="2" stroke-linejoin="round"/>')
-    for (px, py), (_, _, _, _, color) in zip(shape, SECTIONS):
-        out.append(f'<circle cx="{_f(px)}" cy="{_f(py)}" r="3.6" fill="{color}"/>')
-    for (lx, ly), (key, short, _, _, color), v in zip(_hex_points(cx, cy, [radius + 26] * 6), SECTIONS, values):
+    for (px, py), s in zip(shape, sections):
+        out.append(f'<circle cx="{_f(px)}" cy="{_f(py)}" r="3.6" fill="{s["color"]}"/>')
+    for (lx, ly), s, v in zip(_axis_points(cx, cy, [radius + 26] * n), sections, values):
         anchor = "middle" if abs(lx - cx) < 4 else "start" if lx > cx else "end"
-        out.append(f'<text x="{_f(lx)}" y="{_f(ly - 3)}" text-anchor="{anchor}" class="rk" fill="{color}">{short}</text>')
+        out.append(f'<text x="{_f(lx)}" y="{_f(ly - 3)}" text-anchor="{anchor}" class="rk" fill="{s["color"]}">{s["short"]}</text>')
         out.append(f'<text x="{_f(lx)}" y="{_f(ly + 11)}" text-anchor="{anchor}" class="rv">{v:,}</text>')
     out.append("</svg>")
     return "".join(out)
 
 
 def radar_duo(sections: list[dict], name_a: str, name_b: str, size: int = 400) -> str:
-    """Two devices on one hexagon. Each axis is scaled to the better of the two, as in the apps' comparison."""
+    """Two devices on one radar, an axis per section. Each axis is scaled to the better of the two, as in the apps'
+    comparison."""
     cx = cy = size / 2
     radius = size / 2 - 60
     label = f"Section by section: {name_a} against {name_b}"
     out = [f'<svg class="radar" viewBox="0 0 {size} {size}" role="img" aria-label="{escape(label)}" xmlns="http://www.w3.org/2000/svg">',
            f"<title>{escape(label)}</title>"]
+    n = max(len(SECTIONS), len(sections))
     for ring in (0.25, 0.5, 0.75, 1.0):
-        out.append(f'<polygon points="{_poly(_hex_points(cx, cy, [radius * ring] * 6))}" fill="none" stroke="{GRID}"/>')
-    for px, py in _hex_points(cx, cy, [radius] * 6):
+        out.append(f'<polygon points="{_poly(_axis_points(cx, cy, [radius * ring] * n))}" fill="none" stroke="{GRID}"/>')
+    for px, py in _axis_points(cx, cy, [radius] * n):
         out.append(f'<line x1="{cx}" y1="{cy}" x2="{_f(px)}" y2="{_f(py)}" stroke="{GRID}"/>')
-    secs = (sections + [{"share_a": 0, "share_b": 0, "title": "", "duel": None}] * 6)[:6]
+    secs = (sections + [{"share_a": 0, "share_b": 0, "title": "", "duel": None}] * n)[:n]
     for share, color in (("share_b", B_COLOR), ("share_a", A_COLOR)):
-        shape = _hex_points(cx, cy, [radius * max(0.02, s[share]) for s in secs])
+        shape = _axis_points(cx, cy, [radius * max(0.02, s[share]) for s in secs])
         out.append(f'<polygon points="{_poly(shape)}" fill="{color}" fill-opacity=".13" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>')
-    short = {s[0]: s[1] for s in SECTIONS}
-    for (lx, ly), s in zip(_hex_points(cx, cy, [radius + 24] * 6), secs):
+    short = {s[0]: s[1] for s in SECTIONS + [LLM_SECTION]}
+    for (lx, ly), s in zip(_axis_points(cx, cy, [radius + 24] * n), secs):
         if not s.get("duel"):
             continue
         winner = s["duel"].winner

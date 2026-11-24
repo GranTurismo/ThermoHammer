@@ -7,7 +7,7 @@
     <a href="{{ url('/leaderboard/throttling/') }}">Stress test</a>
   </div>
   <h1>Benchmark leaderboard</h1>
-  <p class="lede">All six sections, one total, and each device's best verified run. Phones and PCs sit on the same scale: 6,000 points per section is {{ reference_text(site.version) }}.</p>
+  <p class="lede">All {{ SECTIONS_WORD }} sections, one total, and each device's best verified run. Phones and PCs sit on the same scale: 6,000 points per section is {{ reference_text(site.version) }}.</p>
   {% if site.earlier_versions and site.board %}<p class="fine">Scoring version {{ site.version }}{% if site.version_since %} since {{ site.version_since | day }}{% endif %}: the board started over with it. Runs scored with version {{ site.earlier_versions | join(' or ') }} stay on each device's page, marked, and aren't ranked here.</p>{% endif %}
 </section>
 

@@ -15,12 +15,12 @@
     <p>A run you submit goes on the public leaderboard and on this site, with its measurements, the device model, its chip and its OS version. We may refuse a run, or remove one later, for example when it looks tampered with, couldn't have come from a real device of that model, or was scored by mistake. When the scoring changes, the board starts over on the new version; earlier runs stay on their pages, marked with their version.</p>
 
     <h2>AI models</h2>
-    <p>The LLM test runs Google's Gemma 3 1B model. Gemma is provided under and subject to the Gemma Terms of Use found at <a href="https://ai.google.dev/gemma/terms" rel="noopener">https://ai.google.dev/gemma/terms</a>. By using ThermoHammer you agree not to use the Gemma model, or anything made from it, for any of the uses restricted by the Gemma Prohibited Use Policy at <a href="https://ai.google.dev/gemma/prohibited_use_policy" rel="noopener">https://ai.google.dev/gemma/prohibited_use_policy</a>.</p>
-    <p>The AI section runs open models ({{ ai_models[:-1] | join(', ') }} and {{ ai_models[-1] }}), and the LLM test runs on llama.cpp on the CPU and the GPU. Each comes with its own licence.</p>
+    <p>Earlier versions of the apps had an LLM test that ran Google's Gemma 3 1B model. Gemma is provided under and subject to the Gemma Terms of Use found at <a href="https://ai.google.dev/gemma/terms" rel="noopener">https://ai.google.dev/gemma/terms</a>. By using ThermoHammer you agree not to use the Gemma model, or anything made from it, for any of the uses restricted by the Gemma Prohibited Use Policy at <a href="https://ai.google.dev/gemma/prohibited_use_policy" rel="noopener">https://ai.google.dev/gemma/prohibited_use_policy</a>.</p>
+    <p>The AI section runs open models ({{ ai_models[:-1] | join(', ') }} and {{ ai_models[-1] }}), each with its own licence.</p>
 
     <h2>Questions</h2>
     <p>What the apps send and keep is in the <a href="{{ cfg.privacy_url }}" rel="noopener">privacy policy</a>. For anything else, write to <a href="mailto:{{ cfg.support_email }}">{{ cfg.support_email }}</a>. We may change these terms; this page always has the current text.</p>
-    <p class="fine">Last changed <time datetime="2026-11-23">23 Nov 2026</time>.</p>
+    <p class="fine">Last changed <time datetime="2026-11-24">24 Nov 2026</time>.</p>
   </div>
 </section>
 {{ m.cta_band('Run it on your own device.', 'Free on Google Play, the App Store and the Microsoft Store, with no account and no ads.') }}

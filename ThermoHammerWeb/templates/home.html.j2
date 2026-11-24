@@ -7,7 +7,7 @@
     <div class="hero-copy">
       <p class="eyebrow"><span class="pulse"></span>Phone benchmark · thermal throttling test</p>
       <h1>Every phone is fast <span class="heat">for a minute.</span></h1>
-      <p class="lede">ThermoHammer scores the whole device across six sections, then keeps the load on until it throttles. You see exactly when that happens, and how much speed is left.</p>
+      <p class="lede">ThermoHammer scores the whole device across {{ SECTIONS_WORD }} sections, then keeps the load on until it throttles. You see exactly when that happens, and how much speed is left.</p>
       {{ m.store_buttons() }}
       <p class="fine hero-fine">Free · no account · no ads · <a href="{{ url('/leaderboard/') }}">see the leaderboard</a></p>
     </div>
@@ -54,11 +54,11 @@
   <div class="wrap">
     <header class="sec-head">
       <p class="kicker"><span>01</span>The benchmark</p>
-      <h2>Six sections. One score you can read.</h2>
-      <p class="sec-lede">Every test is scored against the same reference: a Snapdragon 8 Elite phone in its Performance power mode is 6,000 points per section. Twice the points means about twice the measured speed. Add the six up and you have the total.</p>
+      <h2>{{ SECTIONS_WORD | capitalize }} sections. One score you can read.</h2>
+      <p class="sec-lede">Every test is scored against the same reference: a Snapdragon 8 Elite phone in its Performance power mode is 6,000 points per section. Twice the points means about twice the measured speed. Add the {{ SECTIONS_WORD }} up and you have the total.</p>
     </header>
     <div class="cards6">
-      {% for key, short, label, field, color in SECTIONS %}
+      {% for key, short, label, field, color in SECTIONS if key in CATALOG %}
       {% set cat = CATALOG[key] %}
       {% set lead = site.section_leaders | selectattr('key', 'equalto', key) | first | default(none) %}
       <article class="sec-card" style="--c:{{ color }}">
@@ -189,7 +189,7 @@
     <div>
       <p class="kicker"><span>05</span>Compare</p>
       <h2>Settle it with numbers.</h2>
-      <p>Put any two devices side by side: total, six sections, every single test, and how each one holds up under load. Every comparison has its own link, made to be sent.</p>
+      <p>Put any two devices side by side: total, {{ SECTIONS_WORD }} sections, every single test, and how each one holds up under load. Every comparison has its own link, made to be sent.</p>
       <p class="more">
         <a class="btn btn-ghost" href="{{ url(featured.path) }}">Open this comparison</a>
         <a class="btn btn-ghost" href="{{ url('/compare/') }}">Compare any two</a>

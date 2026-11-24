@@ -170,7 +170,10 @@ figcaption b{color:var(--ink1);font-weight:500}
 .ticks li::before{content:"";position:absolute;left:0;top:.62em;width:14px;height:2px;background:var(--teal)}
 .sec-heat{background:radial-gradient(70% 90% at 100% 50%,rgba(255,61,94,.06),transparent 70%)}
 
-.cards6{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.cards6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
+.cards6>*{grid-column:span 2}
+/* five sections (version 5): three cards above two wider ones, no empty cell */
+.cards6>:nth-child(4):nth-last-child(2),.cards6>:nth-child(5):nth-last-child(1){grid-column:span 3}
 .sec-card{position:relative;background:var(--surface);border:1px solid var(--hair);border-radius:var(--r);padding:22px 22px 18px;display:flex;flex-direction:column;overflow:hidden;transition:border-color .2s,transform .2s}
 .sec-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--c);opacity:.9}
 .sec-card:hover{border-color:color-mix(in srgb,var(--c) 45%,transparent);transform:translateY(-2px)}
@@ -534,6 +537,8 @@ li:first-child > .lb-rank{color:var(--teal)}
   .nav a{padding:10px 8px;letter-spacing:.05em}
   .top-row{gap:16px}
   .cards6{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cards6>*,.cards6>:nth-child(4):nth-last-child(2),.cards6>:nth-child(5):nth-last-child(1){grid-column:auto}
+  .cards6>:last-child:nth-child(odd){grid-column:1/-1}
   .shots{grid-template-columns:repeat(3,minmax(0,1fr))}
   .shots .desktop{grid-column:1/-1}
   .st-row{grid-template-columns:44px minmax(0,1fr) 130px 100px}
@@ -565,6 +570,7 @@ li:first-child > .lb-rank{color:var(--teal)}
   .cut-wide{display:none}
   .cut-narrow{display:block}
   .cards6{grid-template-columns:minmax(0,1fr)}
+  .cards6>:last-child:nth-child(odd){grid-column:auto}
   .statline{grid-template-columns:repeat(2,minmax(0,1fr))}
   .statline div{padding:16px 0 16px 16px}
   .statline div:nth-child(odd){border-left:0;padding-left:0}

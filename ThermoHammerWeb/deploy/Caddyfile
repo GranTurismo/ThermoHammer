@@ -23,28 +23,6 @@
 	@embed path /embed/*
 	header @embed Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors *"
 
-	# /models/: the LLM test's NPU models, checked by their SHA-256 in the apps. Served as is: they're already
-	# compressed, and a download that stopped can resume (ranges).
-	#   /models/<name>.aar  the Neural Engine model for iPhones and Macs (LlmNpuModel.swift), ~1 GB: a new build gets a
-	#                       new name, so a file never changes
-	#   /models/android/    Android chips' Gemma files and manifest.json (NpuServerModels.kt, tools/npu_models): the
-	#                       list changes and a chip's file can be rebuilt under its name, so always revalidated
-	handle_path /models/* {
-		root * /models
-		# (a header line without a matcher would run last and override the matched ones)
-		@android path /android/*
-		@fixed not path /android/*
-		@blob not path /android/manifest.json
-		@manifest path /android/manifest.json
-		header @fixed Cache-Control "public, max-age=31536000, immutable"
-		header @android Cache-Control "no-cache"
-		header @blob Content-Type "application/octet-stream"
-		header @manifest Content-Type "application/json"
-		file_server {
-			hide .*
-		}
-	}
-
 	# everything under /assets/ has a content hash in its name, so it never changes
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"

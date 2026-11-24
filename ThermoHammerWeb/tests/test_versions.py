@@ -10,10 +10,8 @@ import unittest
 from pathlib import Path
 
 from thweb.config import ROOT, Config
-from thweb.model import SECTION_KEYS, current_version, load_site
+from thweb.model import current_version, load_site
 from thweb.site import Builder
-
-NPU_ENGINE = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750"
 
 
 # ── made-up API answers, shaped like ThermoHammer.Api's ─────────────────────────────────────────────────────────────
@@ -27,19 +25,8 @@ def _group(title, points, *rows):
 
 
 def _sections(scores: dict, version: int) -> list[dict]:
-    cpu, mem, gpu, ux, ai, llm = (scores[k] for k in SECTION_KEYS)
-    run = _group("Run", None, _row("GPU used", "Adreno 830"), _row("Free memory at start", "6.1 GB"))
-    if version >= 5:           # BenchmarkDetail.Llm: one group per engine
-        llm_groups = [_group("CPU", llm, _row("Prompt", "160 tok/s", 160.0), _row("Reply", "55.0 tok/s", 55.0)),
-                      _group("GPU", llm, _row("Prompt", "890 tok/s", 890.0), _row("Reply", "32.0 tok/s", 32.0)),
-                      _group("NPU", llm, _row("Engine", NPU_ENGINE), _row("Prompt", "5,450 tok/s", 5450.0),
-                             _row("Reply", "52.0 tok/s", 52.0)),
-                      run]
-    else:                      # older runs: prompt and reply
-        llm_groups = [_group("Prompt (prefill)", llm, _row("CPU", "120 tok/s", 120.0), _row("GPU", "300 tok/s", 300.0)),
-                      _group("Reply (decode)", llm, _row("CPU", "20.0 tok/s", 20.0), _row("GPU", "15.0 tok/s", 15.0)),
-                      run]
-    return [
+    cpu, mem, gpu, ux, ai = (scores[k] for k in ("cpu", "mem", "gpu", "ux", "ai"))
+    sections = [
         {"key": "cpu", "title": "CPU", "score": cpu, "groups": [_group("Math", cpu, _row("Throughput", f"{cpu * 10:,} ops/s", cpu * 10.0))]},
         {"key": "mem", "title": "MEMORY", "score": mem, "groups": [_group(
             "Database", mem, _row("Insert", f"{mem * 2:,} tx/s", mem * 2.0), _row("Update", f"{mem:,} tx/s", float(mem)),
@@ -47,13 +34,21 @@ def _sections(scores: dict, version: int) -> list[dict]:
         {"key": "gpu", "title": "GPU", "score": gpu, "groups": [_group("Lake Valley", gpu, _row("Average", f"{gpu / 100:.1f} fps", gpu / 100))]},
         {"key": "ux", "title": "EVERYDAY UX", "score": ux, "groups": [_group("Web browsing", ux, _row("Layout", f"{ux:,}", float(ux)))]},
         {"key": "ai", "title": "AI", "score": ai, "groups": [_group("CPU", ai, _row("Classify", "300 inferences/s", 300.0))]},
-        {"key": "llm", "title": "LLM", "score": llm, "groups": llm_groups},
     ]
+    if version < 5:            # BenchmarkDetail.Llm: version 4 had an LLM test, version 5 has none
+        llm = scores["llm"]
+        sections.append({"key": "llm", "title": "LLM", "score": llm, "groups": [
+            _group("Prompt (prefill)", llm, _row("CPU", "120 tok/s", 120.0), _row("GPU", "300 tok/s", 300.0)),
+            _group("Reply (decode)", llm, _row("CPU", "20.0 tok/s", 20.0), _row("GPU", "15.0 tok/s", 15.0)),
+            _group("Run", None, _row("GPU used", "Adreno 830"), _row("Free memory at start", "6.1 GB"))]})
+    return sections
 
 
 def detail(run_id, maker, model, version, when, cpu=6000, mem=6000, gpu=6000, ux=6000, ai=6000, llm=6000,
            os_version="16", soc="SM8750"):
-    scores = dict(zip(SECTION_KEYS, (cpu, mem, gpu, ux, ai, llm)))
+    scores = {"cpu": cpu, "mem": mem, "gpu": gpu, "ux": ux, "ai": ai}
+    if version < 5:
+        scores["llm"] = llm
     return {"id": run_id, "createdAt": when, "benchmarkVersion": version, "deviceManufacturer": maker,
             "deviceModel": model, "socModel": soc, "gpuName": "Adreno 830", "os": 2, "osVersion": os_version,
             "osBuild": "", "appVersion": "2.2.0" if version >= 5 else "2.1.7", "totalScore": sum(scores.values()),
@@ -122,8 +117,8 @@ V4 = [
 # version 5: the HONOR and the Vivo again, and a phone that only ever ran version 5 (id 7 was never verified)
 V5 = [
     detail(6, "HONOR", "HONOR 600 Pro", 5, "2026-11-25T09:00:00Z", cpu=6000),
-    detail(8, "Vivo", "Vivo X300 Pro", 5, "2026-11-25T10:00:00Z", cpu=5400, gpu=7000, llm=4000),
-    detail(9, "Google", "Pixel 10 Pro", 5, "2026-11-26T10:00:00Z", cpu=4800, llm=2500, os_version="17", soc="Tensor G5"),
+    detail(8, "Vivo", "Vivo X300 Pro", 5, "2026-11-25T10:00:00Z", cpu=5400, gpu=6500),
+    detail(9, "Google", "Pixel 10 Pro", 5, "2026-11-26T10:00:00Z", cpu=4800, os_version="17", soc="Tensor G5"),
     detail(10, "HONOR", "HONOR 600 Pro", 5, "2026-11-26T11:00:00Z", cpu=5800),
 ]
 STRESS = [{"id": 1039, "deviceManufacturer": "Samsung", "deviceModel": "Galaxy A55", "os": 2, "type": 0,
@@ -217,6 +212,12 @@ class TodayTest(WorldTest):
         note = self.page("/notes/power-mode-doubles-cpu-score/")
         self.assertIn("now stands at 45,500, #1 on the board: that is the Performance run", note)
         self.assertIn("5,900 points against 7,200", note)
+
+    def test_version_4_counts_its_six_sections(self):
+        how = self.page("/how-it-works/")
+        self.assertIn("The benchmark: six sections", how)
+        self.assertIn("<b>36,000</b>", how)
+        self.assertIn('data-llm="6000"', self.page("/leaderboard/"))
 
 
 class JustSwitchedTest(WorldTest):
@@ -325,17 +326,33 @@ class MixedTest(WorldTest):
             self.assertIn(f'href="/run/{run_id}/"', earlier)
         self.assertNotIn("Earlier runs", self.page("/devices/google-pixel-10-pro/"))
 
-    def test_version_5_llm_groups_render(self):
+    def test_version_5_has_no_llm_section(self):
         run = self.page("/run/6/")
-        llm = run[run.index("<span>LLM</span>"):]
-        for title in ("CPU", "GPU", "NPU", "Run"):
-            self.assertIn(f"<h3><span>{title}</span>", llm)
-        self.assertIn("<dt>Engine</dt><dd>" + NPU_ENGINE + "</dd>", llm)
-        self.assertIn("<dt>Prompt</dt><dd>5,450 tok/s</dd>", llm)
+        self.assertIn("Five sections", run)
+        self.assertNotIn("<span>LLM</span>", run)
+        self.assertNotIn("tok/s", run)
         compare = self.page("/compare/honor-600-pro-vs-vivo-x300-pro/")
-        self.assertIn(NPU_ENGINE, compare)
-        self.assertRegex(compare, r"<span>NPU</span>")
-        self.assertNotIn("Prompt (prefill)", compare)
+        self.assertNotIn("LLM", compare)
+        board = self.page("/leaderboard/")
+        self.assertNotIn("data-llm", board)
+        self.assertNotIn('data-value="llm"', board)
+        how = self.page("/how-it-works/")
+        self.assertIn("The benchmark: five sections", how)
+        self.assertIn("<b>30,000</b>", how)
+        self.assertNotIn("LLM", how)
+        self.assertNotIn("LLM", self.page("/"))
+        self.assertNotIn("LLM", text(self.builder, "llms.txt"))
+
+    def test_a_version_4_run_keeps_its_llm_section(self):
+        run = self.page("/run/5/")
+        self.assertIn("Six sections", run)
+        llm = run[run.index("<span>LLM</span>"):]
+        for title in ("Prompt (prefill)", "Reply (decode)", "Run"):
+            self.assertIn(f"<h3><span>{title}</span>", llm)
+        earlier = self.page("/devices/honor-600-pro/").partition("Earlier runs, scored with version 4")[2]
+        self.assertIn(">LLM</th>", earlier)
+        note = self.page("/notes/power-mode-doubles-cpu-score/")
+        self.assertIn("<td>LLM</td>", note)
 
     def test_the_note_drops_the_board_clause_once_the_best_run_is_another(self):
         note = self.page("/notes/power-mode-doubles-cpu-score/")

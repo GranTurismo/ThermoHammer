@@ -19,7 +19,7 @@
 
 {% macro platform_chip(d) %}<span class="chip chip-{{ d.platform_key }}">{{ d.platform }}</span>{% endmacro %}
 
-{# The six sections as one bar: each segment is that section's share of the total. #}
+{# The sections as one bar: each segment is that section's share of the total. #}
 {% macro composition(d) %}
 <div class="comp" role="img" aria-label="Share of the total: {% for s in d.section_list %}{{ s.short }} {{ '%.0f' | format(s.share * 100) }}%{% if not loop.last %}, {% endif %}{% endfor %}">
   {% for s in d.section_list %}<span style="--w:{{ '%.2f' | format(s.share * 100) }}%;--c:{{ s.color }}" title="{{ s.label }}: {{ s.points | num }}"></span>{% endfor %}
@@ -101,7 +101,7 @@
 </section>
 {% endmacro %}
 
-{# A run's six sections as bars against the 6,000 reference (the device page draws the same for its best run). #}
+{# A run's sections as bars against the 6,000 reference (the device page draws the same for its best run). #}
 {% macro section_bars(sections) %}
 {% set top = [sections | map(attribute='points') | max, REFERENCE] | max %}
 <ul class="bars">
@@ -154,7 +154,7 @@
   <p class="sec-lede">Not comparable with today's board: version {{ version }} measured every device against {{ reference_text(version) }}. They stay here so links to them keep working.</p>
   <div class="panel scroll-x">
     <table class="runs">
-      <thead><tr><th>Run</th><th>Date</th><th>App</th><th>OS</th>{% for key, short, label, field, color in SECTIONS %}<th class="r" style="color:{{ color }}">{{ short }}</th>{% endfor %}<th class="r">Total</th></tr></thead>
+      <thead><tr><th>Run</th><th>Date</th><th>App</th><th>OS</th>{% for key, short, label, field, color in sections_of(version) %}<th class="r" style="color:{{ color }}">{{ short }}</th>{% endfor %}<th class="r">Total</th></tr></thead>
       <tbody>
         {% for run in runs %}
         <tr>
@@ -162,7 +162,7 @@
           <td>{{ run.created | day }}</td>
           <td>{{ run.app_version }}</td>
           <td>{{ run.os_version }}</td>
-          {% for key, short, label, field, color in SECTIONS %}<td class="r">{{ run.scores.get(key, 0) | num }}</td>{% endfor %}
+          {% for key, short, label, field, color in sections_of(version) %}<td class="r">{{ run.scores.get(key, 0) | num }}</td>{% endfor %}
           <td class="r"><b>{{ run.total | num }}</b></td>
         </tr>
         {% endfor %}

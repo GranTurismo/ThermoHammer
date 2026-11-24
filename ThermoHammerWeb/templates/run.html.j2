@@ -23,8 +23,8 @@
   {% if not run.current %}{{ m.earlier_note(run) }}{% endif %}
   <div class="grid2">
     <figure class="panel brackets">
-      <div class="panel-head"><span class="panel-title">Six sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
-      {{ charts.radar(run.scores, 380, d.title ~ ', run #' ~ run.id ~ ': section scores against the 6,000-point reference') | safe }}
+      <div class="panel-head"><span class="panel-title">{{ number_word(run.section_list | length) | capitalize }} sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
+      {{ charts.radar(run.section_list, 380, d.title ~ ', run #' ~ run.id ~ ': section scores against the 6,000-point reference') | safe }}
     </figure>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">Against the reference</span><span class="panel-note">this run</span></div>
@@ -41,9 +41,9 @@
   {% endif %}
 
   {% if run.current %}
-  {{ m.beat('Can your ' ~ d.noun ~ ' beat ' ~ (run.total | num) ~ '?', 'ThermoHammer is free. It runs the same six sections on your ' ~ d.noun ~ ', and clean runs join the leaderboard next to this one.') }}
+  {{ m.beat('Can your ' ~ d.noun ~ ' beat ' ~ (run.total | num) ~ '?', 'ThermoHammer is free. It runs the same ' ~ SECTIONS_WORD ~ ' sections on your ' ~ d.noun ~ ', and clean runs join the leaderboard next to this one.') }}
   {% else %}
-  {{ m.beat('Where does your ' ~ d.noun ~ ' stand today?', 'ThermoHammer is free. It runs the same six sections on your ' ~ d.noun ~ ', scored with version ' ~ site.version ~ ', and clean runs join the current leaderboard.') }}
+  {{ m.beat('Where does your ' ~ d.noun ~ ' stand today?', 'ThermoHammer is free. It runs the ' ~ SECTIONS_WORD ~ ' sections on your ' ~ d.noun ~ ', scored with version ' ~ site.version ~ ', and clean runs join the current leaderboard.') }}
   {% endif %}
 
   <div class="block">

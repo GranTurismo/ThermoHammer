@@ -57,17 +57,6 @@ CATALOG = {
         "note": "The models are open and 8-bit. The CPU and the GPU count half each. The NPU isn't scored: no way to run "
                 "models on it reaches every device, and a device shouldn't lose points because its maker's tools aren't public.",
     },
-    "llm": {
-        "blurb": "Google's Gemma 3 1B language model running on the device itself, on its CPU and its GPU.",
-        "tests": [
-            ("L1", "LLM on the CPU", "Gemma 3 1B, 4-bit, on llama.cpp: a 512-token prompt in, then a 32-token reply token by token"),
-            ("L2", "LLM on the GPU", "The same model with every layer on the GPU"),
-        ],
-        "note": "Each engine is scored against the reference device's same engine and counts half; an engine that can't "
-                "run the model scores 0 there. Nothing is downloaded. The NPU isn't scored yet: no way to run a language "
-                "model on it reaches every chip, and a device shouldn't lose points because its maker's tools aren't "
-                "public. Gemma is provided under and subject to the Gemma Terms of Use.",
-    },
 }
 
 # What 6,000 points per section stood for, by scoring version (BenchmarkScoring.CurrentVersion on the server). A new
@@ -97,6 +86,9 @@ PHASES = [
 
 def faq(site) -> list[tuple[str, str]]:
     """Questions and answers for the home page (also given to search engines as structured data). Plain text only."""
+    from .model import reference_total, sections_of    # model doesn't import content: no cycle, but keep it local
+    n = len(sections_of(site.version))
+    word = {5: "five", 6: "six"}.get(n, str(n))
     qa = [
         ("Is ThermoHammer free?",
          "Yes. It is free on Google Play, the App Store and the Microsoft Store, with no account and no ads."),
@@ -105,9 +97,9 @@ def faq(site) -> list[tuple[str, str]]:
          "export does. The operating system stays in charge of every temperature limit; ThermoHammer only measures what "
          "the device does to protect itself. It will get warm, which is the point, and you can stop at any time."),
         ("What does the score mean?",
-         f"Each of the six sections is scored against one reference, {reference(site.version)}: it gets 6,000 points "
-         "per section and 36,000 in total. A section score of 12,000 means about twice that phone's measured speed in "
-         "that section. The total is the six sections added up."),
+         f"Each of the {word} sections is scored against one reference, {reference(site.version)}: it gets 6,000 points "
+         f"per section and {reference_total(site.version):,} in total. A section score of 12,000 means about twice that "
+         f"phone's measured speed in that section. The total is the {word} sections added up."),
         ("What is stability?",
          "The share of its full speed a device delivers over a sustained, full-load run. 95% means it barely slowed "
          "down. 50% means half of the speed was gone."),
