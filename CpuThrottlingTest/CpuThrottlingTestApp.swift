@@ -5,7 +5,7 @@ import SwiftUI
 struct CpuThrottlingTestApp: App {
     init() {
         AppTelemetry.configureIfProduction()
-        // The report-only Neural Engine LLM run's model (development, -llmNpuReport): fetched in the background over Wi-Fi.
+        // The report-only Neural Engine LLM run's model (development, -npuReport): fetched in the background over Wi-Fi.
         // Store builds never fetch it — version 5 doesn't score the NPU. Nothing on the simulator or before iOS 18.
         #if !targetEnvironment(simulator)
         if LlmSection.npuReport, #available(iOS 18.0, macOS 15.0, *) { LlmNpuModel.shared.start() }

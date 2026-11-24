@@ -80,6 +80,23 @@ final class BenchmarkScoreTests: XCTestCase {
         XCTAssertEqual(total.total, 1500)
     }
 
+    func testAiCountsTheCpuAndTheGpuHalfEachTheNpuNever() {
+        func result(npu: Bool, gpu: Bool = true) -> AiResult {
+            AiResult(runs: AiTest.allCases.flatMap { t in AiAccel.allCases.compactMap { a -> AiRun? in
+                if a == .npu && !npu { return nil }
+                return AiRun(test: t, accel: a, ips: a == .gpu && !gpu ? 0 : AiScore.ref(t, a))
+            } }, npuRuntime: npu ? "Core ML · Neural Engine" : nil)
+        }
+        XCTAssertEqual(result(npu: true).score, 6000)
+        XCTAssertEqual(result(npu: false).score, 6000)                 // no NPU: nothing lost
+        XCTAssertEqual(result(npu: true, gpu: false).score, 3000)      // no GPU: its half
+        XCTAssertEqual(result(npu: false).shown, [.cpu, .gpu])         // a Store build's run shows no NPU column
+        XCTAssertEqual(result(npu: true).shown, [.cpu, .gpu, .npu])    // a -npuReport run does, report only
+        var r = BenchmarkResult()
+        r.ai = result(npu: true)
+        XCTAssertNil(PhoneHealth.parts(r)["ai.npu"])
+    }
+
     func testPhoneHealthNamesEachLlmEngine() {
         var r = BenchmarkResult()
         r.llm = LlmResult(runs: [LlmRun(accel: .cpu, prefill: LlmScore.refCpuPrefill, decode: LlmScore.refCpuDecode)],

@@ -41,7 +41,7 @@ extension BenchmarkRecord {
         func ips(_ a: AiAccel) -> [Double] {
             AiTest.allCases.map { t in let i = (t.rawValue - 1) * AiAccel.allCases.count + a.rawValue; return i < ai.count ? ai[i] : 0 }
         }
-        put("ai", AiScore.overall(AiScore.accel(.cpu, ips(.cpu)), AiScore.accel(.gpu, ips(.gpu)), AiScore.accel(.npu, ips(.npu))))
+        put("ai", AiScore.overall(AiScore.accel(.cpu, ips(.cpu)), AiScore.accel(.gpu, ips(.gpu))))
         if let l = llm {
             put("llm", LlmScore.overall(LlmScore.engine(.cpu, l.prefillCpu, l.decodeCpu), LlmScore.engine(.gpu, l.prefillGpu, l.decodeGpu)))
         }

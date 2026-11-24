@@ -298,16 +298,16 @@ struct BenchmarkResultView: View {
 
     @ViewBuilder private func aiCards(_ ai: AiResult) -> some View {
         let missing = Ramp.at(0.85)
-        card("AI · 6 MODELS · INT8", "CPU · GPU · NPU", ai.score, BenchColor.ai) {
+        card("AI · 6 MODELS · INT8", ai.shown.map(\.label).joined(separator: " · "), ai.score, BenchColor.ai) {
             HStack {
-                ForEach(AiAccel.allCases, id: \.self) { a in
+                ForEach(ai.shown, id: \.self) { a in
                     let pts = ai.accelScore(a)
                     metric("\(a.label) POINTS", pts > 0 ? pts.formatted() : "—", pts > 0 ? Forge.ink0 : missing)
-                    if a != .npu { Spacer() }
+                    if a != ai.shown.last { Spacer() }
                 }
             }
-            note(ai.npuRuntime.map { "NPU: \($0). CPU, GPU and NPU count a third each." }
-                 ?? "NPU: \(ai.npuProblem ?? "not available") — 0 points there.")
+            note("The CPU and the GPU count half each." + (ai.shown.contains(.npu)
+                 ? " NPU: \(ai.npuRuntime ?? ai.npuProblem ?? "not available") — report only, not scored." : ""))
         }
         ForEach(AiTest.allCases, id: \.self) { t in
             VStack(alignment: .leading, spacing: 8) {
@@ -317,11 +317,11 @@ struct BenchmarkResultView: View {
                     Text(t.model).font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
                 }
                 HStack {
-                    ForEach(AiAccel.allCases, id: \.self) { a in
+                    ForEach(ai.shown, id: \.self) { a in
                         let ips = ai.ips(t, a)
                         metric("\(a.label) INF/S", ips > 0 ? (ips < 100 ? String(format: "%.1f", ips) : ips.formatted(.number.precision(.fractionLength(0)))) : "—",
                                ips > 0 ? Forge.ink0 : missing)
-                        if a != .npu { Spacer() }
+                        if a != ai.shown.last { Spacer() }
                     }
                 }
                 // why an accelerator has no number here. A device without an NPU says so once, on the summary above; any
@@ -355,7 +355,7 @@ struct BenchmarkResultView: View {
                 }
                 if llm.error == nil, let e = run?.error { note("\(a.label): \(e)", missing) }
             }
-            // report only (-llmNpuReport): the Neural Engine, running the real model — never part of the score
+            // report only (-npuReport): the Neural Engine, running the real model — never part of the score
             if let n = llm.npu {
                 let ok = llm.npuCounted != nil
                 HStack {

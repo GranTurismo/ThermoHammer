@@ -147,9 +147,9 @@ enum CsvExport {
             }
         }
         if let ai = r.ai {
-            for a in AiAccel.allCases { pts("ai", key(a.label), ai.accelScore(a)) }
+            for a in ai.shown { pts("ai", key(a.label), ai.accelScore(a)) }
             for t in AiTest.allCases {
-                for a in AiAccel.allCases { add("ai", key(t.title) + "_" + key(a.label), ai.ips(t, a), "inferences/s") }
+                for a in ai.shown { add("ai", key(t.title) + "_" + key(a.label), ai.ips(t, a), "inferences/s") }
             }
         }
         if let llm = r.llm {

@@ -440,7 +440,7 @@ final class StressEngine: ObservableObject {
         gates.append(GateResult(id: "bgload", title: "BACKGROUND LOAD", blocking: true,
                                 passed: loadOK,
                                 detail: loadOK ? "\(loadPct)% ambient" : "\(loadPct)% busy — close other apps"))
-        // Development only (-llmNpuReport): the report-only Neural Engine run's model. Never blocking, never scored.
+        // Development only (-npuReport): the report-only Neural Engine run's model. Never blocking, never scored.
         #if !targetEnvironment(simulator)
         if benchmark, LlmSection.npuReport, #available(iOS 18.0, macOS 15.0, *) {
             let model = LlmNpuModel.shared

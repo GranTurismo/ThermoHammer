@@ -56,11 +56,13 @@ enum BenchmarkReport {
             if let e = ux.error { line("UX error: \(e)") }
         }
         if let ai = r.ai {
-            line("AI · \(pts(ai.score)) pts = CPU \(pts(ai.accelScore(.cpu))) · GPU \(pts(ai.accelScore(.gpu))) · NPU \(pts(ai.accelScore(.npu))) · NPU " +
-                 (ai.npuRuntime ?? "not run: \(ai.npuProblem ?? "?")"))
+            line("AI · \(pts(ai.score)) pts = CPU \(pts(ai.accelScore(.cpu))) · GPU \(pts(ai.accelScore(.gpu))) (each half)")
+            if ai.shown.contains(.npu) {
+                line("AI NPU (report only, not scored) · would be \(pts(ai.accelScore(.npu))) pts · " + (ai.npuRuntime ?? "not run: \(ai.npuProblem ?? "?")"))
+            }
             for t in AiTest.allCases {
                 var parts: [String] = []
-                for a in AiAccel.allCases {
+                for a in ai.shown {
                     let run = ai.runs.first { $0.test == t && $0.accel == a }
                     let ips = run?.ips ?? 0
                     // a GPU's or an NPU's rate comes with how well its answer agreed with the CPU's (1.00 is a match)

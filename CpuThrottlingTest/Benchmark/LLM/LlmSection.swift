@@ -34,10 +34,10 @@ struct LlmSection: BenchmarkSection {
     static let noticeS = 3.0                        // how long "not run" stays up when the test can't run
     static let model = "GEMMA 3 1B · Q4_0"
     static let npuSeconds = 16                      // the stage's estimate of the NPU engine's run (CPU 20 s, GPU 16 s)
-    /// The Neural Engine run, report only, for development (launch argument -llmNpuReport): scoring version 5 doesn't
-    /// score the NPU — no way to run it reaches every device yet (BENCHMARK_V5_PLAN.md) — so Store builds never run it
-    /// and never download its ~1 GB model.
-    static let npuReport = ProcessInfo.processInfo.arguments.contains("-llmNpuReport")
+    /// The Neural Engine runs (AI and LLM), report only, for development (launch argument -npuReport): scoring version 5
+    /// doesn't score the NPU — no way to run it reaches every device yet (BENCHMARK_V5_PLAN.md) — so Store builds never
+    /// run it and never download the LLM's ~1 GB model.
+    static let npuReport = ProcessInfo.processInfo.arguments.contains("-npuReport")
     #if targetEnvironment(simulator)
     static let simulator = true
     #else
@@ -135,7 +135,7 @@ struct LlmSection: BenchmarkSection {
             if run.threads > 0 { threads = Int32(run.threads) }
             runs.append(run)
         }
-        // report only (-llmNpuReport): the Neural Engine, after llama.cpp's runs, whose models are freed by now
+        // report only (-npuReport): the Neural Engine, after llama.cpp's runs, whose models are freed by now
         var npu: LlmNpuRun? = nil
         if Self.npuReport {
             if crashed.contains("npu") {

@@ -51,7 +51,10 @@ struct AiSection: BenchmarkSection {
         let bench = AiBench()
         let inputs = try AiInputs()
         let crashed = Self.crashedAccels()
-        let npuProblem = AiBench.npuProblem
+        // version 5 doesn't score the NPU: Store builds run the models on the CPU and the GPU only (-npuReport: the
+        // Neural Engine too, report only)
+        let accels: [AiAccel] = LlmSection.npuReport ? AiAccel.allCases : [.cpu, .gpu]
+        let npuProblem = accels.contains(.npu) ? AiBench.npuProblem : "not part of the benchmark"
         var runs: [AiRun] = []
         for test in AiTest.allCases {
             guard engine.isActive else { return }
@@ -60,13 +63,13 @@ struct AiSection: BenchmarkSection {
             engine.publishAiVisual(AiVisual(test: test, picture: picture))
             var decodedAt: UInt64 = 0
             var cpuOutputs: [[UInt8]]? = nil      // this model's answer on the CPU: what the GPU's and the NPU's have to be
-            for (k, accel) in AiAccel.allCases.enumerated() {
+            for (k, accel) in accels.enumerated() {
                 guard engine.isActive else { return }
                 let skip = crashed.contains(accel) ? "crashed the app twice in this version" : accel == .npu ? npuProblem : nil
                 if let skip { runs.append(AiRun(test: test, accel: accel, ips: 0, error: skip)); continue }
                 let label = accel == .npu ? "NPU · \(AiBench.npuRuntime)" : accel == .gpu ? "GPU · METAL" : "CPU · XNNPACK"
                 let precision = accel == .gpu ? "FP16" : "INT8"
-                engine.publishAi(test, accel: accel, progress: Double(k) / 3, rate: -1, detail: "\(label) · \(precision) · \(test.model.uppercased()) · COMPILING")
+                engine.publishAi(test, accel: accel, progress: Double(k) / Double(accels.count), rate: -1, detail: "\(label) · \(precision) · \(test.model.uppercased()) · COMPILING")
                 BenchmarkEngine.setRunningMarker("\(Self.build):\(test.asset):\(accel)", forKey: Self.runningKey)
                 defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
                 let measured: AiBench.Measured

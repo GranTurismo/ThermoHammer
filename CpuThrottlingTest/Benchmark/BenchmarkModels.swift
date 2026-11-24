@@ -454,7 +454,10 @@ struct AiResult {
     func ips(_ t: AiTest, _ a: AiAccel) -> Double { runs.first { $0.test == t && $0.accel == a }?.ips ?? 0 }
     func points(_ t: AiTest, _ a: AiAccel) -> Int { AiScore.points(t, a, ips(t, a)) }
     func accelScore(_ a: AiAccel) -> Int { AiScore.accel(a, AiTest.allCases.map { ips($0, a) }) }
-    var score: Int { AiScore.overall(accelScore(.cpu), accelScore(.gpu), accelScore(.npu)) }
+    /// The accelerators to show: the CPU and the GPU; the NPU only where a -npuReport run measured it (report only).
+    var shown: [AiAccel] { AiAccel.allCases.filter { a in a != .npu || runs.contains { $0.accel == .npu } } }
+    /// Version 5: the CPU and the GPU, half each. The NPU isn't scored: no NPU runtime reaches every device.
+    var score: Int { AiScore.overall(accelScore(.cpu), accelScore(.gpu)) }
 }
 
 enum AiScore {
@@ -472,8 +475,8 @@ enum AiScore {
     static func accel(_ a: AiAccel, _ ips: [Double]) -> Int {
         Int((AiTest.allCases.enumerated().map { 6000 * max(ips[$0.offset], 0) / ref($0.element, a) }.reduce(0, +) / Double(AiTest.allCases.count)).rounded())
     }
-    /// Each accelerator a third; a missing one scores 0 there.
-    static func overall(_ cpu: Int, _ gpu: Int, _ npu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0) + max(npu, 0)) / 3).rounded()) }
+    /// The CPU and the GPU each half; one that can't run the models scores 0 there.
+    static func overall(_ cpu: Int, _ gpu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0)) / 2).rounded()) }
 }
 
 // MARK: - LLM
@@ -494,7 +497,7 @@ struct LlmResult {
     let freeGb: Double                // memory iOS still let the app take when the test began (reported)
     let largestModel: Int             // the largest common 4-bit model that fits in it, billions of parameters (reported)
     var error: String? = nil          // why the test couldn't run at all
-    /** Report only (-llmNpuReport): the Neural Engine (LlmNpuEngine); nil: not run. Never part of the score. */
+    /** Report only (-npuReport): the Neural Engine (LlmNpuEngine); nil: not run. Never part of the score. */
     var npu: LlmNpuRun? = nil
     func run(_ a: LlmAccel) -> LlmRun? { runs.first { $0.accel == a } }
     /** One engine's points: its prompt and reply rates against the same engine's reference (LlmScore). */
