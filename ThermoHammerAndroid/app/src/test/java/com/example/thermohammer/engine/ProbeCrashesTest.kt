@@ -22,11 +22,6 @@ class ProbeCrashesTest {
         assertEquals(setOf("GPU:a"), ProbeCrashes.keys(setOf("7:GPU:a", "6:NPU:b", "garbage"), 7))
     }
 
-    @Test
-    fun `the LLM probe uses the same record`() {
-        assertEquals(setOf("LLM:i8mm"), ProbeCrashes.keys(ProbeCrashes.after("12:LLM:i8mm", emptySet(), 12), 12))
-    }
-
     // ApplicationExitInfo's reasons: 4 CRASH, 5 CRASH_NATIVE, 6 ANR, 7 INITIALIZATION_FAILURE; 10 USER_REQUESTED, 13 OTHER, 2 SIGNALED, 3 LOW_MEMORY
 
     @Test

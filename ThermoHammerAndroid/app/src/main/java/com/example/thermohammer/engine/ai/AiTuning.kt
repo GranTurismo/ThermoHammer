@@ -17,8 +17,7 @@ import kotlin.math.sqrt
 //   with the system told the work is latency-critical (ADPF). Nothing says which is best, so a
 //   short probe before the scored runs tries each setting on two models, and the scored runs use the winner.
 //   A setting only wins by being clearly faster (MIN_GAIN) without losing on either probe model (MAX_LOSS) and
-//   with outputs that still agree with the CPU's (MIN_AGREEMENT) — a fast wrong answer doesn't count, as with the
-//   LLM's GPU. The same model files run in every case: only how LiteRT executes them differs.
+//   with outputs that still agree with the CPU's (MIN_AGREEMENT) — a fast wrong answer doesn't count. The same model files run in every case: only how LiteRT executes them differs.
 //
 //   Everything here is plain Kotlin (no LiteRT types), so the rules are tested on the JVM; AiBench turns an
 //   AiSetting into LiteRT options, StressEngine runs the probe, BenchmarkReport prints the rows.
@@ -229,7 +228,7 @@ object AiTuner {
     const val MIN_GAIN = 1.05
     /** …and may not be slower than this fraction of the default on any probe model. */
     const val MAX_LOSS = 0.92
-    /** Outputs at least this correlated with the CPU's — the LLM's GPU has to reach the same with its CPU. */
+    /** Outputs at least this correlated with the CPU's. */
     const val MIN_AGREEMENT = 0.9
     /** A setting this much slower than the default on the first model isn't tried on the second. */
     const val HOPELESS = 0.8

@@ -13,7 +13,7 @@ import java.util.Locale
 //
 //   The kernel's cpufreq files give each core's top frequency (cpuinfo_max_freq) and some give cpu_capacity (its speed
 //   scaled to the fastest = 1024). Cores are ranked by frequency and grouped into clusters of the same frequency; the
-//   LLM and AI CPU tests use the fastest clusters and leave a cluster out only when it is clearly slower than the
+//   AI CPU test uses the fastest clusters and leaves a cluster out only when it is clearly slower than the
 //   top one ([EXCLUDE_BELOW]). Where the files can't be read (some OEM builds) the topology is unknown and nothing is
 //   pinned. Whether pinning to these cores actually helps is never assumed: the tests measure it.
 //

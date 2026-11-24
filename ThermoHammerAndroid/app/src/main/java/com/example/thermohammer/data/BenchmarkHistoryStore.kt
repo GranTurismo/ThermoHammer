@@ -7,14 +7,13 @@ import com.example.thermohammer.engine.AiTest
 import com.example.thermohammer.engine.BenchmarkResult
 import com.example.thermohammer.engine.BenchmarkScore
 import com.example.thermohammer.engine.BenchmarkTest
-import com.example.thermohammer.engine.LlmAccel
 import com.example.thermohammer.engine.ExportJob
 import com.example.thermohammer.engine.VideoClip
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.google.gson.Gson
 import java.io.File
 
-/** One finished benchmark (CPU + MEM + GPU + UX + AI + LLM) as kept on the device (and later submitted from); `score` = total. */
+/** One finished benchmark (CPU + MEM + GPU + UX + AI) as kept on the device (and later submitted from); `score` = total. */
 data class BenchmarkRecord(
     val id: String,
     val timestamp: Long,
@@ -99,18 +98,6 @@ data class BenchmarkRecord(
     val dbInsert: Double = 0.0,
     val dbUpdate: Double = 0.0,
     val dbQuery: Double = 0.0,
-    val llmScore: Int = 0,
-    // LLM: tokens/s reading the prompt and writing the reply, per accelerator (0 = it didn't run there)
-    val llmPrefillCpu: Double = 0.0,
-    val llmDecodeCpu: Double = 0.0,
-    val llmPrefillGpu: Double = 0.0,
-    val llmDecodeGpu: Double = 0.0,
-    val llmPrefillNpu: Double = 0.0,      // version 5: the NPU through LiteRT-LM (0 = none, failed or answered wrongly)
-    val llmDecodeNpu: Double = 0.0,
-    val llmGpu: String? = null,
-    /** Version 5: the NPU engine and the model file it ran ("LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750"); null when none was found. */
-    val llmNpu: String? = null,
-    val llmFreeGb: Double = 0.0,
     val qrRate: Double = 0.0,             // ZXing decodes/s
     val mlkitRate: Double? = null,        // ML Kit scans/s (reported, not scored)
     val gpuName: String,
@@ -123,7 +110,7 @@ data class BenchmarkRecord(
 ) {
     /** Every section scored — what the certificate and the update comparison count as a complete run. */
     val isComplete: Boolean
-        get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0 && llmScore > 0
+        get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0
 
     companion object {
         fun of(result: BenchmarkResult, id: String, timestamp: Long): BenchmarkRecord {
@@ -138,7 +125,6 @@ data class BenchmarkRecord(
             val export = ux?.export
             val ai = result.ai
             val mem = result.mem
-            val llm = result.llm
             return BenchmarkRecord(id = id, timestamp = timestamp, version = BenchmarkScore.VERSION, score = result.total,
                 gpuScore = result.gpuScore, uxScore = result.uxScore, cpuScore = result.cpuScore,
                 cpuMath = result.cpu?.value(CpuTest.MATH) ?: 0.0, cpuData = result.cpu?.value(CpuTest.DATA) ?: 0.0,
@@ -165,13 +151,6 @@ data class BenchmarkRecord(
                 storageRandomRead = mem?.storage?.randomRead ?: 0.0, storageRandomWrite = mem?.storage?.randomWrite ?: 0.0,
                 storageDirect = mem?.storage?.direct ?: false,
                 dbInsert = mem?.db?.insert ?: 0.0, dbUpdate = mem?.db?.update ?: 0.0, dbQuery = mem?.db?.query ?: 0.0,
-                llmScore = result.llmScore,
-                llmPrefillCpu = llm?.run(LlmAccel.CPU)?.prefill ?: 0.0, llmDecodeCpu = llm?.run(LlmAccel.CPU)?.decode ?: 0.0,
-                llmPrefillGpu = llm?.run(LlmAccel.GPU)?.prefill ?: 0.0, llmDecodeGpu = llm?.run(LlmAccel.GPU)?.decode ?: 0.0,
-                llmPrefillNpu = llm?.npu?.takeIf { it.right && it.error == null }?.prefill ?: 0.0,
-                llmDecodeNpu = llm?.npu?.takeIf { it.right && it.error == null }?.decode ?: 0.0,
-                llmGpu = llm?.gpuName, llmFreeGb = llm?.freeGb ?: 0.0,
-                llmNpu = llm?.npu?.model?.let { "${com.example.thermohammer.engine.llm.NpuLlmProbe.ENGINE} · ${it.removeSuffix(".litertlm")}" },
                 test1Fps = t1.avgFps, test1LowFps = t1.lowFps, test1Points = t1.points,
                 test2Fps = t2.avgFps, test2LowFps = t2.lowFps, test2Points = t2.points,
                 test3Fps = t3.avgFps, test3LowFps = t3.lowFps, test3Points = t3.points, rayTracing = t3.supported,
@@ -191,7 +170,7 @@ data class BenchmarkRecord(
 
 /** Every section of a finished run scored (see [BenchmarkRecord.isComplete]). */
 val BenchmarkResult.isComplete: Boolean
-    get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0 && llmScore > 0
+    get() = cpuScore > 0 && memScore > 0 && gpuScore > 0 && uxScore > 0 && aiScore > 0
 
 /**
  * On-device benchmark history: the latest runs, listed by MY RUNS, so the home card can show this phone's best and

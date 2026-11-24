@@ -5,10 +5,9 @@ import java.io.File
 // ─────────────────────────────────────────────────────────────────────────────
 // CPU AFFINITY — which cores a thread may run on, for the tests that try placing threads on the fast cores.
 //
-//   The LLM test pins its own thread pool through llama.cpp (BenchCore/llm); this is for what the app can't hand a
-//   mask to: LiteRT's XNNPACK pool. A thread's mask is inherited by the threads it starts, so pinning the calling
-//   thread just before LiteRT builds its pool places the pool's workers, and the caller puts its own mask back
-//   afterwards. Whether LiteRT really builds its pool on the calling thread is checked from /proc/self/task, never
+//   For what the app can't hand a mask to: LiteRT's XNNPACK pool. A thread's mask is inherited by the threads it
+//   starts, so pinning the calling thread just before LiteRT builds its pool places the pool's workers, and the caller
+//   puts its own mask back afterwards. Whether LiteRT really builds its pool on the calling thread is checked from /proc/self/task, never
 //   assumed. A refusal (an OEM kernel, a core that is off, no native library) is a null, never an exception.
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -56,12 +56,12 @@ class ServerIdBackboneTest {
 
     @Test fun completeMeansEverySectionScored() {
         assertTrue(record().isComplete)
-        assertEquals(false, record().copy(llmScore = 0).isComplete)
+        assertEquals(false, record().copy(aiScore = 0).isComplete)
     }
 
     companion object {
-        fun record(total: Int = 36000) = BenchmarkRecord(id = "x", timestamp = 1, version = 4, score = total, test1Fps = 1.0,
+        fun record(total: Int = 30000) = BenchmarkRecord(id = "x", timestamp = 1, version = 5, score = total, test1Fps = 1.0,
             test1LowFps = 1.0, test1Points = 1, test2Fps = 1.0, test2LowFps = 1.0, test2Points = 1, gpuScore = 6000, uxScore = 6000,
-            cpuScore = 6000, aiScore = 6000, memScore = 6000, llmScore = 6000, gpuName = "Adreno", validityFlags = 0)
+            cpuScore = 6000, aiScore = 6000, memScore = 6000, gpuName = "Adreno", validityFlags = 0)
     }
 }

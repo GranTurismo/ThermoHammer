@@ -31,7 +31,7 @@ sealed interface RunCard {
     /** The text that goes with the image through the share sheet. */
     val shareText: String
 
-    /** One of the six sections: CPU, MEM, GPU, UX, AI or LLM. */
+    /** One of the five sections: CPU, MEM, GPU, UX or AI. */
     data class Section(val name: String, val points: Int)
 
     data class Benchmark(
@@ -66,17 +66,17 @@ sealed interface RunCard {
 
     companion object {
         const val BAR_FLOOR = 12_000
-        val SECTION_ORDER = listOf("CPU", "MEM", "GPU", "UX", "AI", "LLM")
+        val SECTION_ORDER = listOf("CPU", "MEM", "GPU", "UX", "AI")
 
-        /** The six sections in their order, without the ones the run doesn't have (0 points). */
-        fun sections(cpu: Int, mem: Int, gpu: Int, ux: Int, ai: Int, llm: Int): List<Section> =
-            SECTION_ORDER.zip(listOf(cpu, mem, gpu, ux, ai, llm)).filter { it.second > 0 }.map { Section(it.first, it.second) }
+        /** The five sections in their order, without the ones the run doesn't have (0 points). */
+        fun sections(cpu: Int, mem: Int, gpu: Int, ux: Int, ai: Int): List<Section> =
+            SECTION_ORDER.zip(listOf(cpu, mem, gpu, ux, ai)).filter { it.second > 0 }.map { Section(it.first, it.second) }
 
         fun ownBenchmark(result: BenchmarkResult, device: String, osVersion: String, chip: String?, timestamp: Long,
                          serverId: Int?): Benchmark = Benchmark(
             device = device, os = "Android $osVersion", date = ShareLinks.date(timestamp), chip = chip,
             verified = result.isVerified, url = ShareLinks.runUrl(serverId), mine = true, total = result.total,
-            sections = sections(result.cpuScore, result.memScore, result.gpuScore, result.uxScore, result.aiScore, result.llmScore))
+            sections = sections(result.cpuScore, result.memScore, result.gpuScore, result.uxScore, result.aiScore))
 
         /** A leaderboard run: only verified runs are on the board. [detail] adds the date when it has loaded. */
         fun leaderboardBenchmark(entry: BenchmarkDto, detail: BenchmarkDetailDto?): Benchmark = Benchmark(
@@ -84,7 +84,7 @@ sealed interface RunCard {
             os = "${ShareLinks.osName(entry.os)} ${entry.osVersion}", date = ShareLinks.serverDate(detail?.createdAt),
             chip = entry.socModel, verified = true, url = ShareLinks.runUrl(entry.id), mine = false,
             total = detail?.totalScore ?: entry.totalScore,
-            sections = sections(entry.cpuScore, entry.memScore, entry.score, entry.uxScore, entry.aiScore, entry.llmScore))
+            sections = sections(entry.cpuScore, entry.memScore, entry.score, entry.uxScore, entry.aiScore))
 
         /** The user's own finished stress run: [stamps] and [baselineIps] as the verdict has them. */
         fun ownStress(device: String, osVersion: String, chip: String?, timestamp: Long, serverId: Int?, verified: Boolean,

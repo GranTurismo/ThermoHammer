@@ -53,7 +53,7 @@ import kotlin.math.sin
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WELCOME — what ThermoHammer is and why its numbers can be trusted, on six
-// pages: the instrument, its six sections, the same work on every platform,
+// pages: the instrument, its five sections, the same work on every platform,
 // scoring that can't be gamed, Phone Health and the heat test. Every picture
 // is drawn live (one frame clock, read only while drawing, so the pages
 // redraw without recomposing); each page plays its entrance as it slides in.
@@ -72,15 +72,15 @@ fun WelcomeScreen(onDone: () -> Unit) {
     val pages = remember {
         listOf(
             Page("THERMOHAMMER", "The benchmark that tells the truth",
-                "Six sections, scored on our server, the same test on every phone — and the only one that also tells you " +
+                "Five sections, scored on our server, the same test on every phone — and the only one that also tells you " +
                     "when your phone gets too hot to keep up.", Forge.phaseMeasured) { t, a -> ReactorArt(t, a) },
-            Page("01 · SIX SECTIONS", "One honest score",
-                "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, AI image models, and a language " +
-                    "model running right on your phone. Each test is 6,000 points on a Snapdragon 8 Elite.",
+            Page("01 · FIVE SECTIONS", "One honest score",
+                "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, and AI image models running " +
+                    "right on your phone. Each test is 6,000 points on a Snapdragon 8 Elite.",
                 Ramp.at(0.25f)) { t, a -> SectionsArt(t, a) },
             Page("02 · SAME WORK EVERYWHERE", "Byte-identical on every platform",
-                "Android, iPhone and Mac run the very same C++, the same 3D scenes, the same AI models and the same seeded " +
-                    "language model. A score means the same thing on every device.", Forge.phaseCooldown) { t, a -> SameWorkArt(t, a) },
+                "Android, iPhone and Mac run the very same C++, the same 3D scenes and the same AI models. A score means " +
+                    "the same thing on every device.", Forge.phaseCooldown) { t, a -> SameWorkArt(t, a) },
             Page("03 · CAN'T BE GAMED", "Scored where no one can tune for it",
                 "Phone makers have been caught boosting known benchmarks. Your raw results are signed and scored on our " +
                     "server, and only clean runs — cool, unplugged, nothing else running — reach the leaderboard.",
@@ -258,22 +258,23 @@ private fun ReactorArt(time: State<Float>, entrance: State<Float>) {
     }
 }
 
-/** Six tiles light up one after another, each running its own little workload, the total counting up. */
+/** Five tiles light up one after another, each running its own little workload, the total counting up. */
 @Composable
 private fun SectionsArt(time: State<Float>, entrance: State<Float>) {
     val tm = rememberTextMeasurer()
-    val names = listOf("CPU", "MEM", "GPU", "UX", "AI", "LLM")
-    val colors = listOf(cpuColor(), memColor(), Forge.phaseCalibration, Forge.phaseMeasured, aiColor(), llmColor())
+    val names = listOf("CPU", "MEM", "GPU", "UX", "AI")
+    val colors = listOf(cpuColor(), memColor(), Forge.phaseCalibration, Forge.phaseMeasured, aiColor())
     Canvas(ArtModifier) {
         val appear = entrance.value
         val t = time.value
         val gap = 10.dp.toPx()
         val tileW = (size.width - gap * 2) / 3
         val tileH = (size.height * 0.72f - gap) / 2
-        for (i in 0 until 6) {
+        for (i in names.indices) {
             val p = stage(appear, i * 0.09f, 0.4f)
             val col = i % 3; val row = i / 3
-            val x = col * (tileW + gap); val y = row * (tileH + gap) + (1 - p) * 30.dp.toPx()
+            val inRow = minOf(3, names.size - row * 3)                       // the second row's two tiles, centred
+            val x = (size.width - inRow * tileW - (inRow - 1) * gap) / 2 + col * (tileW + gap); val y = row * (tileH + gap) + (1 - p) * 30.dp.toPx()
             val color = colors[i]
             drawRoundRect(Forge.surface.copy(alpha = p), Offset(x, y), Size(tileW, tileH), CornerRadius(14.dp.toPx()))
             drawRoundRect(color.copy(alpha = 0.55f * p), Offset(x, y), Size(tileW, tileH), CornerRadius(14.dp.toPx()),
@@ -289,11 +290,11 @@ private fun SectionsArt(time: State<Float>, entrance: State<Float>) {
             }
         }
         // the total
-        val total = (36026 * stage(appear, 0.45f, 0.55f)).toInt()
+        val total = (30026 * stage(appear, 0.45f, 0.55f)).toInt()
         val totalY = size.height * 0.80f
         drawLabel(tm, "TOTAL", Offset(0f, totalY), Forge.ink2, 10f)
         drawLabel(tm, "%,d".format(total), Offset(0f, totalY + 14.dp.toPx()), Forge.ink0, 30f, bold = true)
-        drawLabel(tm, "CPU + MEM + GPU + UX + AI + LLM", Offset(size.width * 0.42f, totalY + 26.dp.toPx()), Forge.ink2, 9f)
+        drawLabel(tm, "CPU + MEM + GPU + UX + AI", Offset(size.width * 0.42f, totalY + 26.dp.toPx()), Forge.ink2, 9f)
     }
 }
 
@@ -301,7 +302,7 @@ private fun SectionsArt(time: State<Float>, entrance: State<Float>) {
 @Composable
 private fun SameWorkArt(time: State<Float>, entrance: State<Float>) {
     val tm = rememberTextMeasurer()
-    val packet = listOf(cpuColor(), memColor(), Forge.phaseCalibration, Forge.phaseMeasured, aiColor(), llmColor())
+    val packet = listOf(cpuColor(), memColor(), Forge.phaseCalibration, Forge.phaseMeasured, aiColor())
     Canvas(ArtModifier) {
         val appear = entrance.value
         val t = time.value
@@ -327,8 +328,8 @@ private fun SameWorkArt(time: State<Float>, entrance: State<Float>) {
             drawPath(path, Forge.ink2.copy(alpha = 0.35f * p), style = Stroke(1.5f.dp.toPx()))
             val pm = android.graphics.PathMeasure(path.asAndroidPath(), false)
             val pos = FloatArray(2)
-            for (j in 0 until 6) {
-                val u = ((t * 0.32f + j / 6f) % 1f)
+            for (j in packet.indices) {
+                val u = ((t * 0.32f + j / packet.size.toFloat()) % 1f)
                 pm.getPosTan(pm.length * u, pos, null)
                 drawRoundRect(packet[j].copy(alpha = p * (0.4f + 0.6f * sin(u * PI.toFloat()))),
                     Offset(pos[0] - 4.dp.toPx(), pos[1] - 4.dp.toPx()), Size(8.dp.toPx(), 8.dp.toPx()), CornerRadius(2.dp.toPx()))

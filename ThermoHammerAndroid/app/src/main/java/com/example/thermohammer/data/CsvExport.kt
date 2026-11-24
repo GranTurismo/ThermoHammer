@@ -5,7 +5,6 @@ import com.example.thermohammer.engine.AiTest
 import com.example.thermohammer.engine.Attribution
 import com.example.thermohammer.engine.BenchmarkResult
 import com.example.thermohammer.engine.EnvFlag
-import com.example.thermohammer.engine.LlmAccel
 import com.example.thermohammer.engine.StampV2
 import com.example.thermohammer.engine.cpu.CpuTest
 import com.example.thermohammer.network.DeviceHammerStamp
@@ -159,19 +158,8 @@ object CsvExport {
             for (t in AiTest.entries) for (a in AiAccel.entries)
                 add("ai", "${key(t.title)}_${key(a.label)}", ai.ips(t, a), "inferences/s")
         }
-        r.llm?.let { llm ->
-            add("llm", "prefill_points", llm.prefillPoints, "points"); add("llm", "decode_points", llm.decodePoints, "points")
-            add("llm", "prefill", llm.prefill, "tokens/s"); add("llm", "decode", llm.decode, "tokens/s")
-            add("llm", "free_memory", llm.freeGb, "GB"); add("llm", "largest_model", llm.largestModel, "B parameters")
-            for (a in LlmAccel.entries) {
-                val run = llm.run(a)
-                add("llm", "${key(a.label)}_prefill", run?.prefill ?: 0.0, "tokens/s")
-                add("llm", "${key(a.label)}_decode", run?.decode ?: 0.0, "tokens/s")
-                if (a == LlmAccel.CPU && run != null) add("llm", "cpu_threads", run.threads, "threads")
-            }
-        }
         for ((section, points) in listOf("cpu" to r.cpuScore, "mem" to r.memScore, "gpu" to r.gpuScore, "ux" to r.uxScore,
-                "ai" to r.aiScore, "llm" to r.llmScore)) add("score", section, points, "points")
+                "ai" to r.aiScore)) add("score", section, points, "points")
         add("score", "total", r.total, "points")
         return buildString {
             line(listOf("section", "metric", "value", "unit"))

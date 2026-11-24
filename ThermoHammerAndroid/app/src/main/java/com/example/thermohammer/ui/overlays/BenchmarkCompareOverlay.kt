@@ -71,12 +71,11 @@ private fun sectionColor(key: String): Color = when (key) {
     "gpu" -> Forge.phaseCalibration
     "ux" -> Forge.phaseMeasured
     "ai" -> aiColor()
-    "llm" -> llmColor()
     else -> Forge.ink1
 }
 
 private fun shortTitle(s: ComparedSection): String = when (s.key) {
-    "cpu" -> "CPU"; "mem" -> "MEM"; "gpu" -> "GPU"; "ux" -> "UX"; "ai" -> "AI"; "llm" -> "LLM"; else -> s.title
+    "cpu" -> "CPU"; "mem" -> "MEM"; "gpu" -> "GPU"; "ux" -> "UX"; "ai" -> "AI"; else -> s.title
 }
 
 private fun platformLabel(os: Int, version: String): String = "${when (os) { 2 -> "Android"; 3 -> "macOS"; 4 -> "Windows"; else -> "iOS" }} $version"

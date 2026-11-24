@@ -26,7 +26,6 @@ import com.example.thermohammer.ui.theme.Forge
 import com.example.thermohammer.ui.theme.Ramp
 import com.example.thermohammer.ui.theme.aiColor
 import com.example.thermohammer.ui.theme.cpuColor
-import com.example.thermohammer.ui.theme.llmColor
 import com.example.thermohammer.ui.theme.memColor
 import kotlin.math.roundToInt
 
@@ -58,7 +57,7 @@ fun sectionColor(name: String): Color = when (name) {
     "GPU" -> Forge.phaseCalibration
     "UX" -> Forge.phaseMeasured
     "AI" -> aiColor()
-    else -> llmColor()
+    else -> Forge.ink1
 }
 
 object RunCardArt {

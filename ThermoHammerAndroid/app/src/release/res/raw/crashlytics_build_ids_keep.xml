@@ -2,7 +2,7 @@
 <!--
   Crashlytics' own keep rule covers only its string resources, so the release build's resource shrinker deleted the
   native build-ID lists the plugin generates (com.google.firebase.crashlytics.build_ids_lib/_arch/_build_id). Without
-  them Crashlytics can't match a native crash to the uploaded symbols: a crash in Vulkan, an NPU driver or llama.cpp
+  them Crashlytics can't match a native crash to the uploaded symbols: a crash in Vulkan or a GPU or NPU driver
   arrives as bare addresses ("Could not find resources: 0 0 0" in the app's log at start).
 -->
 <resources xmlns:tools="http://schemas.android.com/tools"

@@ -24,7 +24,7 @@
             </intent-filter>
         </activity>
 
-        <!-- The driver check (engine/DriverCheck.kt): a MediaTek NPU, and a GPU through Vulkan for the LLM test, are
+        <!-- The driver check (engine/DriverCheck.kt): a MediaTek NPU, and the GPU settings the AI tuning tries, are
              tried first in a process of their own, so a driver that crashes takes down that process and not the app -->
         <service
             android:name=".engine.DriverCheckService"

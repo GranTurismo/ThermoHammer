@@ -22,17 +22,6 @@ import com.example.thermohammer.engine.ai.AiSettings
 import com.example.thermohammer.engine.ai.AiTuner
 import com.example.thermohammer.engine.ai.AiTuning
 import com.example.thermohammer.engine.ai.LiteRtLog
-import com.example.thermohammer.engine.llm.CpuFeatures
-import com.example.thermohammer.engine.llm.DotprodLib
-import com.example.thermohammer.engine.llm.I8mmLib
-import com.example.thermohammer.engine.llm.LlmCpuLib
-import com.example.thermohammer.engine.llm.LlmGpuProbe
-import com.example.thermohammer.engine.llm.LlmNative
-import com.example.thermohammer.engine.llm.LlmNativeI8mm
-import com.example.thermohammer.engine.llm.LlmPhase
-import com.example.thermohammer.engine.llm.LlmProbe
-import com.example.thermohammer.engine.llm.LlmProbeResult
-import com.example.thermohammer.engine.llm.VulkanGpuLib
 import com.example.thermohammer.engine.ux.QrBench
 import com.example.thermohammer.engine.ux.QrFrames
 import com.example.thermohammer.engine.ux.QrResult
@@ -181,15 +170,7 @@ data class StressState(
         val aiProgress: Float = 0f,                      // 0..1 through that model (all three accelerators)
         val aiRate: Double = -1.0,                       // inferences/s now
         val aiDetail: String = "",
-        val aiVisual: com.example.thermohammer.engine.ai.AiVisual? = null,
-        // ── LLM test (last) ──
-        val llmAccel: LlmAccel? = null,                  // where the model runs now — the stage is up while set
-        val llmPhase: com.example.thermohammer.engine.llm.LlmPhase = com.example.thermohammer.engine.llm.LlmPhase.BUILD,
-        val llmProgress: Float = 0f,                     // 0..1 through this accelerator
-        val llmRate: Double = -1.0,                      // tokens/s so far
-        val llmDetail: String = "",
-        val llmReply: List<Int> = emptyList(),           // the reply being written, token ids
-        val llmPrompts: Int = 0                          // prompts read so far on this accelerator
+        val aiVisual: com.example.thermohammer.engine.ai.AiVisual? = null
 )
 
 // ── ViewModel ──────────────────────────────────────────────────────────────────
@@ -222,18 +203,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                                                // phone's normal (parked cores, its own UI), not passing work
         const val QUIET_POLL_MS = 3_000L       // re-measure while the phone is busy
         const val QUIET_MAX_MS = 60_000L       // then run anyway, flagged
-        // Before the LLM's thread search: ggml's all-core trial crawls when even one core is busy (Honor 600 Pro, right
-        // after the AI test: 0.28 tok/s on 8 threads, 25 on 7 — 8 threads with one taken spin at every barrier). The
-        // start's 85% bar lets one busy core in eight through (87.5%), so this one is stricter, and short.
-        const val LLM_SETTLE_SHARE = 0.95f
-        const val LLM_SETTLE_MAX_MS = 20_000L
-        const val LLM_SETTLE_POLL_MS = 1_000L
-        // …and a short cooldown first: the LLM test is last, straight after the AI test has heated the chip, and the
-        // Honor 600 Pro's LLM score swung 3,606–6,117 on the chip's temperature alone (73 °C at the start: 6,097;
-        // 97–101 °C: the timed reply collapsed to 35–41 % of what its own search had measured seconds before)
-        const val LLM_COOL_TARGET_C = 75f
-        const val LLM_COOL_MAX_MS = 60_000L
-        const val LLM_COOL_STALL_MS = 15_000L   // no 0.5 °C fall in this long: it has reached its floor
         const val COOLDOWN_MAX_MS = 30_000L    // hard cap — flag & proceed beyond this
         const val COOLDOWN_STALL_MS = 30_000L  // plateau detection window
         const val COOLDOWN_STALL_DELTA = 0.5f  // <0.5°C improvement in window = plateaued
@@ -250,17 +219,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         private const val AI_CPU_TUNE_BUDGET_NS = 20_000_000_000L     // the CPU's four settings need about 8 s on a flagship: never past this
         private val AI_DELEGATION_LOG = Regex("Partitioned subgraph|Unlegalized op|Unsupported op")   // what LiteRT logs of a model's NPU compile
         private val AI_GPU_BACKEND_LOG = Regex("OpenCL not supported on this platform")  // and when its GPU delegate falls back to OpenGL
-        private const val KEY_LLM_RUNNING = "llm_running"        // "install:accel" while an LLM run is in flight
-        private const val KEY_LLM_CRASHED = "llm_crashed"        // {"install:accel"} that took the app down
-        private const val KEY_LLM_PROBE_RUNNING = "llm_probe_running"   // "install:LLM:i8mm" while the i8mm CPU build runs
-        private const val KEY_LLM_PROBE_CRASHED = "llm_probe_crashed"   // {"install:LLM:i8mm"} that took the app down
-        private const val LLM_NOTICE_MS = 3_000L                  // how long "not run" stays up when the test can't run
         /** Every "a test is in flight" marker: what a process that dies inside a test leaves behind. */
-        private val RUNNING_KEYS = listOf(KEY_RT_RUNNING, KEY_AI_RUNNING, KEY_AI_PROBE_RUNNING, KEY_LLM_RUNNING, KEY_LLM_PROBE_RUNNING)
+        private val RUNNING_KEYS = listOf(KEY_RT_RUNNING, KEY_AI_RUNNING, KEY_AI_PROBE_RUNNING)
         private const val KEY_ENGINE_PID = "engine_pid"          // the process whose engine wrote the markers
         private const val KEY_STOP_PID = "stop_requested_pid"    // that process was asked to stop its run
         private const val KEY_NPU_CHECK = "npu_check"            // DriverCheck's verdict on the NPU, for this install and system build
-        private const val KEY_LLM_GPU_CHECK = "llm_gpu_check"    // and on the GPU for the LLM test
         private const val AI_SHOW_NS = 3_500_000_000L              // each model's result stays up at least this long
     }
 
@@ -381,7 +344,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         if (RUNNING_KEYS.any { benchPrefs.contains(it) }) {
             val stopRequested = previousPid != 0 && benchPrefs.getInt(KEY_STOP_PID, 0) == previousPid
             if (ProbeCrashes.leftByCrash(exitReason(previousPid), stopRequested)) {
-                rayTracingSkipReason(); aiCrashedAccels(); aiCrashedSettings(); llmCrashedAccels(); llmCrashedProbes()
+                rayTracingSkipReason(); aiCrashedAccels(); aiCrashedSettings()
             } else {
                 benchPrefs.edit().apply { RUNNING_KEYS.forEach { remove(it) } }.commit()
             }
@@ -416,7 +379,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private var gpuFramesPrev = 0.0
 
     /**
-     * Accelerators whose AI or LLM run took the app down (a native fault can't be caught): a marker left from the
+     * Accelerators whose AI run took the app down (a native fault can't be caught): a marker left from the
      * last session ("install:…:accel") becomes a crash record, and that accelerator is skipped until the app updates.
      */
     private fun crashedAccels(runningKey: String, crashedKey: String): Set<String> {
@@ -433,17 +396,11 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     private fun aiCrashedAccels(): Set<AiAccel> =
         crashedAccels(KEY_AI_RUNNING, KEY_AI_CRASHED).mapNotNull { n -> AiAccel.entries.firstOrNull { it.name == n } }.toSet()
 
-    private fun llmCrashedAccels(): Set<LlmAccel> =
-        crashedAccels(KEY_LLM_RUNNING, KEY_LLM_CRASHED).mapNotNull { n -> LlmAccel.entries.firstOrNull { it.name == n } }.toSet()
-
     /**
      * AI settings (a GPU's backend, an NPU's helpers) whose run took the app down, as "ACCEL:setting": a tuned run
      * leaves its own marker, so the crash costs only that setting — the accelerator itself still runs with its defaults.
      */
     private fun aiCrashedSettings(): Set<String> = crashedProbes(KEY_AI_PROBE_RUNNING, KEY_AI_PROBE_CRASHED)
-
-    /** The LLM probe's builds that took the app down, as "LLM:i8mm": the probe skips them, the CPU test is unaffected. */
-    private fun llmCrashedProbes(): Set<String> = crashedProbes(KEY_LLM_PROBE_RUNNING, KEY_LLM_PROBE_CRASHED)
 
     private fun crashedProbes(runningKey: String, crashedKey: String): Set<String> {
         val crashed = ProbeCrashes.after(benchPrefs.getString(runningKey, null),
@@ -497,7 +454,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     uxTest = null,
                     aiTest = null,
                     aiVisual = null,
-                    llmAccel = null,
                     qrFrames = null,
                     benchTest = null,
                     benchResult = null,
@@ -625,7 +581,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     uxTest = null,
                     aiTest = null,
                     aiVisual = null,
-                    llmAccel = null,
                     qrFrames = null,
                     qrFound = null,
                     phase = RunPhase.COOLDOWN,
@@ -660,7 +615,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         fun want(s: BenchSection) = only == null || s in only
         // a partial run (test builds) is never a verified one: the sections it skipped score 0
         if (only != null) flags = flags or ValidityFlag.TEST_PROBES
-        llmGpuCool = null                      // the last run's, if this one skips the LLM
         // Getting ready: cool, and nothing else eating the CPU. If the phone was busy, that work
         // may have warmed it again, so the temperature is checked once more. A phone that doesn't get down to the
         // target (many idle at 45–50 °C) isn't flagged: the wait is a courtesy, not a condition.
@@ -739,22 +693,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val ux = if (want(BenchSection.UX)) runUx(from) ?: return else null
         com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "ai")
         val ai = if (want(BenchSection.AI)) runAi(gpuName) ?: return else null
-        com.example.thermohammer.telemetry.AppTelemetry.setPhaseContext("benchmark", "llm")
-        val wantLlm = want(BenchSection.LLM)
-        val settled = if (wantLlm) settleForLlm() ?: return else null
-        val llamaRuns = if (wantLlm) runLlm() ?: return else null
-        // test builds, report only: the NPU — Gemma 3 1B through LiteRT-LM, in a process of its own, after the same short
-        // cooldown the GPU part had. Not scored (LlmScore): no NPU path covers every chip yet
-        var npuCool: String? = null
-        val npuRun = if (com.example.thermohammer.TestBuild.PROBES && llamaRuns != null &&
-            com.example.thermohammer.engine.llm.NpuLlmProbe.AVAILABLE && llamaRuns.error == null) {
-            npuCool = coolForLlm("the LLM GPU test") ?: return
-            npuLlmRun()
-        } else null
-        if (!_state.value.isRunning) return
-        val llm = llamaRuns?.copy(npu = npuRun)
-        val npuLlm = listOfNotNull(settled?.let { "LLM settle · $it" }, llmGpuCool?.let { "LLM settle · before the GPU test · $it" },
-            npuCool?.let { "LLM settle · before the NPU test · $it" }) + npuRun?.lines.orEmpty()
         // a test build's run never goes to the live leaderboard (its scoring is version 5's, the server's isn't yet)
         if (com.example.thermohammer.TestBuild.PROBES) flags = flags or ValidityFlag.TEST_PROBES
         val result = BenchmarkResult(
@@ -767,10 +705,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             cpu = cpu,
             ai = ai,
             mem = mem,
-            llm = llm,
             startCpuShare = quiet.share,
             quietWaitSec = quiet.waitedSec,
-            npuLlm = npuLlm,
             only = only
         )
         if (closeRunTelemetry()) com.example.thermohammer.telemetry.AppTelemetry.logBenchmarkFinished(
@@ -782,8 +718,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             // ticks it while running, so a partial run without GPU would otherwise end unseen)
             it.copy(benchResult = result, validityFlags = flags, wasCompleted = true, benchProgress = 1f,
                 elapsedSeconds = maxOf(it.elapsedSeconds, ((System.nanoTime() - benchStartNs) / 1_000_000_000L).toInt(), 1),
-                cpuTest = null, memTest = null, uxTest = null, qrFrames = null, qrFound = null, aiTest = null, aiVisual = null,
-                llmAccel = null, llmReply = emptyList())
+                cpuTest = null, memTest = null, uxTest = null, qrFrames = null, qrFound = null, aiTest = null, aiVisual = null)
         }
         stopTest()
     }
@@ -1276,21 +1211,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     /**
-     * The same for the LLM test's GPU on Vulkan: a tiny model built and run on it in the check's process, just before
-     * the app builds the real one there. Null when the GPU may run, else why it is left alone.
-     */
-    private suspend fun llmGpuSafetyCheck(): String? {
-        val key = driverCheckKey
-        DriverCheck.cached(benchPrefs.getString(KEY_LLM_GPU_CHECK, null), key)?.let { return DriverCheck.problem(it, "GPU") }
-        _state.update { it.copy(llmAccel = LlmAccel.GPU, llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0,
-            llmDetail = "GPU · VULKAN · SAFETY CHECK · NOT SCORED") }
-        val outcome = DriverCheck.llmGpu(appContext)
-        if (!_state.value.isRunning) return null
-        DriverCheck.record(key, outcome)?.let { benchPrefs.edit().putString(KEY_LLM_GPU_CHECK, it).commit() }
-        return DriverCheck.problem(outcome, "GPU")
-    }
-
-    /**
      * Tries the settings for `accel` on two models (AiSettings) and returns what was measured and which one to use;
      * null if the run was stopped. Nothing here is scored: each setting runs 0.8 s per model, its outputs are checked
      * against the CPU's, and only a setting that wins clearly (AiTuner) is used by the scored runs.
@@ -1346,162 +1266,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         }
         if (!_state.value.isRunning) return null
         return result.copy(backend = backend)
-    }
-
-    // ── LLM test ──────────────────────────────────────────────────────────────
-
-    /** The 3B model on the CPU, then the GPU, with the reply it writes on the stage. Null if the run was stopped. */
-    private suspend fun runLlm(): LlmResult? = withContext(Dispatchers.Default) {
-        _state.update { it.copy(aiTest = null, aiVisual = null, llmAccel = LlmAccel.CPU, llmPhase = com.example.thermohammer.engine.llm.LlmPhase.BUILD,
-            llmProgress = 0f, llmRate = -1.0, llmDetail = "PREPARING", llmReply = emptyList(), llmPrompts = 0) }
-        val bench = com.example.thermohammer.engine.llm.LlmBench(appContext)
-        val free = bench.freeBytes()
-        val freeGb = BenchmarkScore.round2(free / 1e9)
-        val largest = bench.largestModel(free)
-        bench.problem()?.let { problem ->
-            // nothing can run: say why for a moment, every accelerator scores 0
-            _state.update { it.copy(llmDetail = "NOT RUN · ${problem.uppercase()}") }
-            delay(LLM_NOTICE_MS)
-            val features = LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }?.let { CpuFeatures.line(it[0], it[1]) }
-            return@withContext LlmResult(LlmAccel.entries.map { LlmRun(it, 0.0, 0.0, error = problem) }, null, freeGb, largest, problem,
-                probe = LlmProbeResult(cpuFeatures = features))
-        }
-        val crashed = llmCrashedAccels()
-        val gpuProblem = bench.gpuProblem()
-        val gpuApi = bench.gpuApi()          // the scored GPU backend, before anything asks for another one
-        val runs = ArrayList<LlmRun>()
-        var threads = 4
-        // The CPU's fast cores, from what the kernel says (CpuTopology): the CPU test pins its threads to them where that
-        // measures faster. Unknown on a phone whose cpufreq files can't be read: then nothing is pinned, as before.
-        val topology = CpuTopologyReader.read()
-        val pinCores = if (topology.canPin) topology.big else emptyList()
-        var kernelProbe = LlmProbeResult()
-        var kernels: LlmCpuLib = DotprodLib
-        for (accel in LlmAccel.entries) {
-            if (!_state.value.isRunning) return@withContext null
-            val skip = when {
-                accel in crashed -> "crashed the app here last time"
-                accel == LlmAccel.GPU -> gpuProblem
-                    // a GPU on Vulkan first proves itself in a process of its own (DriverCheck), after the CPU test so
-                    // it can't touch that one; Adreno's OpenCL runs as it always has
-                    ?: if (gpuApi == "Vulkan") llmGpuSafetyCheck() else null
-                else -> null
-            }
-            if (!_state.value.isRunning) return@withContext null
-            if (skip != null) { runs += LlmRun(accel, 0.0, 0.0, error = skip); continue }
-            if (accel == LlmAccel.CPU) {
-                // which CPU kernel build the CPU test runs in: the i8mm one where its few-millisecond self-test agrees
-                // with the dot-product build's (nothing is timed, so the CPU test starts as cold as it would without it)
-                val (probe, lib) = chooseLlmKernels(topology) ?: return@withContext null
-                kernelProbe = probe
-                kernels = lib
-            }
-            _state.update { it.copy(llmAccel = accel, llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0) }
-            // the CPU test just heated the chip: the GPU test gets the same short cooldown the CPU test had
-            if (accel == LlmAccel.GPU) llmGpuCool = coolForLlm("the LLM CPU test") ?: return@withContext null
-            val startTemp = StressProbes.cpuAdjacentTemp(StressProbes.readThermalZones())
-            // the i8mm build leaves the probe's marker, not the CPU's: a crash there costs that build its place next time,
-            // never the CPU's score
-            fun runIn(lib: LlmCpuLib): LlmRun? {
-                val i8 = accel == LlmAccel.CPU && lib !== DotprodLib
-                if (i8) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:i8mm").commit()
-                else benchPrefs.edit().putString(KEY_LLM_RUNNING, "$installStamp:${accel.name}").commit()
-                return try {
-                    bench.run(accel, threads, { _state.value.isRunning }, lib, pinCores, model = LlmNative.MODEL_GEMMA3_1B) { p ->
-                        _state.update { it.copy(llmPhase = p.phase, llmProgress = p.fraction, llmRate = p.rate, llmDetail = p.detail,
-                            llmReply = p.reply, llmPrompts = p.prompts) }
-                    }
-                } catch (e: Exception) {
-                    LlmRun(accel, 0.0, 0.0, error = e.message ?: e.javaClass.simpleName, kernels = lib.variant)
-                } finally {
-                    benchPrefs.edit().remove(KEY_LLM_RUNNING).remove(KEY_LLM_PROBE_RUNNING).commit()
-                }
-            }
-            var run = runIn(if (accel == LlmAccel.CPU) kernels else DotprodLib)
-            // an i8mm run that failed (without taking the app down) costs nothing: the CPU test runs again as it always did
-            if (run != null && accel == LlmAccel.CPU && kernels !== DotprodLib && run.error != null && _state.value.isRunning) {
-                kernelProbe = kernelProbe.copy(chosen = "dotprod", why = "the i8mm CPU test failed (${run.error}), so the dot-product build ran it")
-                kernels = DotprodLib
-                run = runIn(DotprodLib)
-            }
-            if (run == null) return@withContext null
-            if (run.threads > 0) threads = run.threads
-            runs += run.copy(startTempC = startTemp)
-        }
-        val gpuRan = runs.any { it.accel == LlmAccel.GPU && it.decode > 0 }
-        val gpuName = bench.gpuName()
-        // after the scored runs, so what it does to the CPU's clocks and temperature can't touch them
-        val probe = finishLlmProbe(kernelProbe, topology, gpuName, gpuApi, runs.firstOrNull { it.accel == LlmAccel.GPU && it.decode > 0 })
-            ?: return@withContext null
-        LlmResult(runs, gpuName.takeIf { gpuRan && it.isNotEmpty() }, freeGb, largest, probe = probe)
-    }
-
-    /**
-     * Which CPU kernel build the CPU test runs in. Where the CPU reports i8mm, the dot-product build and the i8mm one
-     * each run a few-millisecond self-test (a tiny seeded model: LlmProbe.checkKernels) and the i8mm one is chosen
-     * when its answers agree with the dot-product build's (LlmProbe.choose). Nothing is timed, so the phone's CPU is as
-     * cold at the start of the CPU test as it was before; every other phone, or a self-test that can't decide, keeps
-     * the dot-product build the test always used — and spends no time here at all. Null if the run was stopped.
-     */
-    private fun chooseLlmKernels(topology: CpuTopology): Pair<LlmProbeResult, LlmCpuLib>? {
-        val hw = LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }
-        val decision = LlmProbe.i8mmDecision(hw?.get(0), hw?.get(1), "LLM:i8mm" in llmCrashedProbes()) { LlmNativeI8mm.loadError }
-        val base = LlmProbeResult(skipped = decision.why?.let { mapOf("i8mm" to it) } ?: emptyMap(),
-            cpuFeatures = hw?.let { CpuFeatures.line(it[0], it[1]) }, topology = topology.line())
-        if (!decision.use || !LlmNative.loaded) return base to DotprodLib
-        val ran = LlmProbe.checkKernels(DotprodLib, I8mmLib, min(4, Runtime.getRuntime().availableProcessors()), { _state.value.isRunning },
-            around = { lib, start ->
-                // each build leaves the marker it would leave as the CPU test: the dot-product build's crash is the CPU's
-                // (it is the test), the i8mm build's only drops that build next time
-                val (key, value) = if (lib.variant == "i8mm") KEY_LLM_PROBE_RUNNING to "$installStamp:LLM:i8mm"
-                    else KEY_LLM_RUNNING to "$installStamp:${LlmAccel.CPU.name}"
-                if (start) benchPrefs.edit().putString(key, value).commit() else benchPrefs.edit().remove(key).commit()
-            })
-        if (!_state.value.isRunning) return null
-        val lib: LlmCpuLib = if (ran.chosen == "i8mm") I8mmLib else DotprodLib
-        return ran.copy(skipped = ran.skipped + base.skipped, cpuFeatures = base.cpuFeatures, topology = base.topology) to lib
-    }
-
-    /**
-     * What is left of the probe after the scored runs, all of it report only: the phone's CPU, Vulkan and OpenCL
-     * drivers' answers, what llama.cpp's backends said about the GPU they chose, the Vulkan shader families the library
-     * was built with — and, on an Adreno (whose scored backend is OpenCL), a short run of the Vulkan backend for the
-     * comparison between vendors. `scoredGpu` is the scored GPU run, to set it against. Null if the run was stopped.
-     */
-    private fun finishLlmProbe(base: LlmProbeResult, topology: CpuTopology, gpuName: String, gpuApi: String, scoredGpu: LlmRun?): LlmProbeResult? {
-        if (!_state.value.isRunning) return null
-        val vulkan = if (LlmNative.loaded) runCatching { LlmNative.vulkanReport(gpuName).lines() }.getOrDefault(listOf("Vulkan · the probe failed")) else emptyList()
-        // llama.cpp's OpenCL kernels are written for Adreno: elsewhere OpenCL is only asked what it is, never run on
-        val opencl = if (LlmNative.loaded && !gpuName.contains("adreno", ignoreCase = true))
-            runCatching { LlmNative.openClReport().lines() }.getOrDefault(listOf("OpenCL · the probe failed")) else emptyList()
-
-        var gpu: LlmGpuProbe? = null
-        var gpuSkipped: String? = null
-        val adreno = gpuName.contains("adreno", ignoreCase = true)
-        if (LlmNative.loaded) {
-            // never on Adreno any more: on the Honor 600 Pro's Adreno 830 it lost its device in most runs, answered wrongly
-            // in the rest, and crashed the app twice (in Qualcomm's fault query, then in llama.cpp's cleanup) — 2026-11-23
-            val decision = if (adreno)
-                LlmProbe.Decision(false, "Vulkan on Adreno loses its device or answers wrongly (tested on an Adreno 830)")
-            else LlmProbe.vulkanOnAdrenoDecision(gpuName, gpuApi, adreno && VulkanGpuLib.available(), "LLM:vulkan" in llmCrashedProbes(), scoredGpu != null)
-            if (decision.use && scoredGpu != null) {
-                _state.update { it.copy(llmAccel = LlmAccel.GPU, llmPhase = LlmPhase.WARMUP, llmProgress = 0f, llmRate = -1.0,
-                    llmDetail = "GPU · VULKAN · REPORT ONLY · PREPARING", llmReply = emptyList(), llmPrompts = 0) }
-                gpu = LlmProbe.runGpu(VulkanGpuLib, Triple(gpuApi, scoredGpu.prefill, scoredGpu.decode), { _state.value.isRunning },
-                    around = { start ->
-                        if (start) benchPrefs.edit().putString(KEY_LLM_PROBE_RUNNING, "$installStamp:LLM:vulkan").commit()
-                        else benchPrefs.edit().remove(KEY_LLM_PROBE_RUNNING).commit()
-                    }) { label, fraction -> _state.update { it.copy(llmProgress = fraction, llmDetail = label) } }
-                if (!_state.value.isRunning) return null
-            } else if (adreno) gpuSkipped = decision.why        // on any other GPU the scored backend is Vulkan already
-        }
-        // read last: every backend has had its say by now (the Vulkan one prints its device line when it first starts)
-        val backendLog = if (LlmNative.loaded) runCatching { LlmNative.backendLog().lines().filter { it.isNotBlank() } }.getOrDefault(emptyList()) else emptyList()
-        val build = if (LlmNative.loaded) runCatching { LlmNative.vulkanBuildFeatures().trim() }.getOrNull() else null
-        // a CPU test that never started (it crashed the app before) has no kernel probe: the phone's features still go in
-        val features = base.cpuFeatures ?: LlmNative.takeIf { it.loaded }?.let { runCatching { it.hwcaps() }.getOrNull() }?.let { CpuFeatures.line(it[0], it[1]) }
-        return base.copy(vulkan = vulkan, opencl = opencl, gpu = gpu, gpuSkipped = if (gpu == null) gpuSkipped else null,
-            vulkanBuild = build, backendLog = backendLog, cpuFeatures = features, topology = base.topology ?: topology.line())
     }
 
     /** UI attaches/detaches the stage SurfaceView — forwarded to the GL thread. */
@@ -1604,8 +1368,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                     uxTest = null,
                     aiTest = null,
                     aiVisual = null,
-                    llmAccel = null,
-                    llmReply = emptyList(),
                     uxProgress = 0f,
                     qrFrames = null,
                     qrFound = null
@@ -1624,9 +1386,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     // ── Pre-flight gates (blocking) ──────────────────────────────────────────
-
-    /** Play was asked to fetch the NPU model this session (runPreflight): afterwards its progress is only read. */
-    @Volatile private var npuFetchAsked = false
 
     suspend fun runPreflight(benchmark: Boolean = false): PreflightReport = withContext(Dispatchers.IO) {
         val gates = mutableListOf<GateResult>()
@@ -1718,29 +1477,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             detail = if (glVer >= 0x30000) "OpenGL ES ${glVer shr 16}.${glVer and 0xFFFF} — 3D benchmark available"
                      else "GLES 3.x unavailable — GPU 3D mode will not run"
         )
-
-        // Test builds: the NPU model the report-only NPU run uses, on the chips that have one (never blocking, not scored)
-        if (benchmark && com.example.thermohammer.TestBuild.PROBES && com.example.thermohammer.engine.llm.NpuModels.supported(appContext)) {
-            val models = com.example.thermohammer.engine.llm.NpuModels
-            // ask Play once per app session to fetch it, if it isn't coming already; afterwards just read its progress
-            val status = models.status(appContext, fetch = !npuFetchAsked).also { npuFetchAsked = true }
-            val size = "~%,d MB".format(models.sizeMb(appContext))
-            val chip = models.soc().uppercase()
-            gates += GateResult(
-                "npumodel", "LLM NPU MODEL", blocking = false,
-                passed = status is com.example.thermohammer.engine.llm.NpuModels.Status.Ready,
-                detail = when (status) {
-                    is com.example.thermohammer.engine.llm.NpuModels.Status.Ready -> "Gemma 3 1B for $chip ready"
-                    is com.example.thermohammer.engine.llm.NpuModels.Status.Downloading ->
-                        "Downloading ${status.percent}% of $size (report only, not scored)"
-                    com.example.thermohammer.engine.llm.NpuModels.Status.WaitingForWifi ->
-                        "Waiting for Wi-Fi ($size) (report only, not scored)"
-                    is com.example.thermohammer.engine.llm.NpuModels.Status.Unavailable ->
-                        "Not on the phone: ${status.why} (report only, not scored)"
-                    com.example.thermohammer.engine.llm.NpuModels.Status.NotNeeded -> "Not needed on this chip"
-                }
-            )
-        }
 
         val canRun = gates.filter { it.blocking }.all { it.passed }
         PreflightReport(gates, canRun, hints)
@@ -1887,31 +1623,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     /** GPU frames rendered within dtNs (fractional — see frameProgress) — −1 when the channel is off. */
-    /**
-     * The LLM test's NPU engine (version 5): Gemma 3 1B through LiteRT-LM (engine/llm/NpuLlmProbe.kt), in a process of its
-     * own — a native crash there costs the NPU's third of the LLM score, not the run.
-     */
-    private suspend fun npuLlmRun(): LlmNpuRun {
-        _state.update { it.copy(llmProgress = 0f, llmRate = -1.0, llmReply = emptyList(), llmPrompts = 0,
-            llmDetail = "NPU · LITERT-LM · GEMMA 3 1B · PREPARING") }
-        val run = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext) { label, fraction ->
-            _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
-        }
-        // test builds, report only: other builds of this chip's model (NpuModels.compareTestFiles), the same task each
-        var out = run
-        for (file in com.example.thermohammer.engine.llm.NpuModels.compareTestFiles(appContext)) {
-            if (!_state.value.isRunning) break
-            val c = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext, file) { label, fraction ->
-                _state.update { it.copy(llmProgress = fraction, llmDetail = "COMPARE · $label") }
-            }
-            val verdict = if (c.error == null && c.right) "prompt %.2f tok/s · reply %.2f tok/s · answer right".format(c.prefill, c.decode)
-                else "no result: ${c.error ?: "wrong answer"}"
-            out = out.copy(lines = out.lines + "LLM NPU COMPARE (report only) · ${file.name} (${file.length() / 1_000_000} MB) · $verdict" +
-                c.lines.map { "  compare · $it" })
-        }
-        return out
-    }
-
     private fun gpuFpsDelta(dtNs: Long, runner: GpuRunner = gpuBench): Double {
         if (!runner.running || dtNs <= 0) return -1.0
         val f = runner.frameProgress()
@@ -2011,58 +1722,6 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
     }
 
     private class QuietCheck(val quiet: Boolean, val share: Float, val waitedSec: Int)
-
-    /**
-     * Waits (at most [LLM_SETTLE_MAX_MS]) until the app has the CPU to itself again before the LLM test: what the AI test
-     * started on its way out — the NPU's and the GPU's teardown — can keep a core busy for many seconds, and ggml's
-     * all-core trial then crawls. What it saw, for the test builds' report; null if the benchmark was stopped.
-     */
-    /** What the cooldown before the LLM GPU test saw (test builds' report); null when it didn't run. */
-    private var llmGpuCool: String? = null
-
-    private suspend fun settleForLlm(): String? {
-        llmGpuCool = null
-        // the share check first: it spins every core for a moment and warms the chip, so the cooldown comes after it
-        val t0 = android.os.SystemClock.elapsedRealtime()
-        val first = withContext(Dispatchers.Default) { StressProbes.cpuShare() }
-        var share = first
-        while (share < LLM_SETTLE_SHARE && android.os.SystemClock.elapsedRealtime() - t0 < LLM_SETTLE_MAX_MS) {
-            if (!_state.value.isRunning) return null
-            _state.update { it.copy(llmDetail = "LLM · WAITING FOR THE CPU TO SETTLE") }
-            delay(LLM_SETTLE_POLL_MS)
-            share = withContext(Dispatchers.Default) { StressProbes.cpuShare() }
-        }
-        if (!_state.value.isRunning) return null
-        val waited = (android.os.SystemClock.elapsedRealtime() - t0) / 1000.0
-        val cool = coolForLlm("the AI test and the CPU check") ?: return null
-        return "$cool · CPU share %.0f%% at the end of the AI test, %.0f%% after %.1f s%s".format(first * 100, share * 100, waited,
-            if (share < LLM_SETTLE_SHARE) " (still busy: started anyway)" else "")
-    }
-
-    /**
-     * Lets the chip cool (CPU or GPU, the hotter) to [LLM_COOL_TARGET_C] before the LLM test, for at most
-     * [LLM_COOL_MAX_MS], stopping early once it no longer falls. What it saw, for the report; null if stopped.
-     */
-    private suspend fun coolForLlm(after: String): String? {
-        fun temp() = StressProbes.computeTemp(StressProbes.readThermalZones())
-        val start = temp() ?: return "chip temperature unreadable: no cooldown"
-        var t = start
-        var prev = start
-        var waitedMs = 0L
-        var stallMs = 0L
-        while (t > LLM_COOL_TARGET_C && waitedMs < LLM_COOL_MAX_MS && stallMs < LLM_COOL_STALL_MS) {
-            if (!_state.value.isRunning) return null
-            _state.update { it.copy(llmDetail = "LLM · LETTING THE CHIP COOL · %.0f °C → %.0f °C".format(t, LLM_COOL_TARGET_C)) }
-            delay(1_000L); waitedMs += 1_000L
-            t = temp() ?: break
-            stallMs = if (t < prev - 0.5f) 0L else stallMs + 1_000L
-            if (stallMs == 0L) prev = t
-        }
-        if (!_state.value.isRunning) return null
-        return if (waitedMs == 0L) "chip %.0f °C after %s: no cooldown needed".format(start, after)
-        else "chip %.0f °C after %s, %.0f °C after %d s%s".format(start, after, t, waitedMs / 1000,
-            when { t <= LLM_COOL_TARGET_C -> ""; stallMs >= LLM_COOL_STALL_MS -> " (stopped falling)"; else -> " (time limit)" })
-    }
 
     private suspend fun runSession() {
         val reachedTarget = coolDown()

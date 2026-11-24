@@ -12,9 +12,6 @@ import com.example.thermohammer.engine.CpuResult
 import com.example.thermohammer.engine.CpuScore
 import com.example.thermohammer.engine.DbResult
 import com.example.thermohammer.engine.EnvFlag
-import com.example.thermohammer.engine.LlmAccel
-import com.example.thermohammer.engine.LlmResult
-import com.example.thermohammer.engine.LlmRun
 import com.example.thermohammer.engine.MemResult
 import com.example.thermohammer.engine.RamResult
 import com.example.thermohammer.engine.StampV2
@@ -104,8 +101,7 @@ class CsvExportTest {
             cpu = CpuResult(CpuTest.entries.map { CpuTestRun(it, mapOf("MATRIX MULTIPLY" to CpuScore.ref(it))) }),
             mem = MemResult(RamResult(48.2, 39.5, 24.75, 151.3), StorageResult(2890.0, 1950.0, 58000.0, 47000.0, false, 512),
                 DbResult(805.0, 790.0, 5100.0)),
-            ai = AiResult(listOf(AiRun(AiTest.CLASSIFY, AiAccel.CPU, 845.04)), npuRuntime = null),
-            llm = LlmResult(listOf(LlmRun(LlmAccel.CPU, 23.5, 6.8, threads = 6)), gpuName = null, freeGb = 7.25, largestModel = 8))
+            ai = AiResult(listOf(AiRun(AiTest.CLASSIFY, AiAccel.CPU, 845.04)), npuRuntime = null))
         val lines = CsvExport.benchmark(r).trimEnd('\n').split('\n')
         assertEquals("section,metric,value,unit", lines[0])
         assertTrue(lines.drop(1).all { it.split(',').size == 4 })
@@ -114,11 +110,11 @@ class CsvExportTest {
                 "gpu,lake_valley_avg_fps,121.37,fps", "gpu,lake_valley_start_temp,35.0,C", "gpu,neon_city_rt_supported,0,bool",
                 "ux,web_layout,3700.00,complexity", "ux,photo_edit,118.30,MP/s", "ux,video_h_264_4k_fps,241.50,fps",
                 "ux,video_h_264_4k_hardware,1,bool", "ai,image_classification_cpu,845.04,inferences/s",
-                "llm,cpu_prefill,23.50,tokens/s", "llm,cpu_threads,6,threads", "llm,largest_model,8,B parameters",
                 "score,gpu,4056,points", "score,total,${r.total},points")) {
             assertTrue("missing $row", lines.contains(row))
         }
         assertFalse(lines.any { it.startsWith("gpu,neon_city_rt_avg_fps") })        // a test that couldn't run has no fps
+        assertFalse("version 5 has no LLM test", lines.any { it.startsWith("llm,") || it == "score,llm" || it.startsWith("score,llm,") })
         assertEquals("score,total,${r.total},points", lines.last())
     }
 }

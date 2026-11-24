@@ -16,10 +16,10 @@ class BenchmarkUpdateImpactTest {
 
     /** A verified, complete run scoring [total] (CPU [cpu], the rest split evenly). */
     private fun run(total: Int, version: String, build: String?, model: String? = phone, flags: Int = 0, cpu: Int = 6000,
-                    llm: Int = 6000) = BenchmarkRecord(
+                    ai: Int = 6000) = BenchmarkRecord(
         id = "r${++clock}", timestamp = clock * 1000, version = 4, score = total, test1Fps = 1.0, test1LowFps = 1.0, test1Points = 1,
         test2Fps = 1.0, test2LowFps = 1.0, test2Points = 1, cpuScore = cpu, memScore = 6000, gpuScore = 6000, uxScore = 6000,
-        aiScore = 6000, llmScore = llm, gpuName = "Adreno", validityFlags = flags, osVersion = version, osBuild = build,
+        aiScore = ai, gpuName = "Adreno", validityFlags = flags, osVersion = version, osBuild = build,
         deviceModel = model)
 
     private fun insight(h: List<BenchmarkRecord>, version: String = "16", build: String? = "B2", model: String = phone) =
@@ -33,7 +33,7 @@ class BenchmarkUpdateImpactTest {
 
     @Test fun unverifiedOrIncompleteRunsAreNoEvidence() {
         assertNull(insight(listOf(run(30000, "15", "B1", flags = 4))))
-        assertNull(insight(listOf(run(30000, "15", "B1", llm = 0))))
+        assertNull(insight(listOf(run(30000, "15", "B1", ai = 0))))
     }
 
     @Test fun anotherPhonesRunsAreIgnoredButUnnamedOldRunsCount() {
@@ -95,7 +95,7 @@ class BenchmarkUpdateImpactTest {
 
     @Test fun sectionsWhereBothSidesHaveThem() {
         val r = insight(listOf(run(30000, "15", "B1", cpu = 6000), run(28000, "16", "B2", cpu = 4800))) as Insight.Result
-        assertEquals(listOf("CPU", "MEM", "GPU", "UX", "AI", "LLM"), r.sections.map { it.name })
+        assertEquals(listOf("CPU", "MEM", "GPU", "UX", "AI"), r.sections.map { it.name })
         assertEquals(-0.2, r.sections.first { it.name == "CPU" }.delta, 1e-12)
         assertEquals(0.0, r.sections.first { it.name == "GPU" }.delta, 0.0)
     }

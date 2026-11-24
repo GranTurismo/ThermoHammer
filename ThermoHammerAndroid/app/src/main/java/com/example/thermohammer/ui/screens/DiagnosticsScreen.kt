@@ -668,8 +668,7 @@ private fun BenchmarkSections(rayTracingProblem: String?, rayTracingChecked: Boo
         Triple("MEM", MemTest.entries.size, memColor()),
         Triple("GPU", BenchmarkTest.entries.size, benchmarkColor(null)),
         Triple("UX", UxTest.entries.size, uxColor(null)),
-        Triple("AI", com.example.thermohammer.engine.AiTest.entries.size, aiColor()),
-        Triple("LLM", com.example.thermohammer.engine.LlmAccel.entries.size, llmColor())
+        Triple("AI", com.example.thermohammer.engine.AiTest.entries.size, aiColor())
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("WHAT IT RUNS", modifier = Modifier.weight(1f), style = ThermoType.annotation(8f, Forge.ink2))
@@ -684,6 +683,7 @@ private fun BenchmarkSections(rayTracingProblem: String?, rayTracingChecked: Boo
                 Text(label, style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                 Text(if (count == 1) "1 test" else "$count tests", style = ThermoType.annotation(8f, Forge.ink1))
             }
+            repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }          // the short row keeps the columns' width
         }
     }
     if (rayTracingChecked && rayTracingProblem != null) {
@@ -820,30 +820,6 @@ private fun BenchmarkTestRows(rayTracingProblem: String?, rayTracingChecked: Boo
     }
     Text("AI runs open 8-bit models through LiteRT on the CPU and the GPU, half each. The NPU isn't scored: no NPU " +
         "runtime reaches every phone.",
-        style = ThermoType.annotation(8f, Forge.ink2))
-    for (a in com.example.thermohammer.engine.LlmAccel.entries) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val color = llmColor()
-            Box(
-                Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(color.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("L${a.ordinal + 1}", style = TextStyle(color = color, fontSize = 10.sp, fontFamily = InstrumentMono,
-                    fontWeight = FontWeight.Black))
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("LLM · ${a.label}", style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                Text(if (a == com.example.thermohammer.engine.LlmAccel.CPU) "Gemma 3 1B, 4-bit · a 512-token prompt, then the reply token by token"
-                    else "The same model with every layer on the GPU · llama.cpp OpenCL (Adreno) or Vulkan",
-                    style = ThermoType.annotation(8f, Forge.ink2))
-            }
-            Text("${a.seconds}s", style = ThermoType.data(10f, Forge.ink1))
-        }
-    }
-    Text("The CPU and GPU runs use llama.cpp with weights built from a seed in memory, so nothing is downloaded. Each " +
-        "engine counts half against the reference phone's same engine; one the phone can't run scores 0. The NPU isn't " +
-        "scored: no way to run it reaches every chip yet. The LLM needs 4 GB of RAM.",
         style = ThermoType.annotation(8f, Forge.ink2))
 }
 

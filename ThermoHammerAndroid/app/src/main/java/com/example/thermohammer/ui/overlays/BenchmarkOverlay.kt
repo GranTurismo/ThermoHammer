@@ -25,9 +25,6 @@ import com.example.thermohammer.engine.AiResult
 import com.example.thermohammer.engine.AiTest
 import com.example.thermohammer.engine.BenchmarkResult
 import com.example.thermohammer.engine.BenchmarkTestResult
-import com.example.thermohammer.engine.LlmAccel
-import com.example.thermohammer.engine.LlmResult
-import com.example.thermohammer.engine.LlmScore
 import com.example.thermohammer.engine.MemResult
 import com.example.thermohammer.engine.MemTest
 import com.example.thermohammer.engine.PhoneHealth
@@ -83,7 +80,6 @@ fun BenchmarkResultOverlay(
                     SectionScore("GPU", result.gpuScore, Forge.phaseCalibration, Modifier.weight(1f))
                     SectionScore("UX", result.uxScore, Forge.phaseMeasured, Modifier.weight(1f))
                     SectionScore("AI", result.aiScore, aiColor(), Modifier.weight(1f))
-                    SectionScore("LLM", result.llmScore, llmColor(), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(deviceName, style = ThermoType.data(12f, Forge.ink1, FontWeight.Bold), textAlign = TextAlign.Center)
@@ -138,10 +134,6 @@ fun BenchmarkResultOverlay(
                         Text(it, style = ThermoType.annotation(9f, Ramp.at(0.85f)), textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 10.dp))
                     }
-                }
-                result.llm?.let { llm ->
-                    LlmCard(llm)
-                    Spacer(Modifier.height(10.dp))
                 }
                 if (!result.isVerified) {
                     Text(
@@ -667,68 +659,6 @@ private fun SpreadBar(report: PhoneHealth.Report, accent: Color) {
         }
         drawPath(tri, accent)
         drawCircle(accent, 4.dp.toPx(), androidx.compose.ui.geometry.Offset(y, mid))
-    }
-}
-
-@Composable
-private fun LlmCard(llm: LlmResult) {
-    val accent = llmColor()
-    fun rate(v: Double) = if (v > 0) (if (v < 100) "%.1f" else "%,.0f").format(v) else "—"
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.surface)
-            .border(1.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("LLM · GEMMA 3 1B · 4-BIT", style = ThermoType.label(9f).copy(color = accent))
-                Text("PROMPT · REPLY", style = ThermoType.data(13f, Forge.ink0, FontWeight.Black))
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("%,d".format(llm.score), style = ThermoType.data(16f, Forge.ink0, FontWeight.Black))
-                Text("POINTS", style = ThermoType.annotation(7f, Forge.ink2))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        for (a in LlmAccel.entries) {
-            val run = llm.run(a)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("${a.label} PREFILL TOK/S", rate(run?.prefill ?: 0.0), if ((run?.prefill ?: 0.0) > 0) Forge.ink0 else Ramp.at(0.85f))
-                Metric("${a.label} DECODE TOK/S", rate(run?.decode ?: 0.0), if ((run?.decode ?: 0.0) > 0) Forge.ink0 else Ramp.at(0.85f))
-                Metric(if (a == LlmAccel.CPU) "THREADS" else "GPU", if (a == LlmAccel.CPU) run?.threads?.takeIf { it > 0 }?.toString() ?: "—"
-                    else llm.gpuName?.substringAfter("QUALCOMM ")?.take(14) ?: "—", Forge.ink1)
-            }
-            run?.error?.takeIf { llm.error == null }?.let {
-                Text("${a.label}: $it", style = ThermoType.annotation(8f, Ramp.at(0.85f)))
-            }
-            Spacer(Modifier.height(6.dp))
-        }
-        // test builds: the NPU through LiteRT-LM, report only (not scored in version 5)
-        llm.npu?.let { n ->
-            val ok = n.right && n.error == null
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Metric("NPU PREFILL TOK/S", if (ok) rate(n.prefill) else "—", if (ok) Forge.ink0 else Ramp.at(0.85f))
-                Metric("NPU DECODE TOK/S", if (ok) rate(n.decode) else "—", if (ok) Forge.ink0 else Ramp.at(0.85f))
-                Metric("ANSWER", when { n.error != null -> "—"; n.right -> "RIGHT"; else -> "WRONG" }, if (ok) Forge.ink1 else Ramp.at(0.85f))
-            }
-            Text("NPU: report only, not scored" + (n.error?.let { " — $it" } ?: ""), style = ThermoType.annotation(8f, Ramp.at(0.85f)))
-            Spacer(Modifier.height(6.dp))
-        }
-        Text("CPU %,d · GPU %,d points — each half".format(llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU)),
-            style = ThermoType.annotation(8f, Forge.ink1))
-        llm.error?.let { Text("Not run: $it.", style = ThermoType.annotation(8f, Ramp.at(0.85f))) }
-        Text(if (llm.largestModel > 0) "Largest common model that fits in the memory free now: ${llm.largestModel}B (4-bit, %.1f GB free).".format(llm.freeGb)
-            else "Memory free now: %.1f GB — too little for even a 1B model.".format(llm.freeGb),
-            style = ThermoType.annotation(8f, Forge.ink1))
-        Spacer(Modifier.height(2.dp))
-        Text("The same task on both engines: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token " +
-            "(decode). llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real). " +
-            "Each engine is measured against its own reference and counts half; one the phone can't run counts 0. The NPU " +
-            "isn't scored: no way to run it reaches every chip yet.",
-            style = ThermoType.annotation(8f, Forge.ink2))
-        // the notice Gemma's terms ask of anyone passing its files on (the test runs Gemma 3 1B's shape)
-        Text("Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms. " +
-            "Terms of use: thermohammer.gtgroup.dev/terms",
-            style = ThermoType.annotation(7f, Forge.ink2))
     }
 }
 

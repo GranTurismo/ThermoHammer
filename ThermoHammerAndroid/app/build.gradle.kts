@@ -125,45 +125,6 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Test builds' report-only NPU LLM engine (engine/llm/NpuLlmProbe.kt in src/nonRelease): LiteRT-LM 0.19 loads NPU dispatch libraries
-// with the versioned dispatch ABI (LiteRtDispatchQueryInterface), which LiteRT 2.4's have and the scored AI test's 2.3
-// ones don't. So 2.4's go in as assets (litertlm-npu/), copied out beside the app's QNN runtime at run time; the scored
-// AI test keeps 2.3's in jniLibs. Release builds get none of this: version 5 doesn't score the NPU.
-val litertLmNpu: Configuration by configurations.creating { isTransitive = false }
-
-abstract class LiteRtLmNpuAssets : DefaultTask() {
-    @get:InputFiles abstract val aars: ConfigurableFileCollection
-    @get:OutputDirectory abstract val outputDir: DirectoryProperty
-    @get:Inject abstract val archives: ArchiveOperations
-    @get:Inject abstract val files: FileSystemOperations
-
-    @TaskAction
-    fun extract() {
-        val trees = aars.files.map { archives.zipTree(it) }
-        files.sync {
-            for (tree in trees) from(tree) {
-                // the dispatch library runs a model compiled for the chip ahead of time (no on-device compiler plugin)
-                include("jni/arm64-v8a/libLiteRtDispatch_*.so")
-                eachFile { path = "litertlm-npu/$name" }
-            }
-            into(outputDir)
-            includeEmptyDirs = false
-        }
-    }
-}
-
-val litertLmNpuAssets = tasks.register<LiteRtLmNpuAssets>("litertLmNpuAssets") {
-    aars.from(litertLmNpu)
-    outputDir.set(layout.buildDirectory.dir("generated/litertlm-npu-assets"))
-}
-
-androidComponents {
-    onVariants(selector().all()) { variant ->
-        if (variant.buildType != "release")
-            variant.sources.assets?.addGeneratedSourceDirectory(litertLmNpuAssets, LiteRtLmNpuAssets::outputDir)
-    }
-}
-
 dependencies {
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
@@ -227,11 +188,6 @@ dependencies {
   debugImplementation(libs.litert.npu.mediatek)
   debugImplementation(libs.litert.npu.google.tensor)
   "benchImplementation"(libs.qnn.runtime)
-  // Test builds only: Google's LiteRT-LM, for the report-only NPU LLM engine (engine/llm/NpuLlmProbe.kt in src/nonRelease)
-  "benchImplementation"(libs.litertlm.android)
-  debugImplementation(libs.litertlm.android)
-  litertLmNpu(variantOf(libs.litertlm.npu.qualcomm) { artifactType("aar") })
-  litertLmNpu(variantOf(libs.litertlm.npu.mediatek) { artifactType("aar") })
 
   // Production-only Firebase Analytics + Crashlytics (including native C/C++ NDK symbols).
   "releaseImplementation"(platform(libs.firebase.bom))
@@ -241,7 +197,7 @@ dependencies {
 }
 
 // Crashlytics uploads the R8 mapping file as part of the release build, but not the native (NDK) symbols: without them
-// a crash in Vulkan, an NPU driver or llama.cpp shows only addresses. Every release bundle or APK uploads them too.
+// a crash in Vulkan or a GPU or NPU driver shows only addresses. Every release bundle or APK uploads them too.
 tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
     finalizedBy("uploadCrashlyticsSymbolFileRelease")
 }

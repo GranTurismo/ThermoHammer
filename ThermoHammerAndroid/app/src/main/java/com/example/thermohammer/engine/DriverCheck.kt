@@ -16,7 +16,6 @@ import android.os.Message
 import android.os.Messenger
 import com.example.thermohammer.engine.ai.AiBench
 import com.example.thermohammer.engine.ai.AiInputs
-import com.example.thermohammer.engine.llm.LlmNative
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,12 +29,10 @@ import kotlinx.coroutines.withContext
 //   The NPU and the GPU run through the chip maker's code inside the phone's
 //   system, and that code can crash natively, which no try/catch stops. On a
 //   Dimensity 1200, MediaTek's NeuroPilot jumped through a null pointer the first
-//   time a model was compiled for it, and the Mali's Vulkan driver did the same
-//   on the LLM test's first buffer: each took the whole app down.
-//   So before the app itself uses a MediaTek NPU, or a GPU through Vulkan for the
-//   LLM test, the same work is done once in DriverCheckService, which lives in a
-//   separate process (":drivercheck"): every AI model compiled and run on the
-//   NPU; a tiny LLM built and run on the GPU. If that process crashes or stops
+//   time a model was compiled for it: it took the whole app down. So before the
+//   app itself uses a MediaTek NPU, or a GPU setting the AI tuning tries, the same
+//   work is done once in DriverCheckService, which lives in a separate process
+//   (":drivercheck"): every AI model compiled and run there. If that process crashes or stops
 //   answering, only it is lost: the app goes on, says why, and leaves that
 //   accelerator alone. The verdict is kept for this install on this system build,
 //   so a check runs once, and again after an app or a system update. Nothing here
@@ -47,7 +44,6 @@ object DriverCheck {
     const val MSG_NPU = 1        // app → service: compile and run the AI models named in "tests" on the NPU
     const val MSG_STEP = 2       // service → app: starting on the step named in "step" (an AI model)
     const val MSG_DONE = 3       // service → app: all of it was tried and the process is still alive
-    const val MSG_LLM_GPU = 4    // app → service: build and run the tiny LLM on the GPU
     const val MSG_GPU = 5        // app → service: compile and run the AI models in "tests" on the GPU with setting "setting"
     const val MSG_FAILED = 6     // service → app: the model named in "step" failed, "why"
 
@@ -104,9 +100,6 @@ object DriverCheck {
         ask(context, MSG_NPU, Bundle().apply { putStringArrayList("tests", ArrayList(tests.map { it.name })) }) { name ->
             AiTest.entries.firstOrNull { it.name == name }?.also(onModel)?.model
         }
-
-    /** The tiny LLM built and run on the GPU llama.cpp chose, in the check's process. */
-    suspend fun llmGpu(context: Context): Outcome = ask(context, MSG_LLM_GPU, Bundle()) { null }
 
     /**
      * Every AI model in `tests` compiled and run once on the GPU with the AI tuning's setting `settingId`, in the check's
@@ -199,7 +192,6 @@ class DriverCheckService : Service() {
             val reply = msg.replyTo
             when (msg.what) {
                 DriverCheck.MSG_NPU -> npu(reply, msg.data.getStringArrayList("tests").orEmpty())
-                DriverCheck.MSG_LLM_GPU -> llmGpu()
                 DriverCheck.MSG_GPU -> gpu(reply, msg.data.getString("setting"), msg.data.getStringArrayList("tests").orEmpty())
             }
             runCatching { reply?.send(Message.obtain(null, DriverCheck.MSG_DONE)) }
@@ -252,10 +244,5 @@ class DriverCheckService : Service() {
                 }
             }
         }
-    }
-
-    private fun llmGpu() {
-        // a GPU that refuses the model says so (false, or a throw): an answer too. Only a crash is not.
-        runCatching { if (LlmNative.loaded) LlmNative.gpuSelftest(arrayOfNulls(1)) }
     }
 }

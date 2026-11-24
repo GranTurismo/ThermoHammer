@@ -35,14 +35,14 @@ class BenchmarkDetailRenderTest {
 
     private val entry = BenchmarkDto(id = 7, deviceManufacturer = "Microsoft", deviceModel = "Surface Laptop 7", socModel = "Snapdragon X Elite",
         gpuName = "Qualcomm Adreno X1-85", os = 4, osVersion = "10.0.26200", score = 5200, uxScore = 6100, cpuScore = 6900, aiScore = 3100,
-        memScore = 5800, llmScore = 4300, totalScore = 31400, test1Score = 6000, test2Score = 5100, test3Score = 0, test1Fps = 210.5,
+        memScore = 5800, totalScore = 27100, test1Score = 6000, test2Score = 5100, test3Score = 0, test1Fps = 210.5,
         test2Fps = 41.2, test3Fps = 0.0, rayTracing = false, runs = 3)
 
     private fun rows(vararg p: Pair<String, String>) = p.map { DetailRowDto(it.first, it.second) }
 
     private val detail = BenchmarkDetailDto(id = 7, createdAt = "2026-10-27T18:20:11Z", deviceManufacturer = "Microsoft", deviceModel = "Surface Laptop 7",
         socModel = "Snapdragon X Elite", gpuName = "Qualcomm Adreno X1-85", os = 4, osVersion = "10.0.26200", osBuild = "26200.5000", appVersion = "2.0.0",
-        totalScore = 31400, sections = listOf(
+        totalScore = 27100, sections = listOf(
             DetailSectionDto("cpu", "CPU", 6900, listOf(
                 DetailGroupDto("Math", 6200, rows("Throughput" to "1,540 ops/s")),
                 DetailGroupDto("Multi-core", 7400, rows("Throughput" to "5,210 ops/s")))),
@@ -54,8 +54,7 @@ class BenchmarkDetailRenderTest {
                 DetailGroupDto("Neon City RT", 0, rows("Ray tracing" to "not supported by this GPU")))),
             DetailSectionDto("ux", "EVERYDAY UX", 6100, listOf(
                 DetailGroupDto("Video playback", 5900, rows("4K60 H.264" to "298 fps · hardware", "4K60 AV1" to "not supported")))),
-            DetailSectionDto("ai", "AI", 3100, emptyList()),
-            DetailSectionDto("llm", "LLM", 4300, emptyList())))
+            DetailSectionDto("ai", "AI", 3100, emptyList())))
 
     @Test
     fun detailCard() {

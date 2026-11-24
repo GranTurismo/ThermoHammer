@@ -95,10 +95,10 @@ object BenchmarkUpdateImpact {
         return Insight.Result(key, b, a, delta, verdict, sectionChanges(beforeRuns, after))
     }
 
-    /** CPU, MEM, GPU, UX, AI, LLM — each where both sides scored it. */
+    /** CPU, MEM, GPU, UX, AI — each where both sides scored it. */
     fun sectionChanges(before: List<BenchmarkRecord>, after: List<BenchmarkRecord>): List<SectionChange> {
         val sections = listOf<Pair<String, (BenchmarkRecord) -> Int>>("CPU" to { it.cpuScore }, "MEM" to { it.memScore },
-            "GPU" to { it.gpuScore }, "UX" to { it.uxScore }, "AI" to { it.aiScore }, "LLM" to { it.llmScore })
+            "GPU" to { it.gpuScore }, "UX" to { it.uxScore }, "AI" to { it.aiScore })
         return sections.mapNotNull { (name, of) ->
             val b = before.map(of).filter { it > 0 }
             val a = after.map(of).filter { it > 0 }

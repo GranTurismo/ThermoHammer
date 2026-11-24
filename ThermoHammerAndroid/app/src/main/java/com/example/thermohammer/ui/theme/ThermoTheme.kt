@@ -115,8 +115,6 @@ fun memColor(): Color = Color(0xFFF2A65A)
 /** Accent of the AI tests: lavender. */
 fun aiColor(): Color = Color(0xFFC792EA)
 
-/** Accent of the LLM test: lime. */
-fun llmColor(): Color = Color(0xFFB5E853)
 
 /** Accent of each UX test: browser teals, photo rose, video sky, export apricot, QR amber. */
 fun uxColor(test: com.example.thermohammer.engine.UxTest?): Color = when (test) {

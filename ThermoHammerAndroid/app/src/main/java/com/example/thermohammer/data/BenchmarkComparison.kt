@@ -102,7 +102,7 @@ class BenchmarkComparison private constructor(
 
     companion object {
         fun of(a: BenchmarkDetailDto, b: BenchmarkDetailDto): BenchmarkComparison {
-            val sections = union(a.sections, b.sections) { it.key }.map { (sa, sb) ->
+            val sections = union(a.shownSections, b.shownSections) { it.key }.map { (sa, sb) ->
                 val groups = union(sa?.groups.orEmpty(), sb?.groups.orEmpty()) { it.title }.map { (ga, gb) ->
                     val rows = union(ga?.rows.orEmpty(), gb?.rows.orEmpty()) { it.label }.map { (ra, rb) ->
                         ComparedRow((ra ?: rb)!!.label, ra?.value, rb?.value, Duel.of(ra?.number, rb?.number, ra?.better ?: rb?.better))

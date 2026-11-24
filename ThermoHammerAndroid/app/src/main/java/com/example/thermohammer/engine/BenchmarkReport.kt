@@ -2,7 +2,6 @@ package com.example.thermohammer.engine
 
 import com.example.thermohammer.engine.ai.AiTuner
 import com.example.thermohammer.engine.cpu.CpuTest
-import com.example.thermohammer.engine.llm.LlmProbe
 
 /** Plain-text report of a benchmark run — every raw number, for sharing or pasting into a bug report. */
 object BenchmarkReport {
@@ -11,8 +10,8 @@ object BenchmarkReport {
         buildString {
             appendLine("ThermoHammer benchmark report · app $appVersion · $time")
             appendLine("$device · Android $android · SoC $soc · GPU ${r.gpuName.ifBlank { "?" }}")
-            appendLine("TOTAL %,d = CPU %,d + MEM %,d + GPU %,d + UX %,d + AI %,d + LLM %,d · validity flags %d".format(
-                r.total, r.cpuScore, r.memScore, r.gpuScore, r.uxScore, r.aiScore, r.llmScore, r.validityFlags))
+            appendLine("TOTAL %,d = CPU %,d + MEM %,d + GPU %,d + UX %,d + AI %,d · validity flags %d".format(
+                r.total, r.cpuScore, r.memScore, r.gpuScore, r.uxScore, r.aiScore, r.validityFlags))
             r.only?.let { s -> appendLine("PARTIAL RUN (test build) · only ${BenchSection.entries.filter { it in s }.joinToString(", ") { it.label }} · the rest scores 0") }
             appendLine("Start · CPU share %.0f%% · waited %d s for background work".format(r.startCpuShare * 100, r.quietWaitSec))
             r.cpu?.let { cpu ->
@@ -94,31 +93,6 @@ object BenchmarkReport {
                 for (t in ai.tuning) AiTuner.lines(t).forEach { appendLine(it) }
                 AiTuner.delegationLines(ai.delegation).forEach { appendLine(it) }
                 ai.gpuPrecision?.forEach { appendLine(it) }
-            }
-            r.llm?.let { llm ->
-                appendLine("LLM · %,d pts = CPU %,d · GPU %,d (each half; Gemma 3 1B on both) · %.2f GB free, largest model %dB%s".format(
-                    llm.score, llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU), llm.freeGb, llm.largestModel,
-                    llm.error?.let { " · not run: $it" } ?: ""))
-                for (a in LlmAccel.entries) {
-                    val run = llm.run(a)
-                    val temp = run?.startTempC?.let { " · started at %.0f °C".format(it) } ?: ""
-                    appendLine(if (run != null && run.decode > 0)
-                        "LLM %s · %,d pts · prefill %.2f tok/s · decode %.2f tok/s%s%s".format(a.label, llm.points(a), run.prefill, run.decode,
-                            if (a == LlmAccel.GPU) " · ${llm.gpuName ?: "?"}"
-                            else " · ${run.threads} threads (prompt ${run.batchThreads}) · ${run.kernels} kernels", temp)
-                    else "LLM ${a.label} · 0 (${run?.error ?: "not run"})$temp")
-                    run?.tune?.let { t ->
-                        t.lines().forEach { appendLine(it) }
-                        if (run.decode > 0) t.slowedNote(run.decode, run.prefill)?.let { appendLine("  slowed · $it") }
-                    }
-                }
-                llm.probe?.let { p -> LlmProbe.lines(p).forEach { appendLine(it) } }
-                llm.npu?.let { n ->
-                    appendLine(if (n.right && n.error == null) "LLM NPU (report only, not scored) · would be %,d pts · prefill %.2f tok/s · decode %.2f tok/s · LiteRT-LM · %s · answer right".format(
-                        llm.npuPoints, n.prefill, n.decode, n.model ?: "?")
-                        else "LLM NPU (report only, not scored) · no result (${n.error ?: "its answer was wrong"})")
-                }
-                r.npuLlm?.forEach { appendLine(it) }
             }
         }
 }

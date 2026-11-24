@@ -413,8 +413,8 @@ private fun BenchmarkRow(rank: Int, entry: BenchmarkDto, fraction: Float, mine: 
             if (pick != null) PickMark(pick) else Text("›", color = Forge.ink0.copy(alpha = 0.3f), fontSize = 18.sp, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(Modifier.height(6.dp))
-        Text("CPU\u00A0%,d · MEM\u00A0%,d · GPU\u00A0%,d · UX\u00A0%,d · AI\u00A0%,d · LLM\u00A0%,d · %s".format(entry.cpuScore, entry.memScore, entry.score,
-                entry.uxScore, entry.aiScore, entry.llmScore, if (entry.rayTracing) "RT\u00A0%.0f\u00A0FPS".format(entry.test3Fps) else "NO\u00A0RT"),
+        Text("CPU\u00A0%,d · MEM\u00A0%,d · GPU\u00A0%,d · UX\u00A0%,d · AI\u00A0%,d · %s".format(entry.cpuScore, entry.memScore, entry.score,
+                entry.uxScore, entry.aiScore, if (entry.rayTracing) "RT\u00A0%.0f\u00A0FPS".format(entry.test3Fps) else "NO\u00A0RT"),
             style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 7.sp, fontFamily = InstrumentMono),
             maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
@@ -1082,7 +1082,7 @@ internal fun BenchmarkDetailOverlay(
                     RunPills(onShare = onShare, onPresent = onPresent)
                     Text("TAP A SECTION FOR ITS NUMBERS", style = TextStyle(color = Forge.ink0.copy(alpha = 0.3f), fontSize = 8.sp, fontFamily = InstrumentMono),
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp))
-                    for (section in detail.sections) {
+                    for (section in detail.shownSections) {
                         val isOpen = section.key in openSections
                         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Forge.ink0.copy(alpha = 0.03f))) {
                             Row(

@@ -231,7 +231,6 @@ class BenchmarkScoreTest {
             memRead = 52.31, memWrite = 41.0, memCopy = 26.5, memLatency = 142.75, storageSeqRead = 3120.4,
             storageSeqWrite = 2050.0, storageRandomRead = 61234.5, storageRandomWrite = 48000.0, storageDirect = true,
             dbInsert = 812.25, dbUpdate = 790.0, dbQuery = 5120.5,
-            llmPrefillCpu = 0.0, llmDecodeCpu = 0.0, llmPrefillGpu = 0.0, llmDecodeGpu = 0.0, llmGpu = null, llmFreeGb = 0.0,
             validityFlags = 0
         )
         assertEquals("bench|5|Honor|Honor 600 Pro|16|Adreno (TM) 830|123.46|98.00|29.99|24.50|21.50|17.25|1|" +
@@ -241,42 +240,19 @@ class BenchmarkScoreTest {
             "301.50|640.25|4100.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|Qualcomm QNN|" +
             "52.31|41.00|26.50|142.75|3120.40|2050.00|61234.50|48000.00|1|812.25|790.00|5120.50|" +
             "0.00|0.00|0.00|0.00||0.00|0.00|0.00||0", p.canonical())
-        val llm = p.copy(llmPrefillCpu = 118.4, llmDecodeCpu = 21.35, llmPrefillGpu = 402.0, llmDecodeGpu = 19.1,
-            llmGpu = "QUALCOMM Adreno(TM) 830", llmFreeGb = 9.42, llmPrefillNpu = 5723.514, llmDecodeNpu = 52.86,
-            llmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750")
-        assertTrue(llm.canonical().endsWith("|5120.50|118.40|21.35|402.00|19.10|QUALCOMM Adreno(TM) 830|9.42|" +
-            "5723.51|52.86|LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750|0"))
+        // version 5 has no LLM test: its nine fields stay in the signed text (the server's layout), always 0 / empty
+        assertEquals(listOf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), listOf(p.llmPrefillCpu, p.llmDecodeCpu, p.llmPrefillGpu,
+            p.llmDecodeGpu, p.llmFreeGb, p.llmPrefillNpu, p.llmDecodeNpu))
+        assertEquals("" to "", p.llmGpu to p.llmNpu)
+        assertTrue(com.google.gson.Gson().toJson(p).contains("\"llmPrefillCpu\":0.0"))
     }
 
     @Test
-    fun `LLM version 5 - the CPU and the GPU against their own references, each half, the NPU not scored`() {
-        // the reference phone on both engines: 6000 each, 6000 in all; a test build's NPU run is report only
-        val reference = LlmResult(listOf(
-            LlmRun(LlmAccel.CPU, LlmScore.REF_CPU_PREFILL, LlmScore.REF_CPU_DECODE, threads = 6),
-            LlmRun(LlmAccel.GPU, LlmScore.REF_GPU_PREFILL, LlmScore.REF_GPU_DECODE)), "Adreno", freeGb = 9.0, largestModel = 8,
-            npu = LlmNpuRun(LlmScore.REF_NPU_PREFILL, LlmScore.REF_NPU_DECODE, right = true, model = "Gemma3-1B-IT_q4_ekv1280_sm8750.litertlm"))
-        assertEquals(6000, reference.points(LlmAccel.CPU))
-        assertEquals(6000, reference.points(LlmAccel.GPU))
-        assertEquals(6000, reference.npuPoints)                         // what it would score: shown, not counted
-        assertEquals(6000, reference.score)
-        // an engine is the geometric mean of its two phases: twice the prompt rate and half the reply rate is still 6000
-        assertEquals(6000, LlmScore.engine(LlmAccel.CPU, 2 * LlmScore.REF_CPU_PREFILL, LlmScore.REF_CPU_DECODE / 2))
-        // no usable GPU: the CPU's half only
-        val cpuOnly = LlmResult(listOf(LlmRun(LlmAccel.CPU, LlmScore.REF_CPU_PREFILL / 2, LlmScore.REF_CPU_DECODE / 2),
-            LlmRun(LlmAccel.GPU, 0.0, 0.0, error = "no GPU driver llama.cpp can use")), null, 5.0, 4,
-            npu = LlmNpuRun(0.0, 0.0, false, error = "no model file for mt6893"))
-        assertEquals(3000, cpuOnly.points(LlmAccel.CPU))
-        assertEquals(0, cpuOnly.npuPoints)
-        assertEquals(1500, cpuOnly.score)                               // (3000 + 0) / 2
-        // the NPU never moves the score: a wrong answer, a fast run or none at all
-        val wrong = reference.copy(npu = LlmNpuRun(2 * LlmScore.REF_NPU_PREFILL, 2 * LlmScore.REF_NPU_DECODE, right = false))
-        assertEquals(0, wrong.npuPoints)
-        assertEquals(6000, wrong.score)
-        assertEquals(6000, reference.copy(npu = LlmNpuRun(4 * LlmScore.REF_NPU_PREFILL, 4 * LlmScore.REF_NPU_DECODE, right = true)).score)
-        assertEquals(6000, reference.copy(npu = null).score)
-        assertEquals(0, LlmScore.engine(LlmAccel.GPU, 120.0, 0.0))     // no reply: 0
-        val total = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, llm = cpuOnly)
-        assertEquals(5000 + 1500, total.total)
+    fun `the total is the five sections - version 5 has no LLM test`() {
+        val r = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0,
+            cpu = CpuResult(com.example.thermohammer.engine.cpu.CpuTest.entries.map { com.example.thermohammer.engine.cpu.CpuTestRun(it, mapOf("K" to CpuScore.ref(it))) }))
+        assertEquals(5000 + 6000, r.total)
+        assertEquals(listOf("CPU", "MEM", "GPU", "UX", "AI"), BenchSection.entries.map { it.label })
     }
 
     /**
@@ -307,8 +283,5 @@ class BenchmarkScoreTest {
         near(AiScore.accel(AiAccel.CPU, listOf(543.63, 28.67, 7.73, 4.59, 64.54, 3967.59)), "AI CPU")
         near(AiScore.accel(AiAccel.GPU, listOf(280.7, 36.7, 16.6, 38.8, 74.2, 582.0)), "AI GPU")
         near(AiScore.accel(AiAccel.NPU, listOf(1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38)), "AI NPU")
-        near(LlmScore.engine(LlmAccel.CPU, 160.0, 55.0), "LLM CPU")
-        near(LlmScore.engine(LlmAccel.GPU, 890.0, 32.0), "LLM GPU")
-        near(LlmScore.npu(5450.0, 52.0), "LLM NPU")
     }
 }

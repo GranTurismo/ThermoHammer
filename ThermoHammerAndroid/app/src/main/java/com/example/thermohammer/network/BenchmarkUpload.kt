@@ -96,15 +96,6 @@ object BenchmarkUpload {
             dbInsert = BenchmarkPayload.round2(record.dbInsert),
             dbUpdate = BenchmarkPayload.round2(record.dbUpdate),
             dbQuery = BenchmarkPayload.round2(record.dbQuery),
-            llmPrefillCpu = BenchmarkPayload.round2(record.llmPrefillCpu),
-            llmDecodeCpu = BenchmarkPayload.round2(record.llmDecodeCpu),
-            llmPrefillGpu = BenchmarkPayload.round2(record.llmPrefillGpu),
-            llmDecodeGpu = BenchmarkPayload.round2(record.llmDecodeGpu),
-            llmGpu = record.llmGpu,
-            llmFreeGb = BenchmarkPayload.round2(record.llmFreeGb),
-            llmPrefillNpu = BenchmarkPayload.round2(record.llmPrefillNpu),
-            llmDecodeNpu = BenchmarkPayload.round2(record.llmDecodeNpu),
-            llmNpu = record.llmNpu,
             validityFlags = record.validityFlags,
             appVersion = appVersion
         )

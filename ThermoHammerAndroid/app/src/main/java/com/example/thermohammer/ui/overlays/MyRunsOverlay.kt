@@ -322,12 +322,12 @@ private fun StatusChip(status: MyRuns.Status) {
             .padding(horizontal = 6.dp, vertical = 4.dp))
 }
 
-/** The six section scores, two rows of three, each in its section's colour. */
+/** The five section scores, three then two, each in its section's colour. */
 @Composable
 private fun Sections(r: BenchmarkRecord) {
     val cells = listOf(
         Triple("CPU", r.cpuScore, cpuColor()), Triple("MEM", r.memScore, memColor()), Triple("GPU", r.gpuScore, benchmarkColor(null)),
-        Triple("UX", r.uxScore, uxColor(null)), Triple("AI", r.aiScore, aiColor()), Triple("LLM", r.llmScore, llmColor())
+        Triple("UX", r.uxScore, uxColor(null)), Triple("AI", r.aiScore, aiColor())
     )
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         for (line in cells.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -337,6 +337,7 @@ private fun Sections(r: BenchmarkRecord) {
                 Text(label, style = TextStyle(color = color, fontSize = 8.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
                 Text("%,d".format(score), style = TextStyle(color = Forge.ink0, fontSize = 12.sp, fontFamily = InstrumentMono, fontWeight = FontWeight.Black))
             }
+            repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }          // the short row keeps the columns' width
         }
     }
 }

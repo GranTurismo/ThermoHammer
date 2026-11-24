@@ -70,29 +70,29 @@ class ShareLinksTest {
     // ── the card models ──
 
     @Test fun sectionsKeepTheirOrderAndSkipMissingOnes() {
-        val s = RunCard.sections(cpu = 6000, mem = 5000, gpu = 0, ux = 7000, ai = 3000, llm = 0)
+        val s = RunCard.sections(cpu = 6000, mem = 5000, gpu = 0, ux = 7000, ai = 3000)
         assertEquals(listOf("CPU", "MEM", "UX", "AI"), s.map { it.name })
     }
 
     @Test fun barsReachTwelveThousandUnlessASectionIsBigger() {
-        val small = card(RunCard.sections(6000, 5000, 4000, 7000, 3000, 2000))
+        val small = card(RunCard.sections(6000, 5000, 4000, 7000, 3000))
         assertEquals(12_000, small.barMax)
-        val big = card(RunCard.sections(16000, 5000, 4000, 7000, 3000, 2000))
+        val big = card(RunCard.sections(16000, 5000, 4000, 7000, 3000))
         assertEquals(16_000, big.barMax)
     }
 
     @Test fun leaderboardBenchmarkCard() {
         val entry = BenchmarkDto(id = 7, deviceManufacturer = "HONOR", deviceModel = "HONOR 600 Pro", socModel = "SM8750",
             gpuName = "Adreno 830", os = 2, osVersion = "16", score = 6000, uxScore = 6100, cpuScore = 6900, aiScore = 3100,
-            memScore = 5800, llmScore = 4300, totalScore = 32200, test1Score = 1, test2Score = 1, test3Score = 1, test1Fps = 1.0,
+            memScore = 5800, totalScore = 27900, test1Score = 1, test2Score = 1, test3Score = 1, test1Fps = 1.0,
             test2Fps = 1.0, test3Fps = 1.0, rayTracing = true, runs = 1)
         val detail = BenchmarkDetailDto(7, "2026-10-27T18:20:11Z", "HONOR", "HONOR 600 Pro", "SM8750", "Adreno 830", 2, "16",
-            "BP2A", "2.0.4", 32200, emptyList())
+            "BP2A", "2.0.4", 27900, emptyList())
         val c = RunCard.leaderboardBenchmark(entry, detail)
         assertEquals("HONOR 600 Pro", c.device)
         assertEquals("Android 16 · 27 Oct 2026 · SM8750", c.subLine)
         assertEquals("https://thermohammer.gtgroup.dev/run/7/", c.url)
-        assertEquals(listOf("CPU", "MEM", "GPU", "UX", "AI", "LLM"), c.sections.map { it.name })
+        assertEquals(listOf("CPU", "MEM", "GPU", "UX", "AI"), c.sections.map { it.name })
         assertEquals(6000, c.sections[2].points)                 // the board's "score" is the GPU section
     }
 

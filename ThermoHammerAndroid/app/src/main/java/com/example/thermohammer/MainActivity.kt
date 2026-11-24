@@ -39,22 +39,12 @@ class MainActivity : ComponentActivity() {
         // debug builds: `adb shell am start … --es benchFrom video|export` runs the benchmark from that UX test
         if (savedInstanceState == null && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
             intent.getStringExtra("benchFrom")?.let { engine.startBenchmark(it) }
-        // test builds: `adb shell am start -n <package>/com.example.thermohammer.MainActivity --es benchOnly llm,ai` runs
+        // test builds: `adb shell am start -n <package>/com.example.thermohammer.MainActivity --es benchOnly gpu,ai` runs
         // just those benchmark sections (the checklist's picker, without the checklist)
         if (savedInstanceState == null && com.example.thermohammer.TestBuild.PROBES)
             intent.getStringExtra("benchOnly")?.let { list ->
                 val only = list.split(',').mapNotNull { n -> com.example.thermohammer.engine.BenchSection.entries.firstOrNull { it.name.equals(n.trim(), true) } }.toSet()
                 if (only.isNotEmpty()) engine.startBenchmark(only = only)
-            }
-
-        // Test builds: the report-only NPU LLM run's model (not scored in version 5: no NPU path covers every chip yet).
-        // The site's list of chips (NpuServerModels) is refreshed too, twice a day at most.
-        if (savedInstanceState == null && com.example.thermohammer.TestBuild.PROBES)
-            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val app = applicationContext
-                com.example.thermohammer.engine.llm.NpuServerModels.refreshManifest(app)
-                if (com.example.thermohammer.engine.llm.NpuModels.supported(app))
-                    com.example.thermohammer.engine.llm.NpuModels.status(app, fetch = true)
             }
 
         // Prevent screen sleep/lock during CPU stress diagnostic runs

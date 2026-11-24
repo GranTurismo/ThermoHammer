@@ -1,11 +1,11 @@
 package com.example.thermohammer.engine
 
 /**
- * Crash records for the optional ways of running the AI and LLM tests (an AI setting, the i8mm CPU kernels): native
+ * Crash records for the optional ways of running the AI test (a GPU's backend, an NPU's helpers): native
  * code can't be caught, so a marker "install:WHAT:name" is written before such a run and removed after it. A marker
  * still there at the next start means the run took the app down: that one setting joins a crashed set (for this
  * install only — an app update retries it) and is never tried again, while the accelerator or test it belongs to
- * keeps running with its defaults. The tests' own markers (StressEngine's KEY_AI_RUNNING, KEY_LLM_RUNNING) are what
+ * keeps running with its defaults. The test's own marker (StressEngine's KEY_AI_RUNNING) is what
  * skip a whole accelerator; these skip only the optional extras.
  */
 object ProbeCrashes {

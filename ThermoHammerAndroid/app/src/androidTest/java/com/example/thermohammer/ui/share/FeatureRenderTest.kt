@@ -47,8 +47,8 @@ class FeatureRenderTest {
     }
 
     private val bench = RunCard.Benchmark(device = "HONOR 600 Pro", os = "Android 16", date = "12 Nov 2026", chip = "SM8750",
-        verified = true, url = ShareLinks.runUrl(1234), mine = true, total = 36512,
-        sections = RunCard.sections(cpu = 7120, mem = 5980, gpu = 6240, ux = 6610, ai = 5530, llm = 5032))
+        verified = true, url = ShareLinks.runUrl(1234), mine = true, total = 31480,
+        sections = RunCard.sections(cpu = 7120, mem = 5980, gpu = 6240, ux = 6610, ai = 5530))
 
     /** A 15-minute run: full speed, then a throttle from 3:20 settling near 78 %. */
     private val curve = List(120) { i ->

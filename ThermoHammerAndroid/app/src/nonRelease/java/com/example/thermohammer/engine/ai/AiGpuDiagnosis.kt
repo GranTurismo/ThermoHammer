@@ -15,7 +15,7 @@ import com.example.thermohammer.engine.AiTest
  * the GPU, with two different inputs: whether each answer is the CPU's for the same input, and whether the GPU's
  * answer moves at all when its input does. Logcat only (tag AiGpuDiag, error level: Honor keeps nothing below it).
  *
- *   adb shell am start -n <package>/com.example.thermohammer.NpuModelImportActivity -a com.example.thermohammer.RUN_AI_GPU_DIAG
+ *   adb shell am start -n <package>/com.example.thermohammer.TestToolsActivity -a com.example.thermohammer.RUN_AI_GPU_DIAG
  *
  * with the app open. It runs in a process of its own (":aidiag"): a fresh GPU accelerator, nothing left from a run.
  */
@@ -336,67 +336,9 @@ object AiGpuDiagnosis {
     }
 }
 
-/**
- * Test builds only: llama.cpp on Gemma 3 1B's shape, on the CPU (dot-product kernels, 6 threads, no tuning beyond
- * LlmBench's own) and the GPU, without a whole benchmark — the quick check that the shape builds and runs on a phone's
- * backends. Logcat, tag GemmaShape. Started like the diagnosis, with action RUN_GEMMA_LLM.
- */
-object GemmaShapeQuick {
-    fun run(context: android.content.Context) {
-        val bench = com.example.thermohammer.engine.llm.LlmBench(context)
-        for (accel in com.example.thermohammer.engine.LlmAccel.entries) {
-            val t0 = System.nanoTime()
-            val r = try {
-                bench.run(accel, 6, { true }, com.example.thermohammer.engine.llm.DotprodLib, emptyList(),
-                    model = com.example.thermohammer.engine.llm.LlmNative.MODEL_GEMMA3_1B) { }
-            } catch (e: Throwable) { null.also { Log.e("GemmaShape", "${accel.name} threw $e") } }
-            Log.e("GemmaShape", "${accel.name} · " + when {
-                r == null -> "no result"
-                r.error != null -> "failed: ${r.error}"
-                else -> "prompt %.2f tok/s · reply %.2f tok/s · threads %d/%d".format(r.prefill, r.decode, r.threads, r.batchThreads)
-            } + " · %.1f s · GPU %s".format((System.nanoTime() - t0) / 1e9, bench.gpuName()))
-        }
-        Log.e("GemmaShape", "done")
-    }
-}
-
-/**
- * Test builds only: the scored LLM CPU test's thread search (Llama 3.2 3B shape, the i8mm build where the CPU has i8mm,
- * pinning tried on the fast cores), twice in a fresh process, every trial logged — whether a trial stalls (tag LlmTune).
- */
-object LlmTuneQuick {
-    fun run(context: android.content.Context) {
-        val bench = com.example.thermohammer.engine.llm.LlmBench(context)
-        val topology = com.example.thermohammer.engine.CpuTopologyReader.read()
-        val cores = if (topology.canPin) topology.big else emptyList()
-        val caps = com.example.thermohammer.engine.llm.LlmNative.hwcaps()
-        val i8 = com.example.thermohammer.engine.llm.LlmNativeI8mm.loaded &&
-            com.example.thermohammer.engine.llm.CpuFeatures.supportsI8mm(caps[0], caps[1])
-        val lib = if (i8) com.example.thermohammer.engine.llm.I8mmLib else com.example.thermohammer.engine.llm.DotprodLib
-        Log.e("LlmTune", "cores $cores · ${lib.variant}")
-        repeat(2) { round ->
-            val t0 = System.nanoTime()
-            val r = bench.run(com.example.thermohammer.engine.LlmAccel.CPU, 4, { true }, lib, cores) { }
-            Log.e("LlmTune", "round ${round + 1} · %.1f s · prompt %.2f · reply %.2f · %s".format((System.nanoTime() - t0) / 1e9,
-                r?.prefill ?: 0.0, r?.decode ?: 0.0, r?.error ?: "ok"))
-            r?.tune?.lines()?.forEach { Log.e("LlmTune", "  $it") }
-        }
-        Log.e("LlmTune", "done")
-    }
-}
-
 /** The diagnosis's own process (":aidiag", test-build manifests); it ends when the diagnosis does. */
 class AiGpuDiagnosisService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_GEMMA) {
-            val worker = HandlerThread("gemma-shape").apply { start() }
-            Handler(worker.looper).post {
-                try {
-                    if (intent.getStringExtra("mode") == "tune") LlmTuneQuick.run(this) else GemmaShapeQuick.run(this)
-                } catch (e: Throwable) { Log.e("GemmaShape", "crashed: $e") }
-                android.os.Process.killProcess(android.os.Process.myPid())
-            }
-        }
         if (intent?.action == ACTION_RUN) {
             val only = intent.getStringExtra("only")?.split(',')?.map { it.trim().lowercase() }?.toSet()
             val worker = HandlerThread("ai-gpu-diag").apply { start() }
@@ -424,6 +366,5 @@ class AiGpuDiagnosisService : Service() {
 
     companion object {
         const val ACTION_RUN = "com.example.thermohammer.RUN_AI_GPU_DIAG"
-        const val ACTION_GEMMA = "com.example.thermohammer.RUN_GEMMA_LLM"
     }
 }

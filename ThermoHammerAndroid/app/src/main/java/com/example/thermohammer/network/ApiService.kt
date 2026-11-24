@@ -178,18 +178,17 @@ data class BenchmarkPayload(
     @SerializedName("dbInsert") val dbInsert: Double,
     @SerializedName("dbUpdate") val dbUpdate: Double,
     @SerializedName("dbQuery") val dbQuery: Double,
-    // LLM: tokens/s reading the 512-token prompt and writing the reply, on the CPU and the GPU (0 = didn't run)
-    @SerializedName("llmPrefillCpu") val llmPrefillCpu: Double,
-    @SerializedName("llmDecodeCpu") val llmDecodeCpu: Double,
-    @SerializedName("llmPrefillGpu") val llmPrefillGpu: Double,
-    @SerializedName("llmDecodeGpu") val llmDecodeGpu: Double,
-    @SerializedName("llmGpu") val llmGpu: String?,                 // the GPU it ran on (reported)
-    @SerializedName("llmFreeGb") val llmFreeGb: Double,            // memory the app could take (reported)
-    // version 5: the NPU (LiteRT-LM, Gemma 3 1B): tokens/s (0 = no model for the chip, failed, or a wrong answer), and the
-    // engine and model file it ran — the server requires one on the chips it knows a model for
+    // The LLM test's fields: version 5 has no LLM test, so they're always 0 / empty. They stay so the signed text
+    // (canonical) keeps the server's layout (BenchmarkScoring.Canonical).
+    @SerializedName("llmPrefillCpu") val llmPrefillCpu: Double = 0.0,
+    @SerializedName("llmDecodeCpu") val llmDecodeCpu: Double = 0.0,
+    @SerializedName("llmPrefillGpu") val llmPrefillGpu: Double = 0.0,
+    @SerializedName("llmDecodeGpu") val llmDecodeGpu: Double = 0.0,
+    @SerializedName("llmGpu") val llmGpu: String = "",
+    @SerializedName("llmFreeGb") val llmFreeGb: Double = 0.0,
     @SerializedName("llmPrefillNpu") val llmPrefillNpu: Double = 0.0,
     @SerializedName("llmDecodeNpu") val llmDecodeNpu: Double = 0.0,
-    @SerializedName("llmNpu") val llmNpu: String? = null,
+    @SerializedName("llmNpu") val llmNpu: String = "",
     @SerializedName("validityFlags") val validityFlags: Int,
     @SerializedName("appVersion") val appVersion: String? = null
 ) {
@@ -204,8 +203,8 @@ data class BenchmarkPayload(
         f2(aiClassifyCpu), f2(aiClassifyGpu), f2(aiClassifyNpu), f2(aiDetectCpu), f2(aiDetectGpu), f2(aiDetectNpu), f2(aiSegmentCpu), f2(aiSegmentGpu), f2(aiSegmentNpu), f2(aiUpscaleCpu), f2(aiUpscaleGpu), f2(aiUpscaleNpu), f2(aiDepthCpu), f2(aiDepthGpu), f2(aiDepthNpu), f2(aiSoundCpu), f2(aiSoundGpu), f2(aiSoundNpu), aiNpuRuntime ?: "",
         f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
         f2(storageRandomRead), f2(storageRandomWrite), if (storageDirect) 1 else 0, f2(dbInsert), f2(dbUpdate), f2(dbQuery),
-        f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu ?: "", f2(llmFreeGb),
-        f2(llmPrefillNpu), f2(llmDecodeNpu), llmNpu ?: "",
+        f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu, f2(llmFreeGb),
+        f2(llmPrefillNpu), f2(llmDecodeNpu), llmNpu,
         validityFlags).joinToString("|")
 
     companion object {
@@ -257,7 +256,6 @@ data class BenchmarkDto(
     @SerializedName("cpuScore") val cpuScore: Int,
     @SerializedName("aiScore") val aiScore: Int = 0,
     @SerializedName("memScore") val memScore: Int = 0,
-    @SerializedName("llmScore") val llmScore: Int = 0,
     @SerializedName("totalScore") val totalScore: Int,
     @SerializedName("test1Score") val test1Score: Int,
     @SerializedName("test2Score") val test2Score: Int,
@@ -283,7 +281,10 @@ data class BenchmarkDetailDto(
     @SerializedName("appVersion") val appVersion: String?,
     @SerializedName("totalScore") val totalScore: Int,
     @SerializedName("sections") val sections: List<DetailSectionDto>
-)
+) {
+    /** What the app shows: every section but an LLM one (version 5 has no LLM test; a server may still send one). */
+    val shownSections: List<DetailSectionDto> get() = sections.filter { it.key != "llm" }
+}
 
 data class DetailSectionDto(
     @SerializedName("key") val key: String,

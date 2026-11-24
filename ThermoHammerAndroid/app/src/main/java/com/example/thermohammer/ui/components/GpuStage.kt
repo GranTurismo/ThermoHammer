@@ -37,7 +37,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.thermohammer.engine.AiTest
 import com.example.thermohammer.engine.BenchmarkTest
 import com.example.thermohammer.engine.GpuBench
-import com.example.thermohammer.engine.LlmAccel
 import com.example.thermohammer.engine.MemTest
 import com.example.thermohammer.engine.RunKind
 import com.example.thermohammer.engine.RunPhase
@@ -74,8 +73,7 @@ fun GpuStage(
     val cpu = if (bench) state.cpuTest else null
     val ai = if (bench) state.aiTest else null
     val mem = if (bench) state.memTest else null
-    val llm = if (bench) state.llmAccel else null
-    val accent = if (llm != null) llmColor() else if (ai != null) aiColor() else if (cpu != null) cpuColor() else if (mem != null) memColor() else if (ux != null) uxColor(ux)
+    val accent = if (ai != null) aiColor() else if (cpu != null) cpuColor() else if (mem != null) memColor() else if (ux != null) uxColor(ux)
         else if (bench) benchmarkColor(test) else Forge.phaseCalibration
     val fps = state.gpuFps.coerceAtLeast(0.0)
     val capPct = if (state.gpuBaselineFps > 0)
@@ -99,7 +97,6 @@ fun GpuStage(
 
         // ── live scene: GPU render, the web page, or the QR frame under the scanner ──
         when {
-            llm != null -> LlmBenchView(state)
             ai != null -> AiBenchView(state.aiVisual, accent)
             cpu != null -> CpuBenchView(state)
             mem != null -> MemBenchView(state)
@@ -136,24 +133,13 @@ fun GpuStage(
             verticalAlignment = Alignment.Top
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(if (llm != null) "LLM BENCHMARK" else if (ai != null) "AI BENCHMARK" else if (cpu != null) "CPU BENCHMARK" else if (mem != null) "MEM BENCHMARK"
+                Text(if (ai != null) "AI BENCHMARK" else if (cpu != null) "CPU BENCHMARK" else if (mem != null) "MEM BENCHMARK"
                     else if (ux != null) "UX BENCHMARK"
                     else if (bench) "GPU BENCHMARK" else "GPU CHANNEL", style = TextStyle(
                     color = accent, fontSize = 9.sp, fontFamily = InstrumentMono,
                     fontWeight = FontWeight.Bold, letterSpacing = 2.sp))
                 Spacer(Modifier.height(4.dp))
-                if (llm != null) {
-                    Text(
-                        // test builds: the report-only NPU run follows llama.cpp's two (its steps' labels start with NPU)
-                        if (state.llmDetail.startsWith("NPU") || state.llmDetail.startsWith("COMPARE")) "LLM · NPU (REPORT ONLY) · GEMMA 3 1B"
-                        else "LLM TEST ${llm.ordinal + 1}/${LlmAccel.entries.size} · ${llm.label} · GEMMA 3 1B",
-                        style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono,
-                            fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(state.llmDetail, style = TextStyle(color = Forge.ink1, fontSize = 10.sp, fontFamily = InstrumentMono),
-                        maxLines = 1)
-                } else if (ai != null) {
+                if (ai != null) {
                     Text(
                         "AI TEST ${ai.number}/${AiTest.entries.size} · ${ai.title}",
                         style = TextStyle(color = Forge.ink0, fontSize = 13.sp, fontFamily = InstrumentMono,
@@ -198,7 +184,7 @@ fun GpuStage(
                     )
                     Spacer(Modifier.height(2.dp))
                 }
-                if ((ux == null || ux == UxTest.PHOTO) && cpu == null && ai == null && mem == null && llm == null) Text(
+                if ((ux == null || ux == UxTest.PHOTO) && cpu == null && ai == null && mem == null) Text(
                     "${state.gpuName.ifEmpty { "GPU" }} · 1920×1080 offscreen",
                     style = TextStyle(color = Forge.ink1, fontSize = 10.sp, fontFamily = InstrumentMono),
                     maxLines = 1,
@@ -215,20 +201,20 @@ fun GpuStage(
             }
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    val shown = if (llm != null) state.llmRate.coerceAtLeast(0.0) else if (ai != null) state.aiRate.coerceAtLeast(0.0) else if (cpu != null) state.cpuRate.coerceAtLeast(0.0)
+                    val shown = if (ai != null) state.aiRate.coerceAtLeast(0.0) else if (cpu != null) state.cpuRate.coerceAtLeast(0.0)
                         else if (mem != null) state.memRate.coerceAtLeast(0.0)
                         else if (ux != null) state.uxValue.coerceAtLeast(0.0) else fps
                     TickerText(
                         value = shown.toFloat(),
                         format = {
-                            val fine = ux == UxTest.QR || ((cpu != null || mem != null || ai != null || llm != null || ux == UxTest.GALLERY || ux == UxTest.PHOTO) && it < 100f)
+                            val fine = ux == UxTest.QR || ((cpu != null || mem != null || ai != null || ux == UxTest.GALLERY || ux == UxTest.PHOTO) && it < 100f)
                             if (fine) "%.1f".format(it) else "%,.0f".format(it)
                         },
                         color = if (bench) Forge.ink0 else Ramp.forCapacity(capPct),
                         size = 36f
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(if (llm != null) "TOK/S" else if (ai != null) "INF/S" else if (cpu != null) "OPS/S" else if (mem != null) state.memUnit else if (ux != null) state.uxUnit else "FPS", style = TextStyle(color = Forge.ink2, fontSize = 11.sp,
+                    Text(if (ai != null) "INF/S" else if (cpu != null) "OPS/S" else if (mem != null) state.memUnit else if (ux != null) state.uxUnit else "FPS", style = TextStyle(color = Forge.ink2, fontSize = 11.sp,
                         fontFamily = InstrumentMono, fontWeight = FontWeight.Bold))
                 }
                 if (!bench) Spacer(Modifier.height(2.dp))
@@ -331,8 +317,7 @@ private fun BenchProgress(state: StressState) {
     val cpuTests = com.example.thermohammer.engine.cpu.CpuTest.entries
     val segments = cpuTests.map { it.seconds to cpuColor() } + MemTest.entries.map { it.seconds to memColor() } +
         gpu.map { it.seconds to benchmarkColor(it) } +
-        UxTest.entries.map { it.seconds to uxColor(it) } + AiTest.entries.map { it.seconds to aiColor() } +
-        LlmAccel.entries.map { it.seconds to llmColor() }
+        UxTest.entries.map { it.seconds to uxColor(it) } + AiTest.entries.map { it.seconds to aiColor() }
     val total = segments.sumOf { it.first }.toFloat()
     val cpuTotal = cpuTests.sumOf { it.seconds }.toFloat() + MemTest.entries.sumOf { it.seconds }   // CPU, then MEM
     val gpuTotal = gpu.sumOf { it.seconds }.toFloat()
@@ -341,12 +326,8 @@ private fun BenchProgress(state: StressState) {
     val cpu = state.cpuTest
     val ai = state.aiTest
     val mem = state.memTest
-    val llm = state.llmAccel
     val uxTotal = UxTest.entries.sumOf { it.seconds }.toFloat()
-    val aiTotal = AiTest.entries.sumOf { it.seconds }.toFloat()
     val elapsed = when {
-        llm != null -> cpuTotal + gpuTotal + uxTotal + aiTotal + LlmAccel.entries.filter { it < llm }.sumOf { it.seconds } +
-            state.llmProgress * llm.seconds
         ai != null -> cpuTotal + gpuTotal + uxTotal + AiTest.entries.filter { it.number < ai.number }.sumOf { it.seconds } +
             state.aiProgress * ai.seconds
         cpu != null -> cpuTests.filter { it.number < cpu.number }.sumOf { it.seconds } + state.cpuProgress * cpu.seconds
@@ -364,7 +345,6 @@ private fun BenchProgress(state: StressState) {
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Text(when {
-                    llm != null -> "LLM TEST ${llm.ordinal + 1} · ${llm.label}"
                     ai != null -> "AI TEST ${ai.number} · ${ai.title}"
                     cpu != null -> "CPU TEST ${cpu.number} · ${cpu.title}"
                     mem != null -> "MEM TEST ${mem.number} · ${mem.title}"
