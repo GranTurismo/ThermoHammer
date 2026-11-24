@@ -328,7 +328,18 @@ Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdrago
 - **Windows:** no NPU LLM engine; that third counts 0.
 - **New chips:** superseded on 2026-11-24, see below.
 
-## Decision 2026-11-24 (evening): the NPU isn't scored in version 5
+## Decision 2026-11-24 (evening): no NPU anywhere in version 5
+
+**Later the same evening the user said "remove npu from everywhere", so the AI section went the same way as the LLM.**
+- **AI = CPU + GPU, half each**, on Android, iOS, Windows, the server and the site. The references are unchanged, so the Honor's AI is ≈6,000.
+- **Store builds never run a model on the NPU:**
+  - Android Play bundles drop the npu/ install-time modules (QNN, NeuroPilot), their device groups (device_targeting_configuration.xml and its gradle flag) and LiteRT's vendor dispatch libraries. The bundle is the base module alone.
+  - iOS drops the six Core ML models (~47 MB), now in `tools/ios_neural_engine`.
+  - Windows never prepares or downloads an NPU provider.
+- **The data stays in the same shape:** the payload keeps every NPU field (always 0 or empty), and the server never scores them.
+- **Phone Health has no `ai.npu` part.** Version 5 run pages show no NPU group; older runs keep theirs.
+- **Development only:** Android test builds still measure the NPU, report only; iOS does the same behind the `-npuReport` launch argument (it replaces `-llmNpuReport`) once the Core ML models are moved back. Windows has no NPU path left.
+
 
 - **The user's rule:** "can we cover all devices with NPU? If yes, keep NPU, otherwise keep GPU and CPU".
 - **The answer was no**, and the gaps are outside our control:
