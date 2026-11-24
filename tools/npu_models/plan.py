@@ -34,12 +34,25 @@ API = os.environ.get("TH_API", "https://thapi.gtgroup.dev")
 UA = {"User-Agent": "thermohammer-npu-models"}
 # Our build.sh compiles for these chip makers (sm* = Qualcomm QNN, mt* = MediaTek NeuroPilot).
 VENDOR_PLUGINS = {"qualcomm": "sm", "mediatek": "mt"}
-# Chips whose build compiled but failed the publish gate (builder/docker/thnpu/verify.py) because their NPU can't run the
-# whole model: their NPU third is 0, the hardware's limit. Not rebuilt every day; remove one to try again (new toolchain).
+# Chips the pinned toolchain names but can't give a publishable file (checked 2026-11-24, CI run 45417736085 and
+# locally). Not rebuilt every day; remove one to try again with a new toolchain.
+#   NPU_CANT_HOLD: the chip's NPU can't run this model (int16 activations, int4 weights) as a whole: its NPU third is 0,
+#                  the hardware's limit, as for a phone without an NPU
+#   NO_COMPILER:   the chip maker's compiler fails on it: a software gap, reported in the issue while phones use the chip
+_ATTN = "Hexagon {}: attention's 100 int16 BATCH_MATMULs stay on the CPU"
+_FC = "{}: the 177 int4-weight FULLY_CONNECTED layers stay on the CPU"
+_DT = "{}: NPU has no int16 activations / int4 weights (\"unsupported data type\")"
 NPU_CANT_HOLD = {
-    "sm8350": "Hexagon v68: attention's 100 int16 BATCH_MATMULs stay on the CPU (pinned toolchain, 2026-11-24)",
-    "sm8450": "Hexagon v69: attention's 100 int16 BATCH_MATMULs stay on the CPU (pinned toolchain, 2026-11-24)",
-    "sm8475": "Hexagon v69: attention's 100 int16 BATCH_MATMULs stay on the CPU (pinned toolchain, 2026-11-24)",
+    "sm8350": _ATTN.format("v68"), "sm8450": _ATTN.format("v69"), "sm8475": _ATTN.format("v69"),
+    "mt6878": _FC.format("Dimensity 7300"), "mt6983": _FC.format("Dimensity 9000"), "mt6985": _FC.format("Dimensity 9200"),
+    "mt6853": _DT.format("Dimensity 720"), "mt6877": _DT.format("Dimensity 900/1080"), "mt6893": _DT.format("Dimensity 1200"),
+    "mt8188": _DT.format("MT8188"),
+    "mt6879": "Dimensity 920-class: MDLA/EDMA \"unsupported operation\" on 1,128 ops",
+}
+NO_COMPILER = {
+    "mt6886": "NeuroPilot 8's compiler: \"Not a valid platform: mt6886\"",
+    "mt6895": "NeuroPilot 8's compiler: \"Not a valid platform: mt6895\"",
+    "mt8171": "NeuroPilot's compiler stops without an error",
 }
 
 
@@ -116,9 +129,11 @@ def plan():
     seen, seen_source = seen_chips()
     have = pack | published
     alerts = []
-    for soc in sorted(set(seen) - have - can_build - set(NPU_CANT_HOLD)):
+    for soc in sorted(set(seen) - have - set(NPU_CANT_HOLD) - (can_build - set(NO_COMPILER))):
         devices = ", ".join(sorted(set(seen[soc])))[:200]
-        if soc in newer:
+        if soc in NO_COMPILER:
+            alerts.append({"soc": soc, "devices": devices, "why": f"listed by the plugin, but {NO_COMPILER[soc]}"})
+        elif soc in newer:
             alerts.append({"soc": soc, "devices": devices,
                            "why": f"ai-edge-litert {latest} can compile for it (pinned: {pinned}): bump the pins in "
                                   f"tools/npu_models/builder/docker and rebuild"})
@@ -128,8 +143,9 @@ def plan():
     return {
         "pinned": pinned, "latest": latest, "site_manifest": site_up, "seen_source": seen_source,
         "can_build": sorted(can_build), "pack": sorted(pack), "published": sorted(published),
-        "build": sorted(can_build - have - set(NPU_CANT_HOLD)),
+        "build": sorted(can_build - have - set(NPU_CANT_HOLD) - set(NO_COMPILER)),
         "npu_cant_hold": NPU_CANT_HOLD,
+        "no_compiler": NO_COMPILER,
         "alerts": alerts,
         "newer_toolchain_adds": sorted(newer - can_build),
     }
@@ -146,6 +162,7 @@ def main():
           + ("" if p["site_manifest"] else " (site manifest not found)"))
     print(f"build:     {' '.join(p['build']) or 'nothing'}")
     print(f"NPU can't hold the model: {' '.join(p['npu_cant_hold']) or '-'}")
+    print(f"compiler fails:           {' '.join(p['no_compiler']) or '-'}")
     for a in p["alerts"]:
         print(f"ALERT {a['soc']:10} {a['why']}  [{a['devices']}]")
     if p["newer_toolchain_adds"]:

@@ -82,21 +82,31 @@ To keep the job from publishing, set the repository variable `NPU_AUTO_PUBLISH` 
 
 ## Coverage (LiteRT 2.4.0's compiler plugins, 2026-11-24)
 
-- **Built and passed the gate:** sm8550, sm8650, sm8750, sm8845, sm8850 and mt6993. sm8845 has no Google file.
-- **MediaTek v8 chips** (mt6853 … mt6991, the tablet chips mt8171/8188/8189): not built yet.
-  - Their compiler needs more than the 8 GB of RAM and 9 GB of swap a Docker VM on a 16 GB Mac has under Rosetta.
-    It was killed for memory three times.
-  - The CI runner (16 GB plus 16 GB of swap, native x86-64) builds them on its first run.
-  - Google's files cover mt6989 and mt6991 meanwhile.
-- **The NPU can't hold the model:** sm8350 (888, Hexagon v68), sm8450 and sm8475 (8 Gen 1 / 8+ Gen 1, v69).
-  - They compile, but attention's 100 int16 batch matmuls stay on the CPU, so the gate rejects them.
-  - Their NPU third is 0, the hardware's limit. `plan.py`'s `NPU_CANT_HOLD` keeps them from being rebuilt daily.
-- **No compiler at all:**
-  - **Dimensity 8400 (mt6899):** "Unsupported SoC model" in the plugin.
-  - **Exynos (s5e9945 and older):** LiteRT's Samsung plugin knows only E9965, and it needs Samsung's SDK.
-  - **Google Tensor:** Google's files are 8-bit.
+The model is the same on every chip: int16 activations, int4 weights. A chip gets a file only if its NPU runs that
+model whole.
 
-  The daily job keeps the issue open for the chips phones actually report.
+- **Google's files (the Play pack):** sm8550, sm8650, sm8750, sm8850, mt6989, mt6991, mt6993.
+- **Ours on the site:**
+  - sm8845;
+  - mt6897 (Dimensity 8300);
+  - mt8189 (tablets).
+
+  Our sm8750 and mt6993 builds also pass. On the Honor, our sm8750 file scored the same as Google's (6,540 vs 6,530).
+- **The NPU can't run the model, so the NPU third is 0 (the hardware's limit):**
+  - sm8350, sm8450, sm8475 (888, 8 Gen 1, 8+ Gen 1): attention's int16 batch matmuls stay on the CPU.
+  - mt6878, mt6983, mt6985 (Dimensity 7300, 9000, 9200): the int4-weight layers stay on the CPU.
+  - mt6853, mt6877, mt6893 (Dimensity 720, 900/1080, 1200, which is the 11T), mt8188: "unsupported data type" for
+    int16 and int4.
+  - mt6879: "unsupported operation" on most layers.
+- **The compiler fails (a software gap), so the daily issue lists these while phones use them:**
+  - mt6886 (Dimensity 7200) and mt6895 (8100): NeuroPilot 8 answers "Not a valid platform".
+  - mt8171: the compile stops without an error.
+  - mt6899 (Dimensity 8400): not in the plugin.
+  - Exynos: LiteRT's Samsung plugin knows only E9965.
+  - Google Tensor: Google's files are 8-bit.
+
+`plan.py` keeps both lists (`NPU_CANT_HOLD`, `NO_COMPILER`) so they aren't rebuilt every day. After a toolchain bump,
+remove a chip from a list to try it again.
 
 ## Known risks
 
