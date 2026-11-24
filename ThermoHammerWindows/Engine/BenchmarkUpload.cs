@@ -97,7 +97,7 @@ public static class BenchmarkUpload
             DbInsert = r.DbInsert, DbUpdate = r.DbUpdate, DbQuery = r.DbQuery,
             LlmPrefillCpu = l.PrefillCpu, LlmDecodeCpu = l.DecodeCpu, LlmPrefillGpu = l.PrefillGpu, LlmDecodeGpu = l.DecodeGpu,
             LlmGpu = DeviceInfo.ClipOrNull(l.Gpu), LlmFreeGb = l.FreeGb,
-            LlmPrefillNpu = 0, LlmDecodeNpu = 0, LlmNpu = null,     // no NPU engine for the LLM on Windows yet: its third counts 0
+            LlmPrefillNpu = 0, LlmDecodeNpu = 0, LlmNpu = null,     // the NPU isn't scored in version 5: the fields stay empty
             ValidityFlags = r.ValidityFlags,
             AppVersion = DeviceInfo.ClipOrNull(AppVersion),
         };
@@ -249,7 +249,7 @@ public static class BenchmarkReport
         }
         if (r.Llm is { } llm)
         {
-            Line($"LLM · {Pts(llm.Score)} pts = CPU {Pts(llm.Points(LlmAccel.Cpu))} · GPU {Pts(llm.Points(LlmAccel.Gpu))} · NPU {Pts(llm.NpuPoints)} (each a third; Gemma 3 1B on every engine) · " +
+            Line($"LLM · {Pts(llm.Score)} pts = CPU {Pts(llm.Points(LlmAccel.Cpu))} · GPU {Pts(llm.Points(LlmAccel.Gpu))} (each half; Gemma 3 1B on both) · " +
                  $"{F(llm.FreeGb)} GB free, largest model {llm.LargestModel}B" + (llm.Error is { } le ? $" · not run: {le}" : ""));
             foreach (var a in LlmAccels.All)
             {
@@ -257,7 +257,6 @@ public static class BenchmarkReport
                     Line($"LLM {a.Label()} · {Pts(llm.Points(a))} pts · prefill {F(run.Prefill)} tok/s · decode {F(run.Decode)} tok/s · " + (a == LlmAccel.Gpu ? (llm.GpuName ?? "?") : $"{run.Threads} threads (prompt {run.BatchThreads})"));
                 else Line($"LLM {a.Label()} · 0 ({llm.Run(a)?.Error ?? "not run"})");
             }
-            Line($"LLM NPU · 0 ({LlmScore.NoNpu})");
         }
         foreach (var why in r.NotYet) Line($"Not run: {why}");
         return s.ToString();

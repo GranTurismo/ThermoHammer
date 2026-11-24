@@ -156,7 +156,7 @@ public sealed partial record BenchmarkRecord
         int ai = AiScore.Overall(AccelScore(AiAccel.Cpu), AccelScore(AiAccel.Gpu), AccelScore(AiAccel.Npu));
         var l = Llm ?? new LlmRecord();
         // rule B: each engine against its own reference, a third each; the NPU's third is 0 on Windows (no engine there yet)
-        int llm = LlmScore.Overall(LlmScore.Engine(LlmAccel.Cpu, l.PrefillCpu, l.DecodeCpu), LlmScore.Engine(LlmAccel.Gpu, l.PrefillGpu, l.DecodeGpu), 0);
+        int llm = LlmScore.Overall(LlmScore.Engine(LlmAccel.Cpu, l.PrefillCpu, l.DecodeCpu), LlmScore.Engine(LlmAccel.Gpu, l.PrefillGpu, l.DecodeGpu));
         return new SectionScores(cpu, mem, gpu, ux, ai, llm);
     }
 }

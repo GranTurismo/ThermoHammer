@@ -54,27 +54,24 @@ public class BenchmarkScoreTests
         Near(AiScore.Accel(AiAccel.Npu, [1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38]), "AI NPU");
         Near(LlmScore.Engine(LlmAccel.Cpu, 160.0, 55.0), "LLM CPU");
         Near(LlmScore.Engine(LlmAccel.Gpu, 890.0, 32.0), "LLM GPU");
-        Near(LlmScore.Npu(5450.0, 52.0), "LLM NPU");
     }
 
     [Fact]
-    public void LLM_version_5_each_engine_against_its_own_reference_each_a_third()
+    public void LLM_version_5_the_CPU_and_the_GPU_against_their_own_references_each_half()
     {
-        // the reference phone's rates on the CPU and the GPU: 6000 each. Windows has no NPU engine, so its third is 0
+        // the reference phone's rates on the CPU and the GPU: 6000 each, 6000 in all (the NPU isn't scored on any platform)
         var reference = new LlmResult([new LlmRun(LlmAccel.Cpu, LlmScore.RefCpuPrefill, LlmScore.RefCpuDecode, 6),
             new LlmRun(LlmAccel.Gpu, LlmScore.RefGpuPrefill, LlmScore.RefGpuDecode)], "Test GPU", 9, 8);
         Assert.Equal(6000, reference.Points(LlmAccel.Cpu));
         Assert.Equal(6000, reference.Points(LlmAccel.Gpu));
-        Assert.Equal(0, reference.NpuPoints);
-        Assert.Equal(4000, reference.Score);                     // (6000 + 6000 + 0) / 3
-        Assert.Equal(6000, LlmScore.Overall(6000, 6000, LlmScore.Npu(LlmScore.RefNpuPrefill, LlmScore.RefNpuDecode)));   // a phone with all three
+        Assert.Equal(6000, reference.Score);                     // (6000 + 6000) / 2
         // an engine is the geometric mean of its two phases: twice the prompt rate and half the reply rate is still 6000
         Assert.Equal(6000, LlmScore.Engine(LlmAccel.Cpu, 2 * LlmScore.RefCpuPrefill, LlmScore.RefCpuDecode / 2));
-        // no usable GPU: the CPU's third only
+        // no usable GPU: the CPU's half only
         var cpuOnly = new LlmResult([new LlmRun(LlmAccel.Cpu, LlmScore.RefCpuPrefill / 2, LlmScore.RefCpuDecode / 2),
             new LlmRun(LlmAccel.Gpu, 0, 0, Error: "llama.cpp found no Vulkan GPU it can run on")], null, 5, 4);
         Assert.Equal(3000, cpuOnly.Points(LlmAccel.Cpu));
-        Assert.Equal(1000, cpuOnly.Score);                       // (3000 + 0 + 0) / 3
+        Assert.Equal(1500, cpuOnly.Score);                       // (3000 + 0) / 2
         Assert.Equal(0, LlmScore.Engine(LlmAccel.Gpu, 120, 0));  // no reply: 0
         // shown, not scored: the best engine's points at each phase, each against its own engine's reference
         var mixed = new LlmResult([new LlmRun(LlmAccel.Cpu, LlmScore.RefCpuPrefill / 2, LlmScore.RefCpuDecode),
@@ -84,7 +81,7 @@ public class BenchmarkScoreTests
         Assert.Equal(LlmScore.RefGpuPrefill, mixed.Prefill);
         Assert.Equal(LlmScore.RefCpuDecode, mixed.Decode);
         var total = new BenchmarkResult { Llm = cpuOnly };
-        Assert.Equal(1000, total.Total);
+        Assert.Equal(1500, total.Total);
     }
 
     [Fact]
@@ -94,7 +91,7 @@ public class BenchmarkScoreTests
         r.Llm = new LlmResult([new LlmRun(LlmAccel.Cpu, 160, 55, 8), new LlmRun(LlmAccel.Gpu, 445, 32)], "Test GPU", 12.5, 8);
         var rec = BenchmarkRecord.From(r, "11 24H2", "26100.1", "ThinkPad X1");
         Assert.Equal(r.LlmScore, rec.Sections().Llm);
-        Assert.Equal(LlmScore.Overall(6000, BenchmarkScore.Round(6000 / Math.Sqrt(2)), 0), rec.Sections().Llm);   // the GPU at half the prompt rate
+        Assert.Equal(LlmScore.Overall(6000, BenchmarkScore.Round(6000 / Math.Sqrt(2))), rec.Sections().Llm);   // the GPU at half the prompt rate
     }
 
     /// <summary>Android's "canonical string is what the server re-derives": the same payload gives the same string, field for field.</summary>

@@ -342,7 +342,7 @@ public static class AiScore
 
 // ── LLM ──
 
-/// <summary>The engines llama.cpp runs Gemma 3 1B on here. The third engine of version 5's rule, the NPU, has none on Windows yet (LlmScore.NoNpu).</summary>
+/// <summary>The engines llama.cpp runs Gemma 3 1B on: version 5 scores the CPU and the GPU, half each (the NPU isn't scored on any platform).</summary>
 public enum LlmAccel { Cpu, Gpu }
 public enum LlmPhase { Build, Warmup, Prefill, Decode }
 
@@ -360,8 +360,6 @@ public sealed record LlmResult(List<LlmRun> Runs, string? GpuName, double FreeGb
     public LlmRun? Run(LlmAccel a) => Runs.FirstOrDefault(r => r.Accel == a);
     /// <summary>One engine's points: its prompt and reply rates against the same engine's reference (LlmScore).</summary>
     public int Points(LlmAccel a) => Run(a) is { } r ? LlmScore.Engine(a, r.Prefill, r.Decode) : 0;
-    /// <summary>The NPU's points: 0 — Windows has no LLM engine for the NPU yet, so that third counts 0 (LlmScore.NoNpu).</summary>
-    public int NpuPoints => 0;
     /// <summary>The fastest engine at each phase — what a chat app on this PC could get (shown, not scored).</summary>
     public double Prefill => Runs.Count == 0 ? 0 : Runs.Max(r => r.Prefill);
     public double Decode => Runs.Count == 0 ? 0 : Runs.Max(r => r.Decode);
@@ -370,21 +368,18 @@ public sealed record LlmResult(List<LlmRun> Runs, string? GpuName, double FreeGb
         Run(LlmAccel.Gpu) is { } g ? LlmScore.Phase(g.Prefill, LlmScore.RefGpuPrefill) : 0);
     public int DecodePoints => Math.Max(Run(LlmAccel.Cpu) is { } c ? LlmScore.Phase(c.Decode, LlmScore.RefCpuDecode) : 0,
         Run(LlmAccel.Gpu) is { } g ? LlmScore.Phase(g.Decode, LlmScore.RefGpuDecode) : 0);
-    /// <summary>Version 5's rule: the CPU, the GPU and the NPU each count a third — an engine that can't run the task counts 0.</summary>
-    public int Score => LlmScore.Overall(Points(LlmAccel.Cpu), Points(LlmAccel.Gpu), NpuPoints);
+    /// <summary>Version 5: the CPU and the GPU each count half — an engine that can't run the task counts 0.</summary>
+    public int Score => LlmScore.Overall(Points(LlmAccel.Cpu), Points(LlmAccel.Gpu));
 }
 
 public static class LlmScore
 {
-    // Version 5: Gemma 3 1B (4-bit) on each engine — llama.cpp on the CPU and the GPU (seeded weights, the model's exact shape),
-    // an NPU runtime on the NPU (LiteRT-LM on Android) — each against the same engine's reference, then the three averaged (rule B,
-    // BENCHMARK_V5_PLAN.md). Tokens per second worth 6000 points per engine: the Honor VKP-NX9 in Performance mode (Benchmark.kt).
+    // Version 5: Gemma 3 1B (4-bit) through llama.cpp on the CPU and the GPU (seeded weights, the model's exact shape), each
+    // against the same engine's reference, then the two averaged (BENCHMARK_V5_PLAN.md). The NPU isn't scored on any platform:
+    // no way to run it reaches every device yet. Tokens per second worth 6000 points per engine: the Honor VKP-NX9 in
+    // Performance mode (Benchmark.kt).
     public const double RefCpuPrefill = 160, RefCpuDecode = 55;
     public const double RefGpuPrefill = 890, RefGpuDecode = 32;
-    public const double RefNpuPrefill = 5450, RefNpuDecode = 52;
-
-    /// <summary>Why the NPU's third is 0 on every PC, as the result and the report say it.</summary>
-    public const string NoNpu = "no LLM engine on Windows yet — counts 0";
 
     /// <summary>One phase's points against `reference` tokens/s.</summary>
     public static int Phase(double tokensPerS, double reference) => BenchmarkScore.Round(6000 * Math.Max(tokensPerS, 0) / reference);
@@ -397,10 +392,8 @@ public static class LlmScore
         ? Engine(prefill, decode, RefCpuPrefill, RefCpuDecode)
         : Engine(prefill, decode, RefGpuPrefill, RefGpuDecode);
 
-    public static int Npu(double prefill, double decode) => Engine(prefill, decode, RefNpuPrefill, RefNpuDecode);
-
-    /// <summary>Each engine counts a third; one the PC lacks or can't run the task on scores 0 there.</summary>
-    public static int Overall(int cpu, int gpu, int npu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0) + Math.Max(npu, 0)) / 3.0);
+    /// <summary>The CPU and the GPU each count half; one the PC lacks or can't run the task on scores 0 there.</summary>
+    public static int Overall(int cpu, int gpu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0);
 }
 
 // ── the whole run ──

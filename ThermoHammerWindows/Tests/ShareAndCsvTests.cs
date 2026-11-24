@@ -109,10 +109,10 @@ public class RunCsvTests
             Assert.Contains("ux,export_hevc_8k_psnr,29.75,dB", lines);
             Assert.Contains("ai,classify_npu,1753.12,inferences/s", lines);   // 412.5 × 4.25, kept at 2 decimals by the fixture
             Assert.Contains("llm,gpu_decode,40.5,tokens/s", lines);
-            // version 5: each engine's points, the NPU's 0 on Windows
+            // version 5: each scored engine's points (the NPU isn't scored: no row)
             Assert.Contains($"llm,cpu_points,{r.Llm!.Points(LlmAccel.Cpu)},points", lines);
             Assert.Contains($"llm,gpu_points,{r.Llm.Points(LlmAccel.Gpu)},points", lines);
-            Assert.Contains("llm,npu_points,0,points", lines);
+            Assert.DoesNotContain(lines, l => l.StartsWith("llm,npu_points,"));
             var scores = lines.Where(l => l.StartsWith("score,")).ToList();
             Assert.Equal(["cpu", "mem", "gpu", "ux", "ai", "llm", "total"], scores.Select(l => l.Split(',')[1]));
             Assert.Equal($"score,cpu,{r.CpuScore},points", scores[0]);

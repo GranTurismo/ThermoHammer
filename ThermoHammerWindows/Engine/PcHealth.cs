@@ -43,7 +43,7 @@ public static class PcHealth
         }
         if (r.Ai is { } a) { p["ai.cpu"] = a.AccelScore(AiAccel.Cpu); p["ai.gpu"] = a.AccelScore(AiAccel.Gpu); p["ai.npu"] = a.AccelScore(AiAccel.Npu); }
         // version 5: each engine's points (rule B) — the server's BenchmarkScoring.Parts names them the same
-        if (r.Llm is { } l) { p["llm.cpu"] = l.Points(LlmAccel.Cpu); p["llm.gpu"] = l.Points(LlmAccel.Gpu); p["llm.npu"] = l.NpuPoints; }
+        if (r.Llm is { } l) { p["llm.cpu"] = l.Points(LlmAccel.Cpu); p["llm.gpu"] = l.Points(LlmAccel.Gpu); }
         return p;
     }
 

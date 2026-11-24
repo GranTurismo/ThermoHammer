@@ -13,8 +13,8 @@ namespace ThermoHammer.Engine.Llm;
 //     prefill — the 512-token prompt in one batch, again until 3 s are measured;
 //     decode  — 32-token replies, token by token, until 4 s are measured.
 //   The CPU first tries thread counts; the GPU first runs a prompt and a reply
-//   to build its pipelines. The phones run the same model on their NPU as the
-//   section's third engine; Windows has no such engine yet, so that third is 0.
+//   to build its pipelines. Each counts half; the NPU isn't scored on any
+//   platform in version 5 (no way to run it reaches every device yet).
 // ─────────────────────────────────────────────────────────────────────────────
 
 public sealed unsafe class LlmSection : IBenchmarkSection
