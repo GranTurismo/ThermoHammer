@@ -109,7 +109,6 @@ public static class ThermoEndpointsMapper
         });
 
         // verified runs only (BenchmarkScoring.IsVerified): no charger, battery saver, warm start or busy phone
-
         app.MapGet("/benchmark/leaderboard", async (ThermoDbContext db) =>
         {
             var runs = await db.BenchmarkRuns

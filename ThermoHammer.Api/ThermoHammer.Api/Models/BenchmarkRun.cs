@@ -7,11 +7,10 @@ namespace ThermoHammer.Api.Models;
 /// One benchmark run. CPU: math, JSON & XML, compression & crypto, multi-core. GPU: Test 1 (Lake Valley),
 /// Test 2 (Neon City) and Test 3 (Neon City RT, Vulkan ray tracing — 0 on phones without it), each rendered
 /// offscreen at 1920×1080. UX: web browsing, web scrolling, photo gallery, photo editing, 4K video playback and
-/// QR scanning. AI: six 8-bit models on the CPU, the GPU and the NPU (0 without one). MEM: RAM, storage and an
-/// app-style SQLite database. LLM: a 3B language model (llama.cpp, Llama 3.2 3B's shape, 4-bit, seeded weights) reading a
-/// 512-token prompt and writing its reply, on the CPU and the GPU. Total = CPU + MEM + GPU + UX + AI + LLM. Every score is
-/// computed here from the submitted raw results (fps, scene complexities, megapixels, scans and tokens per second) — the
-/// client's own scores are never trusted.
+/// QR scanning. AI: six 8-bit models on the CPU and the GPU. MEM: RAM, storage and an app-style SQLite database.
+/// Total = CPU + MEM + GPU + UX + AI. Version 4 also had an LLM section (a language model on the CPU and the GPU); its
+/// columns keep those runs' results, and version 5 stores 0 there. Every score is computed here from the submitted raw
+/// results (fps, scene complexities, megapixels and scans per second) — the client's own scores are never trusted.
 /// </summary>
 public class BenchmarkRun
 {
@@ -129,23 +128,16 @@ public class BenchmarkRun
     public double CpuCrypto { get; set; }
     public double CpuMulti { get; set; }
     public int CpuScore { get; set; }
-    // LLM: tokens/s reading the 512-token prompt (prefill) and writing the reply (decode), on the CPU and the GPU
+    // LLM, version 4 only: tokens/s reading the 512-token prompt (prefill) and writing the reply (decode), on the CPU and
+    // the GPU. Version 5 has no LLM test: these stay 0 / null
     public double LlmPrefillCpu { get; set; }
     public double LlmDecodeCpu { get; set; }
     public double LlmPrefillGpu { get; set; }
     public double LlmDecodeGpu { get; set; }
     public string? LlmGpu { get; set; }      // the GPU it ran on (reported)
     public double LlmFreeGb { get; set; }    // memory the app could take when the test began (reported)
-    // version 5 drafts: the NPU through LiteRT-LM. Kept in the payload and the signed text, always 0 / empty from the
-    // apps, never scored: no NPU path reaches every chip yet (BENCHMARK_V5_PLAN.md)
-    public double LlmPrefillNpu { get; set; }
-    public double LlmDecodeNpu { get; set; }
-    public string? LlmNpu { get; set; }
-    public int LlmPrefillScore { get; set; } // the best engine's points at each phase (shown; version 4: what was scored)
+    public int LlmPrefillScore { get; set; }
     public int LlmDecodeScore { get; set; }
-    public int LlmCpuScore { get; set; }     // version 5: each engine's points, half of the section each
-    public int LlmGpuScore { get; set; }
-    public int LlmNpuScore { get; set; }     // never scored: always 0
     public int LlmScore { get; set; }
     public int TotalScore { get; set; }
     public int ValidityFlags { get; set; }   // ValidityFlag bits from the app; 0 = clean run
@@ -234,6 +226,8 @@ public class BenchmarkRequest
     public double DbInsert { get; set; }
     public double DbUpdate { get; set; }
     public double DbQuery { get; set; }
+    // the LLM test's fields: version 5 has no LLM test, so the apps send 0 / "". They stay in the payload because the
+    // signed text (Canonical) has them; the server ignores them
     public double LlmPrefillCpu { get; set; }
     public double LlmDecodeCpu { get; set; }
     public double LlmPrefillGpu { get; set; }
@@ -261,7 +255,7 @@ public class BenchmarkDto
     public int CpuScore { get; set; }
     public int AiScore { get; set; }
     public int MemScore { get; set; }
-    public int LlmScore { get; set; }
+    public int LlmScore { get; set; }        // always 0 since version 5; kept for the apps that still read it
     public int TotalScore { get; set; }
     public int WebScore { get; set; }
     public int ScrollScore { get; set; }
@@ -289,7 +283,7 @@ public class BenchmarkModelStats
     public required string DeviceModel { get; set; }
     public int Runs { get; set; }                                    // verified runs counted
     public ScoreSpread? Total { get; set; }                          // null without runs
-    public Dictionary<string, int> Sections { get; set; } = new();   // cpu, mem, gpu, ux, ai, llm → median points
+    public Dictionary<string, int> Sections { get; set; } = new();   // cpu, mem, gpu, ux, ai → median points (llm: 0, for older apps)
     public Dictionary<string, int> Parts { get; set; } = new();      // e.g. gpu.neon, mem.storage → median points
     public List<OsVersionStats> ByOsVersion { get; set; } = new();   // most runs first
 }
@@ -347,11 +341,6 @@ public static class BenchmarkScoring
     public const double RefMemRead = 63.5, RefMemWrite = 28.3, RefMemCopy = 19.7, RefMemLatency = 134;  // GB/s, ns
     public const double RefSeqRead = 1780, RefSeqWrite = 1309, RefRandomRead = 24700, RefRandomWrite = 13380; // MB/s, IOPS
     public const double RefDbInsert = 15700, RefDbUpdate = 389000, RefDbQuery = 43800;                 // per second, warmed up
-
-    // LLM references (version 5): Gemma 3 1B tokens/s worth 6000 points on each engine — llama.cpp on the CPU and the
-    // GPU — prompt (prefill) and reply (decode). The NPU isn't scored: no NPU path reaches every chip yet
-    public const double RefLlmCpuPrefill = 160, RefLlmCpuDecode = 55;
-    public const double RefLlmGpuPrefill = 890, RefLlmGpuDecode = 32;
 
     /// <summary>
     /// A clean run: none of the app's validity flags — no charger, no battery saver, started cool, nothing else
@@ -465,19 +454,8 @@ public static class BenchmarkScoring
     /// <summary>Geometric mean of RAM, storage and database (0 if any is 0) — MemScore.overall in the app.</summary>
     public static int Mem(int ram, int storage, int db) => Ux(ram, storage, db);
 
-    public static int LlmPoints(double tokensPerS, double reference) =>
-        (int)Math.Round(6000 * Math.Max(tokensPerS, 0) / reference, MidpointRounding.AwayFromZero);
-
-    /// <summary>One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0 — LlmScore.engine.</summary>
-    public static int LlmEngine(double prefill, double decode, double refPrefill, double refDecode) =>
-        !(prefill > 0) || !(decode > 0) ? 0
-            : (int)Math.Round(6000 * Math.Sqrt(prefill / refPrefill * (decode / refDecode)), MidpointRounding.AwayFromZero);
-
-    /// <summary>Version 5: the CPU and the GPU each half; an engine that can't run the task counts 0 — LlmScore.overall.</summary>
-    public static int Llm(int cpu, int gpu) =>
-        (int)Math.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0, MidpointRounding.AwayFromZero);
-
-    /// <summary>The string the app HMACs with the session key (BenchmarkPayload.canonical()).</summary>
+    /// <summary>The string the app HMACs with the session key (BenchmarkPayload.canonical()). The Llm* fields are 0 / ""
+    /// since version 5 (no LLM test), but they stay in it: the apps sign the same layout.</summary>
     public static string Canonical(BenchmarkRequest r) => string.Join("|",
         "bench", r.BenchmarkVersion.ToString(CultureInfo.InvariantCulture), r.DeviceManufacturer, r.DeviceModel,
         r.OsVersion, r.GpuName, F2(r.Test1Fps), F2(r.Test1LowFps), F2(r.Test2Fps), F2(r.Test2LowFps),
@@ -514,8 +492,7 @@ public static class BenchmarkScoring
         F2(r.AiUpscaleCpu), F2(r.AiUpscaleGpu), F2(r.AiUpscaleNpu), F2(r.AiDepthCpu), F2(r.AiDepthGpu), F2(r.AiDepthNpu),
         F2(r.AiSoundCpu), F2(r.AiSoundGpu), F2(r.AiSoundNpu), F2(r.MemRead), F2(r.MemWrite), F2(r.MemCopy), F2(r.MemLatency),
         F2(r.StorageSeqRead), F2(r.StorageSeqWrite), F2(r.StorageRandomRead), F2(r.StorageRandomWrite),
-        r.StorageDirect ? "1" : "0", F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery), F2(r.LlmPrefillCpu), F2(r.LlmDecodeCpu),
-        F2(r.LlmPrefillGpu), F2(r.LlmDecodeGpu), F2(r.LlmFreeGb), F2(r.LlmPrefillNpu), F2(r.LlmDecodeNpu));
+        r.StorageDirect ? "1" : "0", F2(r.DbInsert), F2(r.DbUpdate), F2(r.DbQuery));
 
     /// <summary>True when <paramref name="b"/> is <paramref name="a"/> sent again: the same model, platform, benchmark version and measurements.</summary>
     public static bool SameRun(BenchmarkRun a, BenchmarkRun b) =>
@@ -571,12 +548,6 @@ public static class BenchmarkScoring
         if (storage.Any(v => !(v >= 0 && v < 1e7))) return "Implausible storage result";
         double[] db = [r.DbInsert, r.DbUpdate, r.DbQuery];
         if (db.Any(v => !(v >= 0 && v < 1e7))) return "Implausible database result";
-        double[] llm = [r.LlmPrefillCpu, r.LlmPrefillGpu];
-        if (llm.Any(v => !(v >= 0 && v < 1e5)) || !(r.LlmDecodeCpu is >= 0 and < 1e4) || !(r.LlmDecodeGpu is >= 0 and < 1e4))
-            return "Implausible LLM result";
-        if (!(r.LlmFreeGb is >= 0 and < 1024)) return "Implausible free memory";
-        if (!(r.LlmPrefillNpu is >= 0 and < 1e5) || !(r.LlmDecodeNpu is >= 0 and < 1e4)) return "Implausible LLM result";
-        if (r.LlmPrefillNpu > 0 != r.LlmDecodeNpu > 0) return "Implausible LLM result";
         return r.ValidityFlags < 0 ? "Invalid flags" : null;
     }
 
@@ -602,14 +573,6 @@ public static class BenchmarkScoring
         int storageScore = StoragePoints(r.StorageSeqRead, r.StorageSeqWrite, r.StorageRandomRead, r.StorageRandomWrite);
         int dbScore = DbPoints(r.DbInsert, r.DbUpdate, r.DbQuery);
         int mem = Mem(ramScore, storageScore, dbScore);
-        int llmCpu = LlmEngine(r.LlmPrefillCpu, r.LlmDecodeCpu, RefLlmCpuPrefill, RefLlmCpuDecode);
-        int llmGpu = LlmEngine(r.LlmPrefillGpu, r.LlmDecodeGpu, RefLlmGpuPrefill, RefLlmGpuDecode);
-        int llm = Llm(llmCpu, llmGpu);
-        // shown: the best engine's points at each phase, against that engine's reference (LlmResult.prefillPoints)
-        int llmPrefill = Math.Max(llmCpu > 0 ? LlmPoints(r.LlmPrefillCpu, RefLlmCpuPrefill) : 0,
-            llmGpu > 0 ? LlmPoints(r.LlmPrefillGpu, RefLlmGpuPrefill) : 0);
-        int llmDecode = Math.Max(llmCpu > 0 ? LlmPoints(r.LlmDecodeCpu, RefLlmCpuDecode) : 0,
-            llmGpu > 0 ? LlmPoints(r.LlmDecodeGpu, RefLlmGpuDecode) : 0);
         return new BenchmarkRun
         {
             SessionId = r.SessionId,
@@ -715,22 +678,8 @@ public static class BenchmarkScoring
             StorageScore = storageScore,
             DbScore = dbScore,
             MemScore = mem,
-            LlmPrefillCpu = r.LlmPrefillCpu,
-            LlmDecodeCpu = r.LlmDecodeCpu,
-            LlmPrefillGpu = r.LlmPrefillGpu,
-            LlmDecodeGpu = r.LlmDecodeGpu,
-            LlmGpu = Clip(r.LlmGpu),
-            LlmFreeGb = r.LlmFreeGb,
-            LlmPrefillNpu = r.LlmPrefillNpu,
-            LlmDecodeNpu = r.LlmDecodeNpu,
-            LlmNpu = Clip(r.LlmNpu),
-            LlmPrefillScore = llmPrefill,
-            LlmDecodeScore = llmDecode,
-            LlmCpuScore = llmCpu,
-            LlmGpuScore = llmGpu,
-            LlmNpuScore = 0,
-            LlmScore = llm,
-            TotalScore = cpu + mem + gpu + ux + ai + llm,
+            // no LLM test since version 5: its fields in the request are ignored, its columns stay 0 / null
+            TotalScore = cpu + mem + gpu + ux + ai,
             ValidityFlags = r.ValidityFlags
         };
     }
@@ -760,8 +709,6 @@ public static class BenchmarkScoring
         ["ux.qr"] = r.QrScore,
         ["ai.cpu"] = r.AiCpuScore,
         ["ai.gpu"] = r.AiGpuScore,
-        ["llm.cpu"] = r.LlmCpuScore,
-        ["llm.gpu"] = r.LlmGpuScore,
     };
 
     /// <summary>Linear-interpolated quantile of sorted values.</summary>
@@ -792,7 +739,7 @@ public static class BenchmarkScoring
             ["gpu"] = Median(runs.Select(r => r.Score)),
             ["ux"] = Median(runs.Select(r => r.UxScore)),
             ["ai"] = Median(runs.Select(r => r.AiScore)),
-            ["llm"] = Median(runs.Select(r => r.LlmScore)),
+            ["llm"] = 0,   // no LLM test since version 5; the key stays for apps from before it
         };
         var parts = runs.Select(Parts).ToList();
         stats.Parts = parts[0].Keys.ToDictionary(k => k, k => Median(parts.Select(p => p[k])));

@@ -25,7 +25,7 @@ public class BenchmarkDetailDto
 
 public class DetailSection
 {
-    public required string Key { get; set; }     // cpu, mem, gpu, ux, ai, llm
+    public required string Key { get; set; }     // cpu, mem, gpu, ux, ai (and llm on version 4 runs)
     public required string Title { get; set; }
     public int Score { get; set; }
     public List<DetailGroup> Groups { get; set; } = new();
@@ -56,7 +56,7 @@ public static class BenchmarkDetail
     public static BenchmarkDetailDto From(BenchmarkRun r)
     {
         var parts = BenchmarkScoring.Parts(r);
-        return new BenchmarkDetailDto
+        var dto = new BenchmarkDetailDto
         {
             Id = r.Id,
             CreatedAt = DateTime.SpecifyKind(r.CreatedAt, DateTimeKind.Utc),
@@ -72,9 +72,12 @@ public static class BenchmarkDetail
             TotalScore = r.TotalScore,
             Sections =
             {
-                Cpu(r, parts), Mem(r), Gpu(r), Ux(r), Ai(r), Llm(r)
+                Cpu(r, parts), Mem(r), Gpu(r), Ux(r), Ai(r)
             }
         };
+        // version 5 has no LLM test
+        if (r.BenchmarkVersion < 5) dto.Sections.Add(Llm(r));
+        return dto;
     }
 
     private static DetailSection Cpu(BenchmarkRun r, Dictionary<string, int> parts) => new()
@@ -179,36 +182,17 @@ public static class BenchmarkDetail
         static IEnumerable<DetailRow> Models(double[] ips) => ips.Select((v, i) => Row(AiModels[i], Rate(v, "inferences/s"), Pos(v)));
     }
 
-    /// <summary>
-    /// Version 5: one group per engine (each half) — Gemma 3 1B through llama.cpp on the CPU and the GPU. Older runs show
-    /// their prompt and reply groups as they were scored.
-    /// </summary>
-    private static DetailSection Llm(BenchmarkRun r)
+    /// <summary>Version 4 only (version 5 has no LLM test): the prompt and reply groups as they were scored.</summary>
+    private static DetailSection Llm(BenchmarkRun r) => new()
     {
-        var run = Group("Run", null, Row("GPU used", string.IsNullOrEmpty(r.LlmGpu) ? "none" : r.LlmGpu),
-            Row("Free memory at start", N(r.LlmFreeGb, 1) + " GB", Pos(r.LlmFreeGb), better: null));   // context, not performance
-        if (r.BenchmarkVersion < 5)
-            return new DetailSection
-            {
-                Key = "llm", Title = "LLM", Score = r.LlmScore,
-                Groups =
-                {
-                    Group("Prompt (prefill)", r.LlmPrefillScore, Row("CPU", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("GPU", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu))),
-                    Group("Reply (decode)", r.LlmDecodeScore, Row("CPU", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu)), Row("GPU", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
-                    run,
-                }
-            };
-        return new DetailSection
+        Key = "llm", Title = "LLM", Score = r.LlmScore,
+        Groups =
         {
-            Key = "llm", Title = "LLM", Score = r.LlmScore,
-            Groups =
-            {
-                Group("CPU", r.LlmCpuScore, Row("Prompt", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("Reply", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu))),
-                Group("GPU", r.LlmGpuScore, Row("Prompt", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu)), Row("Reply", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
-                run,
-            }
-        };
-    }
+            Group("Prompt (prefill)", r.LlmPrefillScore, Row("CPU", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("GPU", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu))),
+            Group("Reply (decode)", r.LlmDecodeScore, Row("CPU", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu)), Row("GPU", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
+            Group("Run", null, Row("GPU used", string.IsNullOrEmpty(r.LlmGpu) ? "none" : r.LlmGpu), Row("Free memory at start", N(r.LlmFreeGb, 1) + " GB", Pos(r.LlmFreeGb), better: null)),   // context, not performance
+        }
+    };
 
     private static DetailGroup Group(string title, int? points, params DetailRow[] rows) => new() { Title = title, Points = points, Rows = rows.ToList() };
     private const string Higher = "higher", Lower = "lower";

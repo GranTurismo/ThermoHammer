@@ -136,8 +136,6 @@ public class BenchmarkMappingTests
 
         // a second real run never matches every number
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.CpuMulti = 301.76).ToDao()));
-        Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.LlmFreeGb = 9.43).ToDao()));
-        Assert.False(BenchmarkScoring.SameRun(first, Request(r => (r.LlmPrefillNpu, r.LlmDecodeNpu) = (5723.51, 52.86)).ToDao()));
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.ExportHevc = 0).ToDao()));
         // the same numbers from another model, platform or benchmark version aren't this run
         Assert.False(BenchmarkScoring.SameRun(first, Request(r => r.DeviceModel = "Honor 400").ToDao()));
@@ -336,36 +334,25 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
-    public void LlmCountsCpuAndGpuHalfEachAndNeverTheNpu()
+    public void Version5HasNoLlmSection()
     {
-        // Same expectations as BenchmarkScoreTest.`LLM version 5 - the CPU and the GPU against their own references, each half, the NPU not scored`.
-        var reference = Request(r =>
+        // The payload still carries the LLM fields (the signed text has them); whatever they hold is ignored.
+        var run = Request(r =>
         {
-            (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode);
-            (r.LlmPrefillGpu, r.LlmDecodeGpu) = (BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode);
-        }).ToDao();
-        Assert.Equal((6000, 6000, 6000), (reference.LlmCpuScore, reference.LlmGpuScore, reference.LlmScore));
-        Assert.Equal(reference.CpuScore + reference.MemScore + reference.Score + reference.UxScore + reference.AiScore + 6000,
-            reference.TotalScore);
-        // a GPU llama.cpp can't use (the Xiaomi 11T): its CPU's half alone
-        var cpuOnly = Request(r => (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill * 4, BenchmarkScoring.RefLlmCpuDecode)).ToDao();
-        Assert.Equal(12000, cpuOnly.LlmCpuScore);              // sqrt(4 × 1) × 6000
-        Assert.Equal(6000, cpuOnly.LlmScore);                  // half of it
-        Assert.Equal(0, Request(r => r.LlmPrefillCpu = 120).ToDao().LlmScore);   // no reply: 0
-        Assert.Equal(0, Request().ToDao().LlmScore);
-        // NPU numbers (the payload still carries the fields) never count, and no chip has to send them
-        var withNpu = Request(r =>
-        {
-            (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode);
-            (r.LlmPrefillGpu, r.LlmDecodeGpu) = (BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode);
+            (r.LlmPrefillCpu, r.LlmDecodeCpu, r.LlmPrefillGpu, r.LlmDecodeGpu) = (160, 55, 890, 32);
+            (r.LlmGpu, r.LlmFreeGb) = ("QUALCOMM Adreno(TM) 830", 9.42);
             (r.LlmPrefillNpu, r.LlmDecodeNpu, r.LlmNpu) = (5450, 52, "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750");
-        }).ToDao();
-        Assert.Equal((0, 6000), (withNpu.LlmNpuScore, withNpu.LlmScore));
-        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = "SM8750")));
-        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.LlmPrefillNpu = 5000)));   // a prompt rate without a reply: no result
-        // shown: the best engine's points at each phase
-        Assert.Equal((6000, 6000), (reference.LlmPrefillScore, reference.LlmDecodeScore));
-        Assert.Equal("QUALCOMM Adreno(TM) 830", Request(r => r.LlmGpu = "  QUALCOMM Adreno(TM) 830 ").ToDao().LlmGpu);
+        });
+        Assert.Null(BenchmarkScoring.Problem(run));
+        var dao = run.ToDao();
+        Assert.Equal((0, 0, 0), (dao.LlmScore, dao.LlmPrefillScore, dao.LlmDecodeScore));
+        Assert.Equal((0.0, 0.0, 0.0, 0.0, 0.0), (dao.LlmPrefillCpu, dao.LlmDecodeCpu, dao.LlmPrefillGpu, dao.LlmDecodeGpu, dao.LlmFreeGb));
+        Assert.Null(dao.LlmGpu);
+        // the total is the five sections
+        Assert.Equal(dao.CpuScore + dao.MemScore + dao.Score + dao.UxScore + dao.AiScore, dao.TotalScore);
+        Assert.True(BenchmarkScoring.SameRun(Request().ToDao(), dao));
+        Assert.DoesNotContain(BenchmarkScoring.Parts(dao).Keys, k => k.StartsWith("llm."));
+        Assert.DoesNotContain(BenchmarkDetail.From(dao).Sections, x => x.Key == "llm");
     }
 
     [Fact]
@@ -404,24 +391,6 @@ public class BenchmarkMappingTests
         Assert.Equal(3000, BenchmarkScoring.ExportPoints(136.3, 136.3, 0, 0));   // two of three 4K encoders, no 8K
         Near(BenchmarkScoring.AiAccel([543.63, 28.67, 7.73, 4.59, 64.54, 3967.59], BenchmarkScoring.RefAiCpu), "AI CPU");
         Near(BenchmarkScoring.AiAccel([280.7, 36.7, 16.6, 38.8, 74.2, 582.0], BenchmarkScoring.RefAiGpu), "AI GPU");
-        Near(BenchmarkScoring.LlmEngine(160, 55, BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode), "LLM CPU");
-        Near(BenchmarkScoring.LlmEngine(890, 32, BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode), "LLM GPU");
-    }
-
-    [Theory]
-    [InlineData(-1, 0, 0)]
-    [InlineData(2e5, 0, 0)]                                   // a prompt faster than any phone
-    [InlineData(0, 2e4, 0)]
-    [InlineData(0, 0, -1)]
-    [InlineData(0, 0, 4096)]
-    public void ImplausibleLlmResultsAreRejected(double prefill, double decode, double freeGb)
-    {
-        Assert.NotNull(BenchmarkScoring.Problem(Request(r =>
-        {
-            if (prefill != 0) r.LlmPrefillGpu = prefill;
-            if (decode != 0) r.LlmDecodeCpu = decode;
-            if (freeGb != 0) r.LlmFreeGb = freeGb;
-        })));
     }
 
     [Fact]
@@ -474,8 +443,9 @@ public class BenchmarkMappingTests
         Assert.Equal(totals[^1], stats.Total!.Best);
         Assert.Equal((int)Math.Round((totals[1] + totals[2]) / 2.0, MidpointRounding.AwayFromZero), stats.Total.Median);
         Assert.True(stats.Total.P25 <= stats.Total.Median && stats.Total.Median <= stats.Total.P75);
-        Assert.Equal(6, stats.Sections.Count);
-        Assert.Equal(21, stats.Parts.Count);                   // version 5: AI and LLM on the CPU and the GPU only (no *.npu)
+        Assert.Equal(6, stats.Sections.Count);                 // the five sections, and llm = 0 for apps from before version 5
+        Assert.Equal(0, stats.Sections["llm"]);
+        Assert.Equal(19, stats.Parts.Count);                   // version 5: AI on the CPU and the GPU only, no LLM
         Assert.Equal(BenchmarkScoring.Points(115, BenchmarkScoring.Test1Weight), stats.Parts["gpu.lake"]);   // median of 4 fps
         Assert.Equal("16", stats.ByOsVersion[0].OsVersion);
         Assert.Equal(3, stats.ByOsVersion[0].Runs);
@@ -518,8 +488,8 @@ public class BenchmarkMappingTests
         Assert.Equal(42, d.Id);
         Assert.Equal(OsPlatform.Windows, d.Os);
         Assert.Equal(run.TotalScore, d.TotalScore);
-        Assert.Equal(["cpu", "mem", "gpu", "ux", "ai", "llm"], d.Sections.Select(s => s.Key));
-        Assert.Equal(run.CpuScore + run.MemScore + run.Score + run.UxScore + run.AiScore + run.LlmScore, d.Sections.Sum(s => s.Score));
+        Assert.Equal(["cpu", "mem", "gpu", "ux", "ai"], d.Sections.Select(s => s.Key));
+        Assert.Equal(run.TotalScore, d.Sections.Sum(s => s.Score));
         Assert.All(d.Sections, s => Assert.All(s.Groups, g => Assert.NotEmpty(g.Rows)));
 
         var gpu = d.Sections.Single(s => s.Key == "gpu");
@@ -536,6 +506,15 @@ public class BenchmarkMappingTests
 
         // version 5: the AI section is the CPU and the GPU; an older run's page keeps its NPU group
         Assert.DoesNotContain(d.Sections.Single(s => s.Key == "ai").Groups, g => g.Title == "NPU");
+
+        // a version 4 run's page keeps its LLM section as it was scored
+        var old = Request().ToDao();
+        (old.BenchmarkVersion, old.LlmPrefillCpu, old.LlmDecodeCpu, old.LlmPrefillScore, old.LlmDecodeScore, old.LlmScore) = (4, 118.4, 21.35, 4400, 2300, 3180);
+        var llm = BenchmarkDetail.From(old).Sections.Single(s => s.Key == "llm");
+        Assert.Equal(3180, llm.Score);
+        Assert.Equal(["Prompt (prefill)", "Reply (decode)", "Run"], llm.Groups.Select(g => g.Title));
+        Assert.Equal("118 tok/s", llm.Groups[0].Rows[0].Value);
+        Assert.Contains(BenchmarkDetail.From(old).Sections.Single(s => s.Key == "ai").Groups, g => g.Title == "NPU");
     }
 
     [Fact]
@@ -572,17 +551,14 @@ public class BenchmarkMappingTests
         Assert.Null(DetailRowOf(d, "ux", "Video playback", "4K60 VP9").Number);
         Assert.Null(DetailRowOf(d, "ux", "Video export", "4K60 AV1").Number);
         Assert.Null(DetailRowOf(d, "ux", "QR scanning", "ML Kit").Number);
-        Assert.Null(DetailRowOf(d, "llm", "CPU", "Prompt").Number);
-        Assert.DoesNotContain(d.Sections.Single(x => x.Key == "llm").Groups, g => g.Title == "NPU");   // not scored, not shown
 
         // text-only rows and context have no direction
         Assert.Null(DetailRowOf(d, "mem", "Storage", "Reads").Number);
         Assert.Null(DetailRowOf(d, "mem", "Storage", "Reads").Better);
-        Assert.Null(DetailRowOf(d, "llm", "Run", "Free memory at start").Better);
 
         // every number that is performance says which way is better
         var rows = d.Sections.SelectMany(s => s.Groups).SelectMany(g => g.Rows).ToList();
-        Assert.All(rows.Where(r => r.Number is not null && r.Label != "Free memory at start"),
+        Assert.All(rows.Where(r => r.Number is not null),
             r => Assert.Contains(r.Better, new[] { "higher", "lower" }));
     }
 
