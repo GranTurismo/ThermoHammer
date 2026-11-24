@@ -238,7 +238,7 @@ public class BenchmarkMappingTests
 
     private static void ReferenceAi(BenchmarkRequest r, bool npu)
     {
-        double[] c = BenchmarkScoring.RefAiCpu, g = BenchmarkScoring.RefAiGpu, n = BenchmarkScoring.RefAiNpu;
+        double[] c = BenchmarkScoring.RefAiCpu, g = BenchmarkScoring.RefAiGpu, n = [1726, 485, 214.6, 689.3, 986, 2154];   // version 4's NPU references
         double N(int i) => npu ? n[i] : 0;
         (r.AiClassifyCpu, r.AiDetectCpu, r.AiSegmentCpu, r.AiUpscaleCpu, r.AiDepthCpu, r.AiSoundCpu) = (c[0], c[1], c[2], c[3], c[4], c[5]);
         (r.AiClassifyGpu, r.AiDetectGpu, r.AiSegmentGpu, r.AiUpscaleGpu, r.AiDepthGpu, r.AiSoundGpu) = (g[0], g[1], g[2], g[3], g[4], g[5]);
@@ -247,18 +247,18 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
-    public void AiCountsCpuGpuAndNpuAThirdEach()
+    public void AiCountsCpuAndGpuHalfEachAndNeverTheNpu()
     {
         var withNpu = Request(r => ReferenceAi(r, npu: true)).ToDao();
         Assert.Equal(6000, withNpu.AiCpuScore);
-        Assert.Equal(6000, withNpu.AiNpuScore);
+        Assert.Equal(0, withNpu.AiNpuScore);                   // NPU numbers never count in version 5
         Assert.Equal(6000, withNpu.AiScore);
         var noNpu = Request(r => ReferenceAi(r, npu: false)).ToDao();
-        Assert.Equal(4000, noNpu.AiScore);
-        Assert.Equal(noNpu.CpuScore + noNpu.MemScore + noNpu.Score + noNpu.UxScore + 4000, noNpu.TotalScore);
+        Assert.Equal(6000, noNpu.AiScore);
+        Assert.Equal(noNpu.CpuScore + noNpu.MemScore + noNpu.Score + noNpu.UxScore + 6000, noNpu.TotalScore);
         Assert.Equal(5000, Request(r => { ReferenceAi(r, npu: true); r.AiSoundCpu = 0; }).ToDao().AiCpuScore);
-        Assert.Equal(4000, Request(r => { ReferenceAi(r, npu: true); r.AiClassifyGpu = r.AiDetectGpu = r.AiSegmentGpu =
-            r.AiUpscaleGpu = r.AiDepthGpu = r.AiSoundGpu = 0; }).ToDao().AiScore);
+        Assert.Equal(3000, Request(r => { ReferenceAi(r, npu: true); r.AiClassifyGpu = r.AiDetectGpu = r.AiSegmentGpu =
+            r.AiUpscaleGpu = r.AiDepthGpu = r.AiSoundGpu = 0; }).ToDao().AiScore);   // no GPU: its half
         Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.AiDepthNpu = -3)));
     }
 
@@ -404,7 +404,6 @@ public class BenchmarkMappingTests
         Assert.Equal(3000, BenchmarkScoring.ExportPoints(136.3, 136.3, 0, 0));   // two of three 4K encoders, no 8K
         Near(BenchmarkScoring.AiAccel([543.63, 28.67, 7.73, 4.59, 64.54, 3967.59], BenchmarkScoring.RefAiCpu), "AI CPU");
         Near(BenchmarkScoring.AiAccel([280.7, 36.7, 16.6, 38.8, 74.2, 582.0], BenchmarkScoring.RefAiGpu), "AI GPU");
-        Near(BenchmarkScoring.AiAccel([1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38], BenchmarkScoring.RefAiNpu), "AI NPU");
         Near(BenchmarkScoring.LlmEngine(160, 55, BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode), "LLM CPU");
         Near(BenchmarkScoring.LlmEngine(890, 32, BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode), "LLM GPU");
     }
@@ -476,7 +475,7 @@ public class BenchmarkMappingTests
         Assert.Equal((int)Math.Round((totals[1] + totals[2]) / 2.0, MidpointRounding.AwayFromZero), stats.Total.Median);
         Assert.True(stats.Total.P25 <= stats.Total.Median && stats.Total.Median <= stats.Total.P75);
         Assert.Equal(6, stats.Sections.Count);
-        Assert.Equal(22, stats.Parts.Count);                   // version 5: the LLM as two engines (llm.cpu, llm.gpu)
+        Assert.Equal(21, stats.Parts.Count);                   // version 5: AI and LLM on the CPU and the GPU only (no *.npu)
         Assert.Equal(BenchmarkScoring.Points(115, BenchmarkScoring.Test1Weight), stats.Parts["gpu.lake"]);   // median of 4 fps
         Assert.Equal("16", stats.ByOsVersion[0].OsVersion);
         Assert.Equal(3, stats.ByOsVersion[0].Runs);
@@ -535,9 +534,8 @@ public class BenchmarkMappingTests
         Assert.Equal("not supported", playback.Rows[2].Value);
         Assert.Contains("quality too low", ux.Groups.Single(g => g.Title == "Video export").Rows[0].Value);
 
-        var npu = d.Sections.Single(s => s.Key == "ai").Groups.Single(g => g.Title == "NPU");
-        Assert.Equal("none ran", npu.Rows[0].Value);
-        Assert.Equal(7, npu.Rows.Count);                                          // the runtime + six models
+        // version 5: the AI section is the CPU and the GPU; an older run's page keeps its NPU group
+        Assert.DoesNotContain(d.Sections.Single(s => s.Key == "ai").Groups, g => g.Title == "NPU");
     }
 
     [Fact]

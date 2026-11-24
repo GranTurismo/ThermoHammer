@@ -161,14 +161,20 @@ public static class BenchmarkDetail
     {
         double[] cpu = [r.AiClassifyCpu, r.AiDetectCpu, r.AiSegmentCpu, r.AiUpscaleCpu, r.AiDepthCpu, r.AiSoundCpu];
         double[] gpu = [r.AiClassifyGpu, r.AiDetectGpu, r.AiSegmentGpu, r.AiUpscaleGpu, r.AiDepthGpu, r.AiSoundGpu];
-        double[] npu = [r.AiClassifyNpu, r.AiDetectNpu, r.AiSegmentNpu, r.AiUpscaleNpu, r.AiDepthNpu, r.AiSoundNpu];
-        var npuGroup = Group("NPU", r.AiNpuScore, Models(npu).ToArray());
-        npuGroup.Rows.Insert(0, Row("Runtime", r.AiNpuRuntime ?? "none ran"));
-        return new DetailSection
+        var section = new DetailSection
         {
             Key = "ai", Title = "AI", Score = r.AiScore,
-            Groups = { Group("CPU", r.AiCpuScore, Models(cpu).ToArray()), Group("GPU", r.AiGpuScore, Models(gpu).ToArray()), npuGroup }
+            Groups = { Group("CPU", r.AiCpuScore, Models(cpu).ToArray()), Group("GPU", r.AiGpuScore, Models(gpu).ToArray()) }
         };
+        // version 4 scored the NPU as a third; version 5 doesn't run it
+        if (r.BenchmarkVersion < 5)
+        {
+            double[] npu = [r.AiClassifyNpu, r.AiDetectNpu, r.AiSegmentNpu, r.AiUpscaleNpu, r.AiDepthNpu, r.AiSoundNpu];
+            var npuGroup = Group("NPU", r.AiNpuScore, Models(npu).ToArray());
+            npuGroup.Rows.Insert(0, Row("Runtime", r.AiNpuRuntime ?? "none ran"));
+            section.Groups.Add(npuGroup);
+        }
+        return section;
 
         static IEnumerable<DetailRow> Models(double[] ips) => ips.Select((v, i) => Row(AiModels[i], Rate(v, "inferences/s"), Pos(v)));
     }

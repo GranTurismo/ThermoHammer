@@ -338,10 +338,10 @@ public static class BenchmarkScoring
     public const double MaxFps = 5000;
 
     // AI references: inferences/s worth 6000 points per model (classify, detect, segment, upscale, depth, sound)
-    // and accelerator (GPU through LiteRT's OpenGL backend, NPU through Qualcomm QNN).
+    // and accelerator (GPU through LiteRT's OpenGL backend). Version 5 doesn't score the NPU (no NPU runtime reaches
+    // every device): its fields stay in the payload, always 0 from the apps.
     public static readonly double[] RefAiCpu = [543.6, 28.67, 7.73, 4.59, 64.5, 3968];
     public static readonly double[] RefAiGpu = [280.7, 36.7, 16.6, 38.8, 74.2, 582];
-    public static readonly double[] RefAiNpu = [1726, 485, 214.6, 689.3, 986, 2154];
 
     // MEM references, 6000 points each
     public const double RefMemRead = 63.5, RefMemWrite = 28.3, RefMemCopy = 19.7, RefMemLatency = 134;  // GB/s, ns
@@ -437,9 +437,9 @@ public static class BenchmarkScoring
     public static int AiAccel(double[] ips, double[] refs) => (int)Math.Round(
         ips.Select((v, i) => 6000 * Math.Max(v, 0) / refs[i]).Sum() / refs.Length, MidpointRounding.AwayFromZero);
 
-    /// <summary>Each accelerator a third; a missing one scores 0 there — AiScore.overall in the app.</summary>
-    public static int Ai(int cpu, int gpu, int npu) =>
-        (int)Math.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0) + Math.Max(npu, 0)) / 3.0, MidpointRounding.AwayFromZero);
+    /// <summary>Version 5: the CPU and the GPU each half; a missing one scores 0 there — AiScore.overall in the app.</summary>
+    public static int Ai(int cpu, int gpu) =>
+        (int)Math.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0, MidpointRounding.AwayFromZero);
 
     public static double[] AiIps(BenchmarkRequest r, int accel) => accel switch
     {
@@ -596,8 +596,8 @@ public static class BenchmarkScoring
         int qrScore = QrPoints(r.QrRate);
         int ux = UxWithExport(Ux(webScore, scrollScore, galleryScore, photoScore, videoScore, qrScore), exportScore);
         int cpu = Cpu(r.CpuMath, r.CpuData, r.CpuCrypto, r.CpuMulti);
-        int aiCpu = AiAccel(AiIps(r, 0), RefAiCpu), aiGpu = AiAccel(AiIps(r, 1), RefAiGpu), aiNpu = AiAccel(AiIps(r, 2), RefAiNpu);
-        int ai = Ai(aiCpu, aiGpu, aiNpu);
+        int aiCpu = AiAccel(AiIps(r, 0), RefAiCpu), aiGpu = AiAccel(AiIps(r, 1), RefAiGpu);
+        int ai = Ai(aiCpu, aiGpu);
         int ramScore = RamPoints(r.MemRead, r.MemWrite, r.MemCopy, r.MemLatency);
         int storageScore = StoragePoints(r.StorageSeqRead, r.StorageSeqWrite, r.StorageRandomRead, r.StorageRandomWrite);
         int dbScore = DbPoints(r.DbInsert, r.DbUpdate, r.DbQuery);
@@ -697,7 +697,7 @@ public static class BenchmarkScoring
             AiNpuRuntime = Clip(r.AiNpuRuntime),
             AiCpuScore = aiCpu,
             AiGpuScore = aiGpu,
-            AiNpuScore = aiNpu,
+            AiNpuScore = 0,                       // never scored in version 5
             AiScore = ai,
             MemRead = r.MemRead,
             MemWrite = r.MemWrite,
@@ -760,7 +760,6 @@ public static class BenchmarkScoring
         ["ux.qr"] = r.QrScore,
         ["ai.cpu"] = r.AiCpuScore,
         ["ai.gpu"] = r.AiGpuScore,
-        ["ai.npu"] = r.AiNpuScore,
         ["llm.cpu"] = r.LlmCpuScore,
         ["llm.gpu"] = r.LlmGpuScore,
     };
