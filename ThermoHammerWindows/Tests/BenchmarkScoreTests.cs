@@ -85,6 +85,18 @@ public class BenchmarkScoreTests
     }
 
     [Fact]
+    public void AI_counts_the_CPU_and_the_GPU_half_each_and_never_the_NPU()
+    {
+        AiResult Result(bool npu, bool gpu = true) => new(AiTests.All.SelectMany(t => AiTests.Accels
+            .Where(a => a != AiAccel.Npu || npu)
+            .Select(a => new AiRun(t, a, a == AiAccel.Gpu && !gpu ? 0 : AiScore.Ref(t, a)))).ToList(), npu ? "QNN" : null);
+        Assert.Equal(6000, Result(npu: true).Score);
+        Assert.Equal(6000, Result(npu: false).Score);              // no NPU: nothing lost
+        Assert.Equal(3000, Result(npu: false, gpu: false).Score);  // no GPU: its half
+        Assert.Equal([AiAccel.Cpu, AiAccel.Gpu], AiTests.Scored);
+    }
+
+    [Fact]
     public void A_saved_run_is_scored_by_the_same_rule()
     {
         var r = Fixtures.Result();

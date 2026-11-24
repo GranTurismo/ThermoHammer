@@ -222,15 +222,15 @@ public sealed class BenchmarkResultView : Grid
     {
         var missing = Ramp.At(0.85);
         // the phones run INT8 everywhere; here the CPU runs the INT8 models and the GPU (DirectML) their float16 conversion — each row says which
-        yield return Card("AI · 6 MODELS · INT8 / FP16", "CPU · GPU · NPU", ai.Score, BenchColor.Ai,
-            Metrics(AiTests.Accels.Select(a => { int pts = ai.AccelScore(a); return Metric($"{a.Label()} {a.Precision()} POINTS", pts > 0 ? pts.ToString("N0") : "—", pts > 0 ? Forge.Ink0 : missing); }).ToArray()),
+        yield return Card("AI · 6 MODELS · INT8 / FP16", "CPU · GPU", ai.Score, BenchColor.Ai,
+            Metrics(AiTests.Scored.Select(a => { int pts = ai.AccelScore(a); return Metric($"{a.Label()} {a.Precision()} POINTS", pts > 0 ? pts.ToString("N0") : "—", pts > 0 ? Forge.Ink0 : missing); }).ToArray()),
             Note("The CPU runs the 8-bit (INT8) models; the GPU runs the same models as float16 through DirectML, with the weights dequantized — as the phones' GPU delegates do."),
-            Note(!string.IsNullOrEmpty(ai.NpuRuntime) ? $"NPU: {ai.NpuRuntime}. CPU, GPU and NPU count a third each." : $"NPU: {ai.NpuProblem ?? "not available"} — 0 points there."));
+            Note("The CPU and the GPU count half each. The NPU isn't scored: no NPU runtime reaches every device."));
         foreach (var t in AiTests.All)
         {
             var col = Ui.VStack(8,
                 Ui.VStack(2, Ui.Text($"AI TEST {t.Number()}", 9, BenchColor.Ai, Forge.W.Bold), Ui.Text(t.Title(), 13, Forge.Ink0, Forge.W.Black), Ui.Text(t.Model(), 8, Forge.Ink2)),
-                Metrics(AiTests.Accels.Select(a =>
+                Metrics(AiTests.Scored.Select(a =>
                 {
                     double ips = ai.Ips(t, a);
                     return Metric($"{a.Label()} {a.Precision()} INF/S", ips > 0 ? (ips < 100 ? ips.F(1) : ips.N0()) : "—", ips > 0 ? Forge.Ink0 : missing);

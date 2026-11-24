@@ -311,7 +311,10 @@ public enum AiTest { Classify = 1, Detect, Segment, Upscale, Depth, Sound }
 public static class AiTests
 {
     public static readonly AiTest[] All = [AiTest.Classify, AiTest.Detect, AiTest.Segment, AiTest.Upscale, AiTest.Depth, AiTest.Sound];
+    /// <summary>The payload's and the record's layout: each model's rate on the CPU, the GPU and the NPU (always 0 here).</summary>
     public static readonly AiAccel[] Accels = [AiAccel.Cpu, AiAccel.Gpu, AiAccel.Npu];
+    /// <summary>What runs and counts in version 5: the CPU and the GPU. The NPU isn't scored on any platform (no NPU runtime reaches every device).</summary>
+    public static readonly AiAccel[] Scored = [AiAccel.Cpu, AiAccel.Gpu];
     public static string Label(this AiAccel a) => a switch { AiAccel.Cpu => "CPU", AiAccel.Gpu => "GPU", _ => "NPU" };
     /// <summary>What the models run in on this accelerator (AiSection's labels): the phones run INT8 everywhere, the PC's CPU and NPU the
     /// INT8 (QDQ) model, its GPU (DirectML) the same model as float16 with the weights dequantized.</summary>
@@ -325,7 +328,8 @@ public sealed record AiResult(List<AiRun> Runs, string? NpuRuntime, string? NpuP
 {
     public double Ips(AiTest t, AiAccel a) => Runs.FirstOrDefault(r => r.Test == t && r.Accel == a)?.Ips ?? 0;
     public int AccelScore(AiAccel a) => AiScore.Accel(a, AiTests.All.Select(t => Ips(t, a)).ToArray());
-    public int Score => AiScore.Overall(AccelScore(AiAccel.Cpu), AccelScore(AiAccel.Gpu), AccelScore(AiAccel.Npu));
+    /// <summary>Version 5: the CPU and the GPU, half each.</summary>
+    public int Score => AiScore.Overall(AccelScore(AiAccel.Cpu), AccelScore(AiAccel.Gpu));
 }
 
 public static class AiScore
@@ -337,7 +341,8 @@ public static class AiScore
     public static double Ref(AiTest t, AiAccel a) => (a switch { AiAccel.Cpu => RefCpu, AiAccel.Gpu => RefGpu, _ => RefNpu })[(int)t - 1];
     public static int Accel(AiAccel a, double[] ips) =>
         BenchmarkScore.Round(AiTests.All.Select((t, i) => 6000 * Math.Max(ips[i], 0) / Ref(t, a)).Sum() / AiTests.All.Length);
-    public static int Overall(int cpu, int gpu, int npu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0) + Math.Max(npu, 0)) / 3.0);
+    /// <summary>The CPU and the GPU each half; one that can't run the models scores 0 there.</summary>
+    public static int Overall(int cpu, int gpu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0);
 }
 
 // ── LLM ──

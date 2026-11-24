@@ -26,9 +26,8 @@ public sealed class AiSection : IBenchmarkSection
         var bench = new AiBench();
         var inputs = new AiInputs();
         var crashed = CrashedAccels();
-        // the NPU first: it may have to download its runtime, which the stage says while it waits
-        string? npuProblem = AiBench.PrepareNpu(msg => engine.PublishAi(AiTests.All[0], AiAccel.Npu, 0, -1, msg));
-        if (!engine.IsActive) return;
+        // version 5 doesn't score the NPU: it isn't prepared (no runtime download) and its rows don't run
+        const string npuProblem = "not part of the benchmark";
         var runs = new List<AiRun>();
         var announced = new HashSet<AiAccel>();
         foreach (var test in AiTests.All)
@@ -39,9 +38,9 @@ public sealed class AiSection : IBenchmarkSection
             engine.PublishAiVisual(new AiVisual(test, picture));
             long decodedAt = 0;
             byte[][]? cpuOutputs = null;        // this model's answer on the CPU: what the GPU's and the NPU's have to be
-            for (int k = 0; k < AiTests.Accels.Length; k++)
+            for (int k = 0; k < AiTests.Scored.Length; k++)
             {
-                var accel = AiTests.Accels[k];
+                var accel = AiTests.Scored[k];
                 if (!engine.IsActive) return;
                 string? skip = crashed.Contains(accel) ? CrashGuard.Reason : accel == AiAccel.Npu ? npuProblem : null;
                 if (skip != null)
@@ -93,7 +92,7 @@ public sealed class AiSection : IBenchmarkSection
                 if (left > 0) { engine.PublishAi(test, null, 1, -1, test.Model().ToUpperInvariant()); Thread.Sleep(TimeSpan.FromSeconds(left)); }
             }
         }
-        r.Ai = new AiResult(FallbackChecked(runs), npuProblem == null ? AiBench.NpuRuntime : null, npuProblem);
+        r.Ai = new AiResult(FallbackChecked(runs), null, npuProblem);
         engine.PublishAi(null, null, 0, -1, "");
     }
 

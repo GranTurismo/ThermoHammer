@@ -153,7 +153,7 @@ public sealed partial record BenchmarkRecord
         ], UxScore.ExportPoints(export));
         double Ips(int test, int accel) => Ai.Length == 18 ? Ai[test * 3 + accel] : 0;
         int AccelScore(AiAccel a) => AiScore.Accel(a, AiTests.All.Select((_, i) => Ips(i, (int)a)).ToArray());
-        int ai = AiScore.Overall(AccelScore(AiAccel.Cpu), AccelScore(AiAccel.Gpu), AccelScore(AiAccel.Npu));
+        int ai = AiScore.Overall(AccelScore(AiAccel.Cpu), AccelScore(AiAccel.Gpu));
         var l = Llm ?? new LlmRecord();
         // rule B: each engine against its own reference, a third each; the NPU's third is 0 on Windows (no engine there yet)
         int llm = LlmScore.Overall(LlmScore.Engine(LlmAccel.Cpu, l.PrefillCpu, l.DecodeCpu), LlmScore.Engine(LlmAccel.Gpu, l.PrefillGpu, l.DecodeGpu));

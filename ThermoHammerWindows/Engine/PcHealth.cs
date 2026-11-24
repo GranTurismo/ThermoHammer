@@ -41,13 +41,13 @@ public static class PcHealth
             p["ux.web"] = u.WebPoints; p["ux.scroll"] = u.ScrollPoints; p["ux.gallery"] = u.GalleryPoints;
             p["ux.photo"] = u.PhotoPoints; p["ux.video"] = u.VideoPoints; p["ux.export"] = u.ExportPoints; p["ux.qr"] = u.QrPoints;
         }
-        if (r.Ai is { } a) { p["ai.cpu"] = a.AccelScore(AiAccel.Cpu); p["ai.gpu"] = a.AccelScore(AiAccel.Gpu); p["ai.npu"] = a.AccelScore(AiAccel.Npu); }
+        if (r.Ai is { } a) { p["ai.cpu"] = a.AccelScore(AiAccel.Cpu); p["ai.gpu"] = a.AccelScore(AiAccel.Gpu); }
         // version 5: each engine's points (rule B) — the server's BenchmarkScoring.Parts names them the same
         if (r.Llm is { } l) { p["llm.cpu"] = l.Points(LlmAccel.Cpu); p["llm.gpu"] = l.Points(LlmAccel.Gpu); }
         return p;
     }
 
-    private enum Cause { Heat, Busy, Storage, Web, Video, Export, Npu, Llm }
+    private enum Cause { Heat, Busy, Storage, Web, Video, Export, Llm }
 
     private static string Text(Cause c, int pct) => c switch
     {
@@ -57,7 +57,6 @@ public static class PcHealth
         Cause.Web => $"The browser tests ran {pct}% below other units — Edge's WebView2 engine updates itself; check that it's current.",
         Cause.Video => $"Video decoding ran {pct}% below other units — a codec ran in software (the graphics driver or a codec extension is missing).",
         Cause.Export => $"Video export ran {pct}% below other units — the encoder was slower or its output worse. Heat or a driver update can do that.",
-        Cause.Npu => $"The NPU ran {pct}% below other units — it didn't take the models the way theirs did.",
         _ => $"The language model ran {pct}% below other units — usually less free memory or apps in the background.",
     };
 
@@ -67,7 +66,6 @@ public static class PcHealth
         : part is "ux.web" or "ux.scroll" or "ux.gallery" ? Cause.Web
         : part == "ux.video" ? Cause.Video
         : part == "ux.export" ? Cause.Export
-        : part == "ai.npu" ? Cause.Npu
         : part.StartsWith("llm.") ? Cause.Llm
         : Cause.Busy;
 

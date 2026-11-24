@@ -233,10 +233,10 @@ public static class BenchmarkReport
         }
         if (r.Ai is { } ai)
         {
-            Line($"AI · {Pts(ai.Score)} pts = CPU {Pts(ai.AccelScore(AiAccel.Cpu))} · GPU {Pts(ai.AccelScore(AiAccel.Gpu))} · NPU {Pts(ai.AccelScore(AiAccel.Npu))} · NPU " + (ai.NpuRuntime ?? $"not run: {ai.NpuProblem ?? "?"}"));
+            Line($"AI · {Pts(ai.Score)} pts = CPU {Pts(ai.AccelScore(AiAccel.Cpu))} · GPU {Pts(ai.AccelScore(AiAccel.Gpu))} (each half)");
             foreach (var t in AiTests.All)
             {
-                var parts = AiTests.Accels.Select(a =>
+                var parts = AiTests.Scored.Select(a =>
                 {
                     var run = ai.Runs.FirstOrDefault(x => x.Test == t && x.Accel == a);
                     double ips = run?.Ips ?? 0;

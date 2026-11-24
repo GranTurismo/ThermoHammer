@@ -56,10 +56,9 @@ public static class BenchmarkInfoCard
                 _ => "32 camera frames · zxing-cpp scored",
             }, $"{t.Seconds()}s"));
         foreach (var t in AiTests.All)
-            col.Children.Add(Row($"A{t.Number()}", BenchColor.Ai, t.Title(), $"{t.Model()} · CPU, GPU and NPU", $"{t.Seconds()}s"));
-        col.Children.Add(Ui.Text("AI runs the phones' 8-bit models through ONNX Runtime: INT8 on the CPU, float16 on the GPU through DirectML. " +
-            (AiBench.NpuProblem is { } npu ? $"The NPU scores 0 here: {npu}."
-                : "The NPU counts where this PC has one its runtime supports; elsewhere it scores 0."), 8, Forge.Ink2, wrap: true));
+            col.Children.Add(Row($"A{t.Number()}", BenchColor.Ai, t.Title(), $"{t.Model()} · CPU and GPU", $"{t.Seconds()}s"));
+        col.Children.Add(Ui.Text("AI runs the phones' 8-bit models through ONNX Runtime: INT8 on the CPU, float16 on the GPU through DirectML, " +
+            "half each. The NPU isn't scored: no NPU runtime reaches every device.", 8, Forge.Ink2, wrap: true));
         foreach (var a in LlmAccels.All)
             col.Children.Add(Row($"L{(int)a + 1}", BenchColor.Llm, $"LLM · {a.Label()}", a == LlmAccel.Cpu
                 ? "Gemma 3 1B, 4-bit · a 512-token prompt, then the reply token by token"

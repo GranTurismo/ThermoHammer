@@ -123,9 +123,9 @@ public static class RunCsv
         }
         if (r.Ai is { } ai)
         {
-            foreach (var a in AiTests.Accels) Pts("ai", $"{Key(a.ToString())}_points", ai.AccelScore(a));
+            foreach (var a in AiTests.Scored) Pts("ai", $"{Key(a.ToString())}_points", ai.AccelScore(a));
             foreach (var t in AiTests.All)
-                foreach (var a in AiTests.Accels)
+                foreach (var a in AiTests.Scored)
                     Row("ai", $"{Key(t.ToString())}_{Key(a.ToString())}", ai.Ips(t, a), "inferences/s");
         }
         if (r.Llm is { } llm)
