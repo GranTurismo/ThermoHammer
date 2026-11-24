@@ -36,7 +36,7 @@ public static class AppTelemetry
     private static bool IsAutomatedRun() =>
         App.AutoBenchmark || App.AutoStress ||
         App.Flag("--screenshot") || App.Flag("--gpuTest") || App.Flag("--uxTest") ||
-        App.Flag("--aiTest") || App.Flag("--llmTest") || App.Flag("--headlessBenchmark");
+        App.Flag("--aiTest") || App.Flag("--headlessBenchmark");
 
     private static string Clip(string? value, int maxLen = 100)
     {

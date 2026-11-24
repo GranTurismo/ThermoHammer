@@ -3,16 +3,16 @@ using System.Text.RegularExpressions;
 namespace ThermoHammer.Tests;
 
 /// <summary>
-/// Every function the app imports from its own DLLs (benchcore, benchllm) is in that DLL's export list (native/*.def).
+/// Every function the app imports from its own DLL (benchcore) is in that DLL's export list (native/benchcore.def).
 /// One that isn't compiles and packages fine and then throws EntryPointNotFoundException on a PC: 2.0.4 shipped with
-/// bc_llm_tune_threads_progress missing, which ended every benchmark at the LLM test with an error.
+/// a function missing from the LLM test's DLL, which ended every benchmark at that test with an error.
 /// </summary>
 public class NativeExportsTests
 {
     private static string AppFolder()
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
-            if (File.Exists(Path.Combine(d.FullName, "native", "benchllm.def")) && File.Exists(Path.Combine(d.FullName, "ThermoHammer.csproj")))
+            if (File.Exists(Path.Combine(d.FullName, "native", "benchcore.def")) && File.Exists(Path.Combine(d.FullName, "ThermoHammer.csproj")))
                 return d.FullName;
         throw new InvalidOperationException("ThermoHammerWindows not found above " + AppContext.BaseDirectory);
     }
@@ -47,11 +47,10 @@ public class NativeExportsTests
         return found;
     }
 
-    [Theory]
-    [InlineData("benchcore")]
-    [InlineData("benchllm")]
-    public void Every_function_the_app_imports_is_exported_by_the_DLL(string dll)
+    [Fact]
+    public void Every_function_the_app_imports_is_exported_by_the_DLL()
     {
+        const string dll = "benchcore";
         string app = AppFolder();
         var imports = Imports(app, dll);
         Assert.True(imports.Count >= 10, $"only {imports.Count} imports of {dll} found: the scan is broken");
@@ -60,11 +59,12 @@ public class NativeExportsTests
         Assert.True(missing.Length == 0, $"not in native/{dll}.def: {string.Join(", ", missing)}");
     }
 
+    /// <summary>The LLM test and its DLL are gone (scoring version 5): nothing may still import from benchllm, which the packages no longer carry.</summary>
     [Fact]
-    public void The_thread_tuning_with_progress_is_found_and_exported()
+    public void Nothing_imports_from_the_removed_LLM_DLL()
     {
         string app = AppFolder();
-        Assert.Contains("bc_llm_tune_threads_progress", Imports(app, "benchllm").Keys);
-        Assert.Contains("bc_llm_tune_threads_progress", Exports(app, "benchllm"));
+        Assert.Empty(Imports(app, "benchllm"));
+        Assert.False(File.Exists(Path.Combine(app, "native", "benchllm.def")));
     }
 }

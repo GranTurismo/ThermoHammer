@@ -52,7 +52,7 @@ public sealed record ComparedSection(string Key, string Title, int? ScoreA, int?
     /// <summary>Each side's score as a share of the larger one: what the bars and the radar draw.</summary>
     public double ShareA => BenchmarkComparison.Share(ScoreA, ScoreB);
     public double ShareB => BenchmarkComparison.Share(ScoreB, ScoreA);
-    public string Short => Key switch { "cpu" => "CPU", "mem" => "MEM", "gpu" => "GPU", "ux" => "UX", "ai" => "AI", "llm" => "LLM", _ => Title };
+    public string Short => Key switch { "cpu" => "CPU", "mem" => "MEM", "gpu" => "GPU", "ux" => "UX", "ai" => "AI", _ => Title };
 }
 
 /// <summary>
@@ -97,7 +97,7 @@ public sealed class BenchmarkComparison
         _ => "Neither run has a total score",
     };
 
-    /// <summary>How the sections went, from the side of whoever leads, e.g. "Ahead in 4 of 6 sections · 1 even".</summary>
+    /// <summary>How the sections went, from the side of whoever leads, e.g. "Ahead in 3 of 5 sections · 1 even".</summary>
     public string SectionsLine()
     {
         int counted = Sections.Count(s => s.Duel.Winner != Lead.None);

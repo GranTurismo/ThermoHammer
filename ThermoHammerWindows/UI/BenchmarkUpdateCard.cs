@@ -95,7 +95,7 @@ public sealed class BenchmarkUpdateCard : Grid
 
     private static string Date(DateTime t) => t.ToString("d MMM", CultureInfo.InvariantCulture).ToUpperInvariant();
 
-    /// <summary>Three columns of equal width (CPU MEM GPU / UX AI LLM).</summary>
+    /// <summary>Three columns of equal width (CPU MEM GPU / UX AI).</summary>
     private sealed class UniformGrid3 : System.Windows.Controls.Primitives.UniformGrid
     {
         public UniformGrid3() { Columns = 3; }

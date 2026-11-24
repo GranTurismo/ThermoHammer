@@ -21,8 +21,7 @@ public sealed class MediaDevice : IDisposable
 
     /// <summary>
     /// The adapter every GPU-bound test of the benchmark runs on: the hardware one with the most video memory (a laptop's
-    /// discrete GPU over its integrated one) — GpuBench picks by the same rule, and the LLM test steers llama.cpp's Vulkan
-    /// backend to it (LlmGpuChoice). The caller disposes it; null when there is none.
+    /// discrete GPU over its integrated one) — GpuBench picks by the same rule. The caller disposes it; null when there is none.
     /// </summary>
     public static IDXGIAdapter1? BestAdapter(IDXGIFactory1 factory)
     {

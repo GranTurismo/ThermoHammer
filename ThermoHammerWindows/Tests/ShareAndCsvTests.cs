@@ -108,16 +108,12 @@ public class RunCsvTests
             Assert.Contains("ux,video_av1_8k,0,fps", lines);
             Assert.Contains("ux,export_hevc_8k_psnr,29.75,dB", lines);
             Assert.DoesNotContain(lines, l => l.StartsWith("ai,classify_npu,") || l.StartsWith("ai,npu_points,"));   // the NPU isn't scored
-            Assert.Contains("llm,gpu_decode,40.5,tokens/s", lines);
-            // version 5: each scored engine's points (the NPU isn't scored: no row)
-            Assert.Contains($"llm,cpu_points,{r.Llm!.Points(LlmAccel.Cpu)},points", lines);
-            Assert.Contains($"llm,gpu_points,{r.Llm.Points(LlmAccel.Gpu)},points", lines);
-            Assert.DoesNotContain(lines, l => l.StartsWith("llm,npu_points,"));
+            Assert.DoesNotContain(lines, l => l.StartsWith("llm,"));                                                   // no LLM test in version 5
             var scores = lines.Where(l => l.StartsWith("score,")).ToList();
-            Assert.Equal(["cpu", "mem", "gpu", "ux", "ai", "llm", "total"], scores.Select(l => l.Split(',')[1]));
+            Assert.Equal(["cpu", "mem", "gpu", "ux", "ai", "total"], scores.Select(l => l.Split(',')[1]));
             Assert.Equal($"score,cpu,{r.CpuScore},points", scores[0]);
             Assert.Equal($"score,total,{r.Total},points", scores[^1]);
-            Assert.Equal(lines.Length - 7, Array.IndexOf(lines, scores[0]));   // the scores close the file
+            Assert.Equal(lines.Length - 6, Array.IndexOf(lines, scores[0]));   // the scores close the file
         }
         finally { CultureInfo.CurrentCulture = keep; }
     }
@@ -198,6 +194,20 @@ public class SavedDataTests
         Assert.Null(list[0].ServerId);
         Assert.Null(list[0].OsBuild);
         Assert.Null(list[0].DeviceModel);
+    }
+
+    /// <summary>A 2.1 run still carries its LLM test's numbers: they're ignored, and the run's sections are the five of today.</summary>
+    [Fact]
+    public void A_record_with_the_old_LLM_test_still_loads()
+    {
+        var r = Fixtures.Record("11 24H2", "26100.1", DateTime.Now);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(r, Json))!.AsObject();
+        node["llm"] = System.Text.Json.Nodes.JsonNode.Parse("""{"prefillCpu":300.5,"decodeCpu":15.25,"prefillGpu":900.75,"decodeGpu":40.5,"gpu":"Test GPU","freeGb":12.5}""");
+        var back = JsonSerializer.Deserialize<BenchmarkRecord>(node.ToJsonString(), Json)!;
+        Assert.Equal(r.Id, back.Id);
+        Assert.Equal(r.Sections(), back.Sections());
+        Assert.Equal(r.Score, back.Sections().Total);
+        Assert.DoesNotContain("\"llm\"", JsonSerializer.Serialize(back, Json));
     }
 
     [Fact]

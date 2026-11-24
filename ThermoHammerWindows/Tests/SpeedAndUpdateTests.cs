@@ -125,14 +125,13 @@ public class BenchmarkRecordTests
     }
 
     [Fact]
-    public void A_run_without_ray_tracing_or_an_llm()
+    public void A_run_without_ray_tracing()
     {
         var r = Fixtures.Result();
         r.Gpu[2] = GpuTestResult.Unsupported(GpuTest.NeonCityRT);
-        r.Llm = null;
         var rec = BenchmarkRecord.From(r, null, null, null);
         Assert.Equal(SectionScores.Of(r), rec.Sections());
-        Assert.Equal(0, rec.Sections().Llm);
+        Assert.Equal(BenchmarkScore.Overall(r.Gpu), rec.Sections().Gpu);
     }
 }
 
@@ -194,7 +193,7 @@ public class BenchmarkUpdateImpactTests
         double expected = ((double)h[^1].Score / h[0].Score - 1) * 100;
         Assert.Equal(expected, c.DeltaPct, 6);
         Assert.Equal($"{BenchmarkUpdateImpact.Pct(-expected)}% slower than before the update", c.Text);
-        Assert.Equal(["cpu", "mem", "gpu", "ux", "ai", "llm"], c.Sections.Select(s => s.Key));
+        Assert.Equal(["cpu", "mem", "gpu", "ux", "ai"], c.Sections.Select(s => s.Key));
         Assert.True(c.Sections[0].DeltaPct < -40);
         Assert.All(c.Sections.Skip(1), s => Assert.Equal(0, s.DeltaPct, 6));
         Assert.Equal("result:11 24H2|26100.1->11 24H2|26100.2", c.DismissKey);

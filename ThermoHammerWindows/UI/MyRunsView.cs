@@ -9,7 +9,7 @@ using ThermoHammer.Engine;
 namespace ThermoHammer.UI;
 
 /// <summary>
-/// MY RUNS — every benchmark run kept on this PC, newest first (Android's MyRunsOverlay): the score over time, each run's six
+/// MY RUNS — every benchmark run kept on this PC, newest first (Android's MyRunsOverlay): the score over time, each run's five
 /// sections, and a submit for a verified run that hasn't been sent. It reads and writes the history itself, so the home card and the
 /// leaderboard open it the same way; Esc, ✕ or a click beside the card closes it.
 /// </summary>
@@ -206,13 +206,13 @@ public sealed class MyRunsView : Grid, IDisposable
         return b;
     }
 
-    /// <summary>The six section scores, two rows of three, each in its section's colour.</summary>
+    /// <summary>The five section scores, three above two, each in its section's colour.</summary>
     private static FrameworkElement Sections(SectionScores s)
     {
         (string label, int score, Color color)[] cells =
         [
             ("CPU", s.Cpu, BenchColor.Cpu), ("MEM", s.Mem, BenchColor.Mem), ("GPU", s.Gpu, Forge.PhaseCalibration),
-            ("UX", s.Ux, Forge.PhaseMeasured), ("AI", s.Ai, BenchColor.Ai), ("LLM", s.Llm, BenchColor.Llm),
+            ("UX", s.Ux, Forge.PhaseMeasured), ("AI", s.Ai, BenchColor.Ai),
         ];
         var col = Ui.VStack(6);
         foreach (var line in cells.Chunk(3))

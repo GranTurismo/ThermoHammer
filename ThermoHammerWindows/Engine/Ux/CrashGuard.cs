@@ -3,8 +3,8 @@ using System.Diagnostics;
 namespace ThermoHammer.Engine;
 
 /// <summary>
-/// The "running" markers of the tests whose native code can take the whole app down (ONNX Runtime and DirectML, llama.cpp and the
-/// Vulkan driver under it, Media Foundation's codecs): a crash can't be caught, so a test leaves a marker while one of its runs is in
+/// The "running" markers of the tests whose native code can take the whole app down (ONNX Runtime and DirectML, Media Foundation's
+/// codecs): a crash can't be caught, so a test leaves a marker while one of its runs is in
 /// flight, and a marker found at the next launch means the app went down there. The iOS app's rules:
 ///   · the marker is cleared when the run ends, and when the process exits normally (the window closed, Environment.Exit) —
 ///     only a process that died inside the run (a crash, Task Manager, a power cut) leaves one behind;
@@ -32,7 +32,7 @@ internal sealed class CrashGuard
     private readonly string runningKey, crashedKey;
     private bool marked;
 
-    /// <summary>`name`: "ai", "llm", "video", "export" — the settings keys are benchmark.{name}Running and benchmark.{name}Crashed.</summary>
+    /// <summary>`name`: "ai", "video", "export" — the settings keys are benchmark.{name}Running and benchmark.{name}Crashed.</summary>
     public CrashGuard(string name)
     {
         runningKey = $"benchmark.{name}Running";

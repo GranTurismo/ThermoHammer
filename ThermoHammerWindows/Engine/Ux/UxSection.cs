@@ -5,7 +5,7 @@ namespace ThermoHammer.Engine.Ux;
 /// <summary>The UX tests in order: web browsing, web scrolling, photo gallery, photo editing, video playback, video export, QR scanning.</summary>
 public sealed class UxSection : IBenchmarkSection
 {
-    private const double NoticeS = 3;      // how long "not run" stays up when a test can't run on this PC (the LLM test's number)
+    private const double NoticeS = 3;      // how long "not run" stays up when a test can't run on this PC
 
     public void Run(BenchmarkEngine engine, BenchmarkResult r)
     {

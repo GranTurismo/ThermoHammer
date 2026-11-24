@@ -5,17 +5,14 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ThermoHammer.Engine;
 using ThermoHammer.Engine.Ai;
-using ThermoHammer.Engine.Llm;
 
 namespace ThermoHammer.UI;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI STAGE — what each model saw and what it made of it, while it is timed on
-// the CPU, the GPU and the NPU: classes with confidence bars, detection boxes,
+// the CPU and the GPU: classes with confidence bars, detection boxes,
 // the street's class map, the ×4 upscale beside its pixelated input, the depth
 // map beside the photo, and what YAMNet heard in the spectrogram.
-// LLM STAGE — the context the model works on: the 512-token prompt lighting up
-// as each pass reads it in one batch, then the reply written token by token.
 // ─────────────────────────────────────────────────────────────────────────────
 
 public sealed class AiStageView : Instrument
@@ -118,101 +115,6 @@ public sealed class AiStageView : Instrument
             dc.DrawRoundedRectangle(Accent.WithAlpha(0.2).Brush(), null, new Rect(box.X + 10, y + 5, 90, 6), 3, 3);
             dc.DrawRoundedRectangle(Accent.Brush(), null, new Rect(box.X + 10, y + 5, 90 * Math.Clamp(rows[i].p, 0.02, 1), 6), 3, 3);
             dc.DrawText(rows[i].ft, new Point(box.X + 108, y));
-        }
-    }
-}
-
-/// <summary>The LLM test: the prompt's 512 tokens, the reply's 32 as chips of their ids.</summary>
-public sealed class LlmStageView : Instrument
-{
-    private const int PromptCols = 32, PromptRows = 16, ReplyCols = 8;
-    private static readonly Color Accent = BenchColor.Llm;
-    private LlmAccel accel = LlmAccel.Cpu;
-    private LlmPhase phase;
-    private int prompts;
-    private int[] reply = [];
-    private double sweepStart = double.NegativeInfinity;
-    protected override bool Animating => true;
-
-    public void Update(BenchmarkEngine engine)
-    {
-        accel = engine.LlmAccel ?? LlmAccel.Cpu;
-        phase = engine.LlmPhase;
-        if (engine.LlmPrompts != prompts) sweepStart = Time;
-        prompts = engine.LlmPrompts;
-        reply = engine.LlmReply;
-    }
-
-    protected override Size MeasureOverride(Size s) => new(Math.Min(double.IsInfinity(s.Width) ? 760 : s.Width, 760), double.IsInfinity(s.Height) ? 520 : Math.Min(s.Height, 600));
-
-    private static Color TokenColor(int id)
-    {
-        double h = id * 0.618034 % 1;
-        return Ramp.FromHsv(h, 0.5, 0.97);
-    }
-
-    protected override void OnRender(DrawingContext dc)
-    {
-        double w = ActualWidth, y = 0;
-        // the accelerators as chips
-        double x = 0;
-        foreach (var a in LlmAccels.All)
-        {
-            bool now = a == accel, done = a < accel;
-            var ft = Forge.Text((done ? "✓ " : "") + a.Label(), 9, now ? Accent : Forge.Ink2, Forge.W.Bold);
-            var r = new Rect(x, y, ft.WidthIncludingTrailingWhitespace + 20, 24);
-            dc.DrawRoundedRectangle(now ? Accent.WithAlpha(0.18).Brush() : Brushes.Transparent, (now ? Accent : Forge.Ink0.WithAlpha(0.12)).Pen(1), r, 8, 8);
-            dc.DrawText(ft, new Point(r.X + 10, r.Y + 5));
-            x += r.Width + 10;
-        }
-        y += 36;
-        dc.DrawText($"{LlmSection.Model} · 0.6 GB · 26 LAYERS", 9, Forge.Ink1, new Point(0, y), tracking: 1.5);
-        y += 22;
-        dc.DrawText("PROMPT · 512 TOKENS · ONE BATCH" + (prompts > 0 ? $" · ×{prompts}" : ""), 9, phase == LlmPhase.Prefill ? Accent : Forge.Ink2,
-            new Point(0, y), w: Forge.W.Bold, tracking: 1.5);
-        y += 18;
-        double gridH = Math.Min(w * PromptRows / PromptCols, ActualHeight - y - 150 - 70);
-        gridH = Math.Max(80, gridH);
-        double gridW = gridH * PromptCols / PromptRows;
-        PromptGrid(dc, new Rect(0, y, Math.Min(w, gridW), gridH));
-        y += gridH + 16;
-        dc.DrawText("REPLY · TOKEN BY TOKEN", 9, phase == LlmPhase.Decode ? Accent : Forge.Ink2, new Point(0, y), w: Forge.W.Bold, tracking: 1.5);
-        y += 18;
-        ReplyGrid(dc, new Rect(0, y, w, 120));
-        y += 134;
-        dc.DrawText("WEIGHTS FROM A SEED: THE WORDS ARE RANDOM, THE WORK IS THE REAL MODEL'S", 8, Forge.Ink2, new Point(0, y), tracking: 1.2);
-    }
-
-    /// <summary>The prompt's 512 tokens: dim until read; each prefill pass sweeps through them at once (one batch).</summary>
-    private void PromptGrid(DrawingContext dc, Rect r)
-    {
-        double sweep = Math.Min(1, (Time - sweepStart) / 0.52), gap = 2;
-        double cw = (r.Width - gap * (PromptCols - 1)) / PromptCols, ch = (r.Height - gap * (PromptRows - 1)) / PromptRows;
-        bool read = prompts > 0 || phase == LlmPhase.Decode;
-        double front = sweep * PromptCols * PromptRows;
-        for (int i = 0; i < PromptCols * PromptRows; i++)
-        {
-            var cell = new Rect(r.X + i % PromptCols * (cw + gap), r.Y + i / PromptCols * (ch + gap), cw, ch);
-            double alpha = !read ? 0.08 : phase == LlmPhase.Prefill && i < front && i > front - 64 ? 1 : 0.42;
-            dc.DrawRoundedRectangle(Accent.WithAlpha(alpha).Brush(), null, cell, Math.Min(cw, ch) * 0.2, Math.Min(cw, ch) * 0.2);
-        }
-    }
-
-    /// <summary>The reply so far: one chip per generated token, its id in its own colour.</summary>
-    private void ReplyGrid(DrawingContext dc, Rect r)
-    {
-        int rows = (LlmSection.Reply + ReplyCols - 1) / ReplyCols;
-        double gap = 4, cw = (r.Width - gap * (ReplyCols - 1)) / ReplyCols, ch = (r.Height - gap * (rows - 1)) / rows;
-        for (int k = 0; k < LlmSection.Reply; k++)
-        {
-            var cell = new Rect(r.X + k % ReplyCols * (cw + gap), r.Y + k / ReplyCols * (ch + gap), cw, ch);
-            if (k < reply.Length)
-            {
-                var c = TokenColor(reply[k]);
-                dc.DrawRoundedRectangle(c.WithAlpha(0.16).Brush(), c.WithAlpha(0.6).Pen(1), cell, 5, 5);
-                dc.DrawText(reply[k].ToString(), 9, c, new Point(cell.X + cell.Width / 2, cell.Y + cell.Height / 2), 0.5, 0.5, Forge.W.Bold);
-            }
-            else dc.DrawRoundedRectangle(Forge.Ink0.WithAlpha(0.04).Brush(), null, cell, 5, 5);
         }
     }
 }

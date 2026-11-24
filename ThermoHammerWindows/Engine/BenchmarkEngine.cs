@@ -4,7 +4,7 @@ namespace ThermoHammer.Engine;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK ENGINE — the run, in the phones' order: getting ready (cool and
-// quiet), then CPU → MEM → GPU → UX → AI → LLM. The work runs on its own thread;
+// quiet), then CPU → MEM → GPU → UX → AI. The work runs on its own thread;
 // the stage reads the published state (on the UI thread).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -48,14 +48,6 @@ public sealed class BenchmarkEngine
     public double AiRate { get; private set; } = -1;
     public string AiDetail { get; private set; } = "";
     public Ai.AiVisual? AiVisual { get; private set; }
-    /// <summary>The LLM test on the stage now: the accelerator (null when the section is over), its phase and live rate.</summary>
-    public LlmAccel? LlmAccel { get; private set; }
-    public LlmPhase LlmPhase { get; private set; }
-    public double LlmProgress { get; private set; }
-    public double LlmRate { get; private set; } = -1;
-    public string LlmDetail { get; private set; } = "";
-    public int[] LlmReply { get; private set; } = [];
-    public int LlmPrompts { get; private set; }
     /// <summary>The page the stage shows (the web tests), e.g. "bench.html"; null between pages.</summary>
     public string? WebPage { get; private set; }
     /// <summary>A decoded (or exported) frame now and then (UX 5–6), the player overlay (UX 5) and the export dialog (UX 6).</summary>
@@ -93,8 +85,8 @@ public sealed class BenchmarkEngine
     /// <summary>Raised on the UI thread whenever something on the stage changed.</summary>
     public event Action? Changed;
 
-    /// <summary>Sections after MEM, in run order (GPU, UX, AI, LLM) — added as the Windows port grows.</summary>
-    public List<IBenchmarkSection> LaterSections { get; } = [new Gpu.GpuSection(), new Ux.UxSection(), new Ai.AiSection(), new Llm.LlmSection()];
+    /// <summary>Sections after MEM, in run order (GPU, UX, AI).</summary>
+    public List<IBenchmarkSection> LaterSections { get; } = [new Gpu.GpuSection(), new Ux.UxSection(), new Ai.AiSection()];
 
     public const double CooldownMaxS = 30;
     public const float QuietShare = 0.85f;     // starts once it gets ≥ 85 % of the CPU…
@@ -102,7 +94,7 @@ public sealed class BenchmarkEngine
     public const double QuietPollS = 3, QuietMaxS = 60;
 
     private readonly Dispatcher? ui = System.Windows.Application.Current?.Dispatcher;   // null in the window-less checks (`--headlessBenchmark`)
-    /// <summary>Checks only: run just these sections (cpu, mem, gpu, ux, ai, llm), without the cool-down wait.</summary>
+    /// <summary>Checks only: run just these sections (cpu, mem, gpu, ux, ai), without the cool-down wait.</summary>
     public HashSet<string>? Only { get; set; }
     public bool HasBrowser => ui != null;
     private readonly object gate = new();
@@ -140,14 +132,6 @@ public sealed class BenchmarkEngine
     public void PublishVideoOsd(Ux.VideoOsd? osd) => Ui(() => VideoOsd = osd);
 
     public void PublishExportStage(Ux.ExportStage? stage) => Ui(() => ExportStage = stage);
-
-    /// <summary>The LLM test on the stage now: the accelerator (null when the section is over), its phase and live rate (worker thread).</summary>
-    public void PublishLlm(LlmAccel? accel, LlmPhase phase, double progress, double rate, string detail, int[]? reply = null, int prompts = 0)
-        => Ui(() =>
-        {
-            UxTest = null; AiTest = null; AiVisual = null;
-            LlmAccel = accel; LlmPhase = phase; LlmProgress = progress; LlmRate = rate; LlmDetail = detail; LlmReply = reply ?? []; LlmPrompts = prompts;
-        });
 
     /// <summary>The QR frame the scanner is on (worker thread).</summary>
     public void PublishQr(byte[] bgra, (float x, float y)[]? found) => Ui(() => { QrFrame = bgra; QrFound = found; });
@@ -342,7 +326,7 @@ public sealed class BenchmarkEngine
         Ui(() =>
         {
             Win32.SetThreadExecutionState(Win32.EsContinuous);   // the UI thread set it (the state is per thread)
-            CpuTest = null; MemTest = null; InBackground = false; GpuTest = null; GpuFrame = null; UxTest = null; QrFrame = null; QrFound = null; AiTest = null; AiAccel = null; AiVisual = null; LlmAccel = null;
+            CpuTest = null; MemTest = null; InBackground = false; GpuTest = null; GpuFrame = null; UxTest = null; QrFrame = null; QrFound = null; AiTest = null; AiAccel = null; AiVisual = null;
             VideoFrame = null; VideoOsd = null; ExportStage = null;
             Error = error;
             Result = r;

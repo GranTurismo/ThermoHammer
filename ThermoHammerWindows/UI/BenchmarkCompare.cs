@@ -11,7 +11,7 @@ namespace ThermoHammer.UI;
 
 /// <summary>
 /// Two leaderboard runs head to head — the phones' BenchmarkCompareOverlay: who leads overall and by how much, the shape of
-/// both across the six sections, every section as mirrored bars that open into each test's numbers (the better one lit in
+/// both across the five sections, every section as mirrored bars that open into each test's numbers (the better one lit in
 /// its side's colour), and the facts of both machines. The board opens it with both runs loaded.
 /// </summary>
 public static class BenchmarkCompareView
@@ -27,7 +27,6 @@ public static class BenchmarkCompareView
         "mem" => BenchColor.Mem,
         "gpu" => Forge.PhaseCalibration,
         "ai" => BenchColor.Ai,
-        "llm" => BenchColor.Llm,
         _ => Forge.PhaseMeasured,
     };
 

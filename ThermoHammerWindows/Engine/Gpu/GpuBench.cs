@@ -76,7 +76,7 @@ public sealed class GpuBench : IDisposable
     {
         using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
         // the adapter with the most video memory (a laptop's discrete GPU over its integrated one) — the same pick as the media
-        // tests, DirectML's and the LLM test's, so every section of the benchmark runs on the same GPU
+        // tests and DirectML's, so every section of the benchmark runs on the same GPU
         var best = Ux.MediaDevice.BestAdapter(factory);
         name = best?.Description1.Description.Trim() ?? "";
         if (best == null) throw new GpuError("no graphics adapter");

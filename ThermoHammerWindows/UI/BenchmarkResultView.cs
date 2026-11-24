@@ -33,8 +33,7 @@ public sealed class BenchmarkResultView : Grid
                 Section("MEM", result.MemScore, BenchColor.Mem, result.Mem != null),
                 Section("GPU", result.GpuScore, Forge.PhaseCalibration, result.Gpu.Count > 0),
                 Section("UX", result.UxScore, Forge.PhaseMeasured, result.Ux != null),
-                Section("AI", result.AiScore, BenchColor.Ai, result.Ai != null),
-                Section("LLM", result.LlmScore, BenchColor.Llm, result.Llm != null)),
+                Section("AI", result.AiScore, BenchColor.Ai, result.Ai != null)),
             Ui.Text($"{PcHealth.Name()} · {result.GpuName}", 10, Forge.Ink1, Forge.W.Bold, align: TextAlignment.Center));
         if (!result.IsComplete)
             col.Children.Add(Ui.Text(result.NotYet.Count > 0
@@ -48,7 +47,6 @@ public sealed class BenchmarkResultView : Grid
         foreach (var g in result.Gpu) col.Children.Add(GpuCard(g));
         if (result.Ux is { } ux) foreach (var c in UxCards(ux)) col.Children.Add(c);
         if (result.Ai is { } ai) foreach (var c in AiCards(ai)) col.Children.Add(c);
-        if (result.Llm is { } llm) col.Children.Add(LlmCard(llm));
         col.Children.Add(Buttons(onDismiss));
         var card = Ui.Box(col, Forge.Raised, 18, 18);
         card.MaxWidth = 620;
@@ -243,32 +241,6 @@ public sealed class BenchmarkResultView : Grid
             box.Padding = new Thickness(14, 12, 14, 12);
             yield return box;
         }
-    }
-
-    private static string TokensPerS(double v) => v > 0 ? (v < 100 ? v.F(1) : v.N0()) : "—";
-
-    private static FrameworkElement LlmCard(LlmResult llm)
-    {
-        var missing = Ramp.At(0.85);
-        var content = new List<UIElement>();
-        foreach (var a in LlmAccels.All)
-        {
-            var run = llm.Run(a);
-            content.Add(Metrics(
-                Metric($"{a.Label()} PREFILL TOK/S", TokensPerS(run?.Prefill ?? 0), (run?.Prefill ?? 0) > 0 ? Forge.Ink0 : missing),
-                Metric($"{a.Label()} DECODE TOK/S", TokensPerS(run?.Decode ?? 0), (run?.Decode ?? 0) > 0 ? Forge.Ink0 : missing),
-                Metric(a == LlmAccel.Cpu ? "THREADS" : "GPU", a == LlmAccel.Cpu ? (run is { Threads: > 0 } ? run.Threads.ToString() : "—") : (llm.GpuName ?? "—")[..Math.Min(14, (llm.GpuName ?? "—").Length)], Forge.Ink1)));
-            if (llm.Error == null && run?.Error is { } err) content.Add(Note($"{a.Label()}: {err}", missing));
-        }
-        content.Add(Note($"CPU {llm.Points(LlmAccel.Cpu).N0()} · GPU {llm.Points(LlmAccel.Gpu).N0()} points — each half", Forge.Ink1));
-        if (llm.Error != null) content.Add(Note($"Not run: {llm.Error}.", missing));
-        content.Add(Note(llm.LargestModel > 0
-            ? $"Largest common model that fits in the memory Windows has free now: {llm.LargestModel}B (4-bit, {llm.FreeGb:0.0} GB)."
-            : $"Memory free now: {llm.FreeGb:0.0} GB — too little for even a 1B model.", Forge.Ink1));
-        content.Add(Note("The same task on both engines: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token (decode). " +
-            "llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real). Each engine is measured " +
-            "against its own reference and counts half; one the PC can't run counts 0. The NPU isn't scored: no way to run it reaches every device yet."));
-        return Card("LLM · GEMMA 3 1B · 4-BIT", "PROMPT · REPLY", llm.Score, BenchColor.Llm, content.ToArray());
     }
 
     private FrameworkElement GpuCard(GpuTestResult g) => Card($"GPU TEST {g.Test.Number()}", g.Test.Title(), g.Points, BenchColor.Gpu(g.Test),

@@ -20,7 +20,6 @@ public static class BenchColor
     public static readonly Color Mem = Forge.Hex(0xF2A65A);       // copper
     public static readonly Color MemWrite = Forge.Hex(0xFF7A6B);  // coral
     public static readonly Color Ai = Forge.Hex(0xC792EA);        // lavender
-    public static readonly Color Llm = Forge.Hex(0xB5E853);       // lime
     public static Color Gpu(GpuTest t) => t switch { GpuTest.LakeValley => Forge.PhaseCalibration, GpuTest.NeonCity => Ramp.At(0.85), _ => Forge.PhaseCooldown };
     public static Color Ux(UxTest t) => t switch
     {
@@ -53,7 +52,6 @@ public sealed class BenchmarkStage : Grid
     private readonly AiStageView aiView = new();
     private readonly VideoStageView videoView = new();
     private readonly ExportStageView exportView = new();
-    private readonly LlmStageView llmView = new();
     private readonly FrameworkElement cpuView, memView;
     private string centerKey = "";
 
@@ -91,13 +89,13 @@ public sealed class BenchmarkStage : Grid
 
     private Color Accent => engine.CpuTest != null ? BenchColor.Cpu : engine.MemTest != null ? BenchColor.Mem
         : engine.GpuTest is { } g ? BenchColor.Gpu(g) : engine.UxTest is { } u ? BenchColor.Ux(u)
-        : engine.AiTest != null ? BenchColor.Ai : engine.LlmAccel != null ? BenchColor.Llm : Forge.PhaseCooldown;
+        : engine.AiTest != null ? BenchColor.Ai : Forge.PhaseCooldown;
 
     public void Refresh()
     {
         var accent = Accent;
         section.Text = engine.CpuTest != null ? "CPU BENCHMARK" : engine.MemTest != null ? "MEM BENCHMARK" : engine.GpuTest != null ? "GPU BENCHMARK"
-            : engine.UxTest != null ? "UX BENCHMARK" : engine.AiTest != null ? "AI BENCHMARK" : engine.LlmAccel != null ? "LLM BENCHMARK" : "BENCHMARK";
+            : engine.UxTest != null ? "UX BENCHMARK" : engine.AiTest != null ? "AI BENCHMARK" : "BENCHMARK";
         section.Foreground = accent.Brush();
         if (engine.CpuTest is { } ct)
         {
@@ -124,11 +122,6 @@ public sealed class BenchmarkStage : Grid
             title.Text = $"AI TEST {at.Number()}/{AiTests.All.Length} · {at.Title()}";
             detail.Text = engine.AiDetail;
         }
-        else if (engine.LlmAccel is { } la)
-        {
-            title.Text = $"LLM TEST {(int)la + 1}/{LlmAccels.All.Length} · {la.Label()} · GEMMA 3 1B";
-            detail.Text = engine.LlmDetail;
-        }
         else
         {
             // cooling and waiting for a quiet PC, or (Running) the next section building its scene
@@ -136,26 +129,25 @@ public sealed class BenchmarkStage : Grid
             detail.Text = "";
         }
         // the live number glides to each new value (Android's TickerText); a test that has no rate yet reads 0, as there. Rates under 100 keep a
-        // decimal (ops/s, MB/s, inferences, tokens, the gallery's and the editor's MP/s, the QR scans); frames and the rest are whole numbers
+        // decimal (ops/s, MB/s, inferences, the gallery's and the editor's MP/s, the QR scans); frames and the rest are whole numbers
         static string Fine(double v) => v < 100 ? v.F(1) : v.N0();
         static string Whole(double v) => v.N0();
         (double v, string u, Func<double, string> f)? live = engine.CpuTest != null ? (Math.Max(0, engine.CpuProgress?.Rate ?? 0), "OPS/S", Fine)
             : engine.MemTest != null ? (Math.Max(0, engine.MemProgress?.Rate ?? 0), engine.MemProgress?.Unit ?? "", Fine)
             : engine.GpuTest != null ? (Math.Max(0, engine.GpuFps), "FPS", Whole)
             : engine.UxTest is { } ux ? (Math.Max(0, engine.UxValue), engine.UxUnit, ux == UxTest.Qr ? v => v.F(1) : ux is UxTest.Gallery or UxTest.Photo ? Fine : Whole)
-            : engine.AiTest != null ? (Math.Max(0, engine.AiRate), "INF/S", Fine)
-            : engine.LlmAccel != null ? (Math.Max(0, engine.LlmRate), "TOK/S", Fine) : null;
+            : engine.AiTest != null ? (Math.Max(0, engine.AiRate), "INF/S", Fine) : null;
         if (live is { } l) rate.Show(l.v, l.u, l.f); else rate.Clear();
         unit.Text = live?.u ?? "";
         background.Visibility = engine.InBackground ? Visibility.Visible : Visibility.Collapsed;
 
         string key = engine.CpuTest != null ? $"cpu{engine.CpuTest}" : engine.MemTest != null ? $"mem{engine.MemTest}" : engine.GpuTest != null ? $"gpu{engine.GpuTest}"
-            : engine.UxTest != null ? $"ux{engine.UxTest}" : engine.AiTest != null ? "ai" : engine.LlmAccel != null ? "llm" : "prep";
+            : engine.UxTest != null ? $"ux{engine.UxTest}" : engine.AiTest != null ? "ai" : "prep";
         if (key != centerKey)
         {
             centerKey = key;
             center.Content = engine.CpuTest != null ? cpuView : engine.MemTest != null ? memView : engine.GpuTest != null ? gpuView
-                : engine.UxTest is { } k ? UxView(k) : engine.AiTest != null ? aiView : engine.LlmAccel != null ? llmView : null;
+                : engine.UxTest is { } k ? UxView(k) : engine.AiTest != null ? aiView : null;
             bool wide = engine.UxTest is UxTest.Web or UxTest.Scroll or UxTest.Gallery;
             center.MaxWidth = wide ? double.PositiveInfinity : 900;
             center.HorizontalAlignment = wide ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
@@ -184,10 +176,6 @@ public sealed class BenchmarkStage : Grid
         else if (engine.AiTest != null)
         {
             aiView.Update(engine.AiVisual);
-        }
-        else if (engine.LlmAccel != null)
-        {
-            llmView.Update(engine);
         }
         else if (engine.UxTest is { } u)
         {
@@ -388,7 +376,7 @@ public sealed class BenchProgressBar : FrameworkElement
     private IEnumerable<(int secs, Color color)> Segments =>
         CpuTests.All.Select(t => (t.Seconds(), BenchColor.Cpu)).Concat(MemTests.All.Select(t => (t.Seconds(), BenchColor.Mem)))
             .Concat(engine.GpuPlan.Select(t => (t.Seconds(), BenchColor.Gpu(t)))).Concat(UxTests.All.Select(t => (t.Seconds(), BenchColor.Ux(t))))
-            .Concat(AiTests.All.Select(t => (t.Seconds(), BenchColor.Ai))).Concat(LlmAccels.All.Select(a => (a.Seconds(), BenchColor.Llm)));
+            .Concat(AiTests.All.Select(t => (t.Seconds(), BenchColor.Ai)));
 
     private double Elapsed
     {
@@ -396,7 +384,7 @@ public sealed class BenchProgressBar : FrameworkElement
         {
             var plan = engine.GpuPlan;
             int cpuTotal = CpuTests.All.Sum(t => t.Seconds()), memTotal = MemTests.All.Sum(t => t.Seconds());
-            int gpuTotal = plan.Sum(t => t.Seconds()), uxTotal = UxTests.All.Sum(t => t.Seconds()), aiTotal = AiTests.All.Sum(t => t.Seconds());
+            int gpuTotal = plan.Sum(t => t.Seconds()), uxTotal = UxTests.All.Sum(t => t.Seconds());
             if (engine.CpuTest is { } c)
                 return CpuTests.All.Where(t => t.Number() < c.Number()).Sum(t => t.Seconds()) + (engine.CpuProgress?.Fraction ?? 0) * c.Seconds();
             if (engine.MemTest is { } m)
@@ -410,9 +398,6 @@ public sealed class BenchProgressBar : FrameworkElement
             before += uxTotal;
             if (engine.AiTest is { } a)
                 return before + AiTests.All.Where(t => t.Number() < a.Number()).Sum(t => t.Seconds()) + engine.AiProgress * a.Seconds();
-            before += aiTotal;
-            if (engine.LlmAccel is { } l)
-                return before + LlmAccels.All.Where(x => x < l).Sum(x => x.Seconds()) + engine.LlmProgress * l.Seconds();
             return engine.Current == BenchmarkEngine.Phase.Running ? held : 0;   // between tests: where it was
         }
     }
@@ -424,7 +409,7 @@ public sealed class BenchProgressBar : FrameworkElement
         held = Math.Max(held, done);
         string label = engine.CpuTest is { } c ? $"CPU TEST {c.Number()} · {c.Title()}" : engine.MemTest is { } m ? $"MEM TEST {m.Number()} · {m.Title()}"
             : engine.GpuTest is { } g ? $"GPU TEST {g.Number()} · {g.Title()}" : engine.UxTest is { } ux ? $"UX TEST {ux.Number()} · {ux.Title()}"
-            : engine.AiTest is { } ai ? $"AI TEST {ai.Number()} · {ai.Title()}" : engine.LlmAccel is { } ll ? $"LLM TEST {(int)ll + 1} · {ll.Label()}" : "PREPARING";
+            : engine.AiTest is { } ai ? $"AI TEST {ai.Number()} · {ai.Title()}" : "PREPARING";
         dc.DrawText(label, 9, Forge.Ink0, new Point(0, 0), w: Forge.W.Bold, tracking: 1.5);
         dc.DrawText($"{(int)(done / total * 100)}%", 9, Forge.Ink1, new Point(w, 0), 1, 0);
         double gap = 3, x = 0, start = 0;

@@ -460,7 +460,7 @@ public partial class MainWindow : Window
             col.Children.Add(kinds);
             if (runBenchmark)
             {
-                col.Children.Add(Ui.Text("WHOLE PC · SCORE · SIX SECTIONS, THE SAME TESTS AS THE PHONES", 8, Forge.Ink2, wrap: true));
+                col.Children.Add(Ui.Text("WHOLE PC · SCORE · FIVE SECTIONS, THE SAME TESTS AS THE PHONES", 8, Forge.Ink2, wrap: true));
             }
             else
             {

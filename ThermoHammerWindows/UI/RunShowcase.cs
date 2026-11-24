@@ -8,7 +8,7 @@ namespace ThermoHammer.UI;
 // ─────────────────────────────────────────────────────────────────────────────
 // RUN SHOWCASE — one run as the share card and the presentation show it (own
 // or from the leaderboard, benchmark or stress), and the drawing both use: the
-// six section bars and the stress curve.
+// five section bars and the stress curve.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// <summary>What the share card, the presentation and the share text say about a run.</summary>
@@ -28,7 +28,7 @@ public sealed class ShowcaseRun
 
     // benchmark
     public int Total { get; init; }
-    /// <summary>The sections the run has, in the order CPU, MEM, GPU, UX, AI, LLM.</summary>
+    /// <summary>The sections the run has, in the order CPU, MEM, GPU, UX, AI.</summary>
     public List<(string Key, int Score)> Sections { get; init; } = [];
 
     // stress
@@ -65,7 +65,6 @@ public sealed class ShowcaseRun
         if (r.Gpu.Count > 0) sections.Add(("gpu", r.GpuScore));
         if (r.Ux != null) sections.Add(("ux", r.UxScore));
         if (r.Ai != null) sections.Add(("ai", r.AiScore));
-        if (r.Llm != null) sections.Add(("llm", r.LlmScore));
         return new ShowcaseRun
         {
             Mine = true, Device = PcHealth.Name(), Os = DeviceInfo.OsLabel(DeviceInfo.OsPlatform, DeviceInfo.OsVersion),
@@ -114,8 +113,7 @@ public static class RunArt
     /// <summary>Each section's colour, as the result screen shows them.</summary>
     public static Color SectionColor(string key) => key switch
     {
-        "cpu" => BenchColor.Cpu, "mem" => BenchColor.Mem, "gpu" => Forge.PhaseCalibration, "ux" => Forge.PhaseMeasured, "ai" => BenchColor.Ai,
-        _ => BenchColor.Llm,
+        "cpu" => BenchColor.Cpu, "mem" => BenchColor.Mem, "gpu" => Forge.PhaseCalibration, "ai" => BenchColor.Ai, _ => Forge.PhaseMeasured,
     };
 
     public static FormattedText Text(string s, double size, Color color, Forge.W w, bool display, double ppd, double maxWidth = 0, int maxLines = 0)
@@ -146,7 +144,7 @@ public static class RunArt
     }
 
     /// <summary>
-    /// The six section bars, one row each in [area]: the name, a bar as long as score ÷ max(12000, the largest score), the score.
+    /// The five section bars, one row each in [area]: the name, a bar as long as score ÷ max(12000, the largest score), the score.
     /// [size] is the text size; rows share the height.
     /// </summary>
     public static void Bars(DrawingContext dc, Rect area, IReadOnlyList<(string Key, int Score)> sections, double size, double ppd)
@@ -154,7 +152,7 @@ public static class RunArt
         if (sections.Count == 0) return;
         double top = Math.Max(12000, sections.Max(s => s.Score));
         double row = area.Height / sections.Count, bar = Math.Max(4, size * 0.42);
-        double nameW = Text("LLM", size, Forge.Ink0, Forge.W.Black, false, ppd).Width + size * 0.9;
+        double nameW = Text("MEM", size, Forge.Ink0, Forge.W.Black, false, ppd).Width + size * 0.9;
         double valueW = Text("888,888", size, Forge.Ink0, Forge.W.Black, false, ppd).Width + size * 0.9;
         double trackX = area.X + nameW, trackW = Math.Max(10, area.Width - nameW - valueW);
         for (int i = 0; i < sections.Count; i++)

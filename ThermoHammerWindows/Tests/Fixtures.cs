@@ -43,7 +43,6 @@ internal static class Fixtures
                 ]),
                 new QrResult(520.5, 32, 0, null, "none")),
             Ai = new AiResult(ai, "QNN"),
-            Llm = new LlmResult([new LlmRun(LlmAccel.Cpu, 300.5, 15.25, 8), new LlmRun(LlmAccel.Gpu, 900.75, 40.5)], "Test GPU", 12.5, 8),
         };
     }
 

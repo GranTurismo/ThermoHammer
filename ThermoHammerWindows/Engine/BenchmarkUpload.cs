@@ -23,7 +23,7 @@ public sealed record BenchmarkSubmitResponse(int Id, int Score, int Rank);
 
 /// <summary>One machine's best benchmark run, as GET /benchmark/leaderboard returns it.</summary>
 public sealed record BenchmarkDto(int Id, string DeviceManufacturer, string DeviceModel, string? SocModel, string? GpuName, int Os,
-    string OsVersion, int Score, int UxScore, int CpuScore, int AiScore, int MemScore, int LlmScore, int TotalScore, double Test3Fps,
+    string OsVersion, int Score, int UxScore, int CpuScore, int AiScore, int MemScore, int TotalScore, double Test3Fps,
     bool RayTracing, int Runs)
 {
     /// <summary>The name the boards print: the maker only when the model doesn't already start with it.</summary>
@@ -62,7 +62,6 @@ public static class BenchmarkUpload
     {
         var session = await Api.CreateSession();
         var a = r.Ai;
-        var l = r.Llm ?? new LlmRecord();
         var m = r.Media ?? new MediaRecord();
         // The server trims every name and cuts it at 64 characters before it stores it, so it is sent that way: what the
         // board lists is then what "mine" and the model lookup compare with. A blank GPU name is turned away as "Missing device".
@@ -95,9 +94,9 @@ public static class BenchmarkUpload
             StorageSeqRead = r.StorageSeqRead, StorageSeqWrite = r.StorageSeqWrite,
             StorageRandomRead = r.StorageRandomRead, StorageRandomWrite = r.StorageRandomWrite, StorageDirect = r.StorageDirect,
             DbInsert = r.DbInsert, DbUpdate = r.DbUpdate, DbQuery = r.DbQuery,
-            LlmPrefillCpu = l.PrefillCpu, LlmDecodeCpu = l.DecodeCpu, LlmPrefillGpu = l.PrefillGpu, LlmDecodeGpu = l.DecodeGpu,
-            LlmGpu = DeviceInfo.ClipOrNull(l.Gpu), LlmFreeGb = l.FreeGb,
-            LlmPrefillNpu = 0, LlmDecodeNpu = 0, LlmNpu = null,     // the NPU isn't scored in version 5: the fields stay empty
+            // no LLM test in version 5: its fields stay 0 and empty (they are still part of the signed text)
+            LlmPrefillCpu = 0, LlmDecodeCpu = 0, LlmPrefillGpu = 0, LlmDecodeGpu = 0, LlmGpu = null, LlmFreeGb = 0,
+            LlmPrefillNpu = 0, LlmDecodeNpu = 0, LlmNpu = null,
             ValidityFlags = r.ValidityFlags,
             AppVersion = DeviceInfo.ClipOrNull(AppVersion),
         };
@@ -187,7 +186,7 @@ public static class BenchmarkReport
         static string Pts(int v) => v.ToString("N0", CultureInfo.InvariantCulture);
         Line($"ThermoHammer benchmark report · app {BenchmarkUpload.AppVersion} (Windows {DeviceInfo.Architecture}) · {time}");
         Line($"{DeviceInfo.FullName} · {DeviceInfo.OsLabel(DeviceInfo.OsPlatform, DeviceInfo.OsVersion)} ({DeviceInfo.OsBuild}) · CPU {DeviceInfo.CpuName} · GPU {(r.GpuName.Length == 0 ? "?" : r.GpuName)} · {F(DeviceInfo.TotalRamGb, 1)} GB RAM");
-        Line($"TOTAL {Pts(r.Total)} = CPU {Pts(r.CpuScore)} + MEM {Pts(r.MemScore)} + GPU {Pts(r.GpuScore)} + UX {Pts(r.UxScore)} + AI {Pts(r.AiScore)} + LLM {Pts(r.LlmScore)} · validity flags {r.ValidityFlags}");
+        Line($"TOTAL {Pts(r.Total)} = CPU {Pts(r.CpuScore)} + MEM {Pts(r.MemScore)} + GPU {Pts(r.GpuScore)} + UX {Pts(r.UxScore)} + AI {Pts(r.AiScore)} · validity flags {r.ValidityFlags}");
         Line($"Start · CPU share {Math.Round(r.StartCpuShare * 100)}% · waited {r.QuietWaitSec} s for background work · crypto {BenchCore.CryptoPath}");
         if (r.Cpu is { } cpu)
             foreach (var t in CpuTests.All)
@@ -245,17 +244,6 @@ public static class BenchmarkReport
                     return ips > 0 ? $"{a.Label()} {F(ips)}/s{agreed}" : $"{a.Label()} 0 ({run?.Error ?? "not run"})";
                 });
                 Line($"AI {t.Number()} {t.Title()} · " + string.Join(", ", parts));
-            }
-        }
-        if (r.Llm is { } llm)
-        {
-            Line($"LLM · {Pts(llm.Score)} pts = CPU {Pts(llm.Points(LlmAccel.Cpu))} · GPU {Pts(llm.Points(LlmAccel.Gpu))} (each half; Gemma 3 1B on both) · " +
-                 $"{F(llm.FreeGb)} GB free, largest model {llm.LargestModel}B" + (llm.Error is { } le ? $" · not run: {le}" : ""));
-            foreach (var a in LlmAccels.All)
-            {
-                if (llm.Run(a) is { Decode: > 0 } run)
-                    Line($"LLM {a.Label()} · {Pts(llm.Points(a))} pts · prefill {F(run.Prefill)} tok/s · decode {F(run.Decode)} tok/s · " + (a == LlmAccel.Gpu ? (llm.GpuName ?? "?") : $"{run.Threads} threads (prompt {run.BatchThreads})"));
-                else Line($"LLM {a.Label()} · 0 ({llm.Run(a)?.Error ?? "not run"})");
             }
         }
         foreach (var why in r.NotYet) Line($"Not run: {why}");

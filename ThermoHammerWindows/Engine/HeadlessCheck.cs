@@ -1,6 +1,6 @@
 namespace ThermoHammer.Engine;
 
-/// <summary>`--headlessBenchmark [--only cpu,mem,gpu,ux,ai,llm]`: the benchmark's engine without a window (checks under Wine); the report goes to %LOCALAPPDATA%\ThermoHammer\headless-benchmark.txt.</summary>
+/// <summary>`--headlessBenchmark [--only cpu,mem,gpu,ux,ai]`: the benchmark's engine without a window (checks under Wine); the report goes to %LOCALAPPDATA%\ThermoHammer\headless-benchmark.txt.</summary>
 public static class HeadlessCheck
 {
     public static int Run(string? only)

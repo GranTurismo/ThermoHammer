@@ -230,15 +230,17 @@ public sealed class WelcomeArt : Instrument
         return g;
     }
 
-    /// <summary>Six tiles light up one after another, each running its own little workload, the total counting up.</summary>
+    /// <summary>Five tiles (three above two) light up one after another, each running its own little workload, the total counting up.</summary>
     private static void Sections(DrawingContext dc, double w, double h, double t, double a)
     {
-        string[] names = ["CPU", "MEM", "GPU", "UX", "AI", "LLM"];
-        Color[] colors = [BenchColor.Cpu, BenchColor.Mem, Forge.PhaseCalibration, Forge.PhaseMeasured, BenchColor.Ai, BenchColor.Llm];
-        double gap = 10, tileW = (w - gap * 2) / 3, tileH = (h * 0.72 - gap) / 2;
-        for (int i = 0; i < 6; i++)
+        string[] names = ["CPU", "MEM", "GPU", "UX", "AI"];
+        Color[] colors = [BenchColor.Cpu, BenchColor.Mem, Forge.PhaseCalibration, Forge.PhaseMeasured, BenchColor.Ai];
+        double gap = 10, tileH = (h * 0.72 - gap) / 2;
+        for (int i = 0; i < names.Length; i++)
         {
-            double p = Stage(a, i * 0.09, 0.4), x = i % 3 * (tileW + gap), y = i / 3 * (tileH + gap) + (1 - p) * 30;
+            int perRow = i < 3 ? 3 : 2, k = i < 3 ? i : i - 3;
+            double tileW = (w - gap * (perRow - 1)) / perRow;
+            double p = Stage(a, i * 0.09, 0.4), x = k * (tileW + gap), y = (i < 3 ? 0 : tileH + gap) + (1 - p) * 30;
             var rect = new Rect(x, y, tileW, tileH);
             dc.DrawRoundedRectangle(Forge.Surface.WithAlpha(p).Brush(), colors[i].WithAlpha(0.55 * p).Pen(1), rect, 14, 14);
             Label(dc, names[i], new Point(x + 12, y + 10), colors[i].WithAlpha(p), 11);
@@ -250,17 +252,17 @@ public sealed class WelcomeArt : Instrument
                 dc.DrawRoundedRectangle(colors[i].WithAlpha(0.8 * p).Brush(), null, new Rect(x + 12 + b * bw * 1.6, y + tileH - 12 - bh, bw, bh), bw / 2, bw / 2);
             }
         }
-        int total = (int)(36026 * Stage(a, 0.45, 0.55));
+        int total = (int)(30021 * Stage(a, 0.45, 0.55));
         double ty = h * 0.80;
         Label(dc, "TOTAL", new Point(0, ty), Forge.Ink2, 10);
         Label(dc, total.N0(), new Point(0, ty + 14), Forge.Ink0, 30, true);
-        Label(dc, "CPU + MEM + GPU + UX + AI + LLM", new Point(w * 0.42, ty + 26), Forge.Ink2, 9);
+        Label(dc, "CPU + MEM + GPU + UX + AI", new Point(w * 0.42, ty + 26), Forge.Ink2, 9);
     }
 
     /// <summary>The same packets, in the same order, flowing from one seed into a PC, an Android phone, an iPhone and a Mac.</summary>
     private static void SameWork(DrawingContext dc, double w, double h, double t, double a)
     {
-        Color[] packet = [BenchColor.Cpu, BenchColor.Mem, Forge.PhaseCalibration, Forge.PhaseMeasured, BenchColor.Ai, BenchColor.Llm];
+        Color[] packet = [BenchColor.Cpu, BenchColor.Mem, Forge.PhaseCalibration, Forge.PhaseMeasured, BenchColor.Ai];
         var src = new Point(w / 2, h * 0.12);
         dc.DrawRoundedRectangle(Forge.Surface.Brush(), Forge.PhaseCooldown.WithAlpha(0.6).Pen(1), new Rect(src.X - 62, src.Y - 16, 124, 32), 10, 10);
         Label(dc, "ONE TEST · ONE SEED", src, Forge.PhaseCooldown, 9, ax: 0.5, ay: 0.5);
@@ -276,9 +278,9 @@ public sealed class WelcomeArt : Instrument
             using (var ctx = path.Open()) { ctx.BeginFigure(p0, false, false); ctx.BezierTo(c1, c2, p3, true, false); }
             path.Freeze();
             dc.DrawGeometry(null, Forge.Ink2.WithAlpha(0.35 * p).Pen(1.5), path);
-            for (int j = 0; j < 6; j++)
+            for (int j = 0; j < packet.Length; j++)
             {
-                double u = (t * 0.32 + j / 6.0) % 1, m = 1 - u;
+                double u = (t * 0.32 + j / (double)packet.Length) % 1, m = 1 - u;
                 double px = m * m * m * p0.X + 3 * m * m * u * c1.X + 3 * m * u * u * c2.X + u * u * u * p3.X;
                 double py = m * m * m * p0.Y + 3 * m * m * u * c1.Y + 3 * m * u * u * c2.Y + u * u * u * p3.Y;
                 dc.DrawRoundedRectangle(packet[j].WithAlpha(p * (0.4 + 0.6 * Math.Sin(u * Math.PI))).Brush(), null, new Rect(px - 4, py - 4, 8, 8), 2, 2);

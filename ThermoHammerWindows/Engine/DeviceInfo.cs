@@ -124,7 +124,7 @@ public static class DeviceInfo
     {
         try
         {
-            // the adapter the GPU, media, AI and LLM tests run on (the most video memory), not whichever DXGI lists first
+            // the adapter the GPU, media and AI tests run on (the most video memory), not whichever DXGI lists first
             using var factory = Vortice.DXGI.DXGI.CreateDXGIFactory1<Vortice.DXGI.IDXGIFactory1>();
             using var best = Ux.MediaDevice.BestAdapter(factory);
             if (best != null && Clip(best.Description1.Description) is { Length: > 0 } name) return name;

@@ -7,31 +7,30 @@ namespace ThermoHammer.Engine;
 // calls here, so the unit tests compile it as it is.
 // ─────────────────────────────────────────────────────────────────────────────
 
-public sealed record LlmRecord(double PrefillCpu = 0, double DecodeCpu = 0, double PrefillGpu = 0, double DecodeGpu = 0, string? Gpu = null, double FreeGb = 0);
-
 public sealed record MediaRecord(double Video8kHevc = 0, double Video8kAv1 = 0, double ExportAvc = 0, double ExportHevc = 0, double ExportAv1 = 0,
     double Export8kHevc = 0, double ExportAvcPsnr = 0, double ExportHevcPsnr = 0, double ExportAv1Psnr = 0, double Export8kHevcPsnr = 0,
     int ExportHardware = 0);
 
-/// <summary>The six section scores of a run, in the order every screen lists them.</summary>
-public sealed record SectionScores(int Cpu, int Mem, int Gpu, int Ux, int Ai, int Llm)
+/// <summary>The five section scores of a run, in the order every screen lists them.</summary>
+public sealed record SectionScores(int Cpu, int Mem, int Gpu, int Ux, int Ai)
 {
     /// <summary>The server's section keys (BenchmarkDetail.Section.Key), in order.</summary>
-    public static readonly string[] Keys = ["cpu", "mem", "gpu", "ux", "ai", "llm"];
+    public static readonly string[] Keys = ["cpu", "mem", "gpu", "ux", "ai"];
 
     public static string Label(string key) => key.ToUpperInvariant();
 
     public int this[string key] => key switch
     {
-        "cpu" => Cpu, "mem" => Mem, "gpu" => Gpu, "ux" => Ux, "ai" => Ai, "llm" => Llm, _ => 0,
+        "cpu" => Cpu, "mem" => Mem, "gpu" => Gpu, "ux" => Ux, "ai" => Ai, _ => 0,
     };
 
-    public int Total => Cpu + Mem + Gpu + Ux + Ai + Llm;
+    public int Total => Cpu + Mem + Gpu + Ux + Ai;
 
-    public static SectionScores Of(BenchmarkResult r) => new(r.CpuScore, r.MemScore, r.GpuScore, r.UxScore, r.AiScore, r.LlmScore);
+    public static SectionScores Of(BenchmarkResult r) => new(r.CpuScore, r.MemScore, r.GpuScore, r.UxScore, r.AiScore);
 }
 
-/// <summary>One finished run as kept on the PC and submitted: raw results only (2 decimals — what is hashed).</summary>
+/// <summary>One finished run as kept on the PC and submitted: raw results only (2 decimals — what is hashed). Runs kept before 2.2
+/// also carry an "llm" object (the LLM test, gone since scoring version 5): it is ignored when they load.</summary>
 public sealed partial record BenchmarkRecord
 {
     public Guid Id = Guid.NewGuid();
@@ -56,7 +55,6 @@ public sealed partial record BenchmarkRecord
     public double StorageSeqRead, StorageSeqWrite, StorageRandomRead, StorageRandomWrite;
     public bool StorageDirect;
     public double DbInsert, DbUpdate, DbQuery;
-    public LlmRecord? Llm;
     public MediaRecord? Media;
     public string? OsVersion;
     public int ValidityFlags;
@@ -79,7 +77,6 @@ public sealed partial record BenchmarkRecord
         var e = ux?.Export;
         var cpu = r.Cpu;
         var m = r.Mem;
-        var l = r.Llm;
         return new BenchmarkRecord
         {
             Score = r.Total,
@@ -110,8 +107,6 @@ public sealed partial record BenchmarkRecord
             StorageRandomRead = Q(m?.Storage.RandomRead ?? 0), StorageRandomWrite = Q(m?.Storage.RandomWrite ?? 0),
             StorageDirect = m?.Storage.Direct ?? false,
             DbInsert = Q(m?.Db.Insert ?? 0), DbUpdate = Q(m?.Db.Update ?? 0), DbQuery = Q(m?.Db.Query ?? 0),
-            Llm = l == null ? null : new LlmRecord(Q(l.Run(LlmAccel.Cpu)?.Prefill ?? 0), Q(l.Run(LlmAccel.Cpu)?.Decode ?? 0),
-                Q(l.Run(LlmAccel.Gpu)?.Prefill ?? 0), Q(l.Run(LlmAccel.Gpu)?.Decode ?? 0), l.GpuName, Q(l.FreeGb)),
             OsVersion = osVersion,
             OsBuild = osBuild,
             DeviceModel = deviceModel,
@@ -154,9 +149,6 @@ public sealed partial record BenchmarkRecord
         double Ips(int test, int accel) => Ai.Length == 18 ? Ai[test * 3 + accel] : 0;
         int AccelScore(AiAccel a) => AiScore.Accel(a, AiTests.All.Select((_, i) => Ips(i, (int)a)).ToArray());
         int ai = AiScore.Overall(AccelScore(AiAccel.Cpu), AccelScore(AiAccel.Gpu));
-        var l = Llm ?? new LlmRecord();
-        // rule B: each engine against its own reference, a third each; the NPU's third is 0 on Windows (no engine there yet)
-        int llm = LlmScore.Overall(LlmScore.Engine(LlmAccel.Cpu, l.PrefillCpu, l.DecodeCpu), LlmScore.Engine(LlmAccel.Gpu, l.PrefillGpu, l.DecodeGpu));
-        return new SectionScores(cpu, mem, gpu, ux, ai, llm);
+        return new SectionScores(cpu, mem, gpu, ux, ai);
     }
 }

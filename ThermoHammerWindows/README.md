@@ -1,25 +1,24 @@
 # ThermoHammer for Windows
 
 WPF on .NET 10 for x64 and ARM64 PCs: the stress test, the thermal X-Ray, the leaderboard and the benchmark (CPU, MEM, GPU,
-UX, AI, LLM) of the phone apps, with the same scoring and the same server.
+UX, AI) of the phone apps, with the same scoring and the same server.
 
 ## Build (on a Mac or on Windows)
 
 ```
 cd ThermoHammerWindows
 native/build.sh            # benchcore.dll (CPU, MEM, QR) for x64 and arm64 → runtimes/win-<arch>/native/
-native/build_llm.sh        # benchllm.dll (llama.cpp: CPU + Vulkan) → runtimes/win-<arch>/native/
 dotnet publish -c Release -r win-x64   # or win-arm64
 ```
 
-`native/*.sh` cross-compile with llvm-mingw (fetched once into `native/.toolchain`). The app project copies the DLLs it finds
+`native/build.sh` cross-compiles with llvm-mingw (fetched once into `native/.toolchain`). The app project copies the DLL it finds
 in `runtimes/`. Assets come from the phones' own files: `ThermoHammerAndroid/.../assets` (scenes, web pages, media, AI labels)
 and `Assets/` (the editing photos as JPEG, the ONNX models).
 
 The ONNX models are made from the phones' `.tflite` files by `BenchmarkScene/build_onnx_models.py`.
 
 Unit tests for the logic with no Windows calls in it (the benchmark's scoring and signed payload, share links and texts, CSV export,
-the stress curve, FIND MY LOST SPEED, the benchmark's update impact, the DLLs' export lists): `dotnet test Tests` — plain .NET, so they
+the stress curve, FIND MY LOST SPEED, the benchmark's update impact, the DLL's export list): `dotnet test Tests` — plain .NET, so they
 run on a Mac too.
 
 ## Microsoft Store
@@ -38,7 +37,6 @@ note, trying a package on a PC). The version is `<Version>` in `ThermoHammer.csp
 | UX photo editing | Direct3D 11 (`Engine/Ux/PhotoEditScene.cs`) |
 | UX video, export | Media Foundation: DXVA decoders, hardware encoders through the sink writer, a D3D11 video processor between them |
 | AI | ONNX Runtime from Windows ML (self-contained): CPU (int8), DirectML on the GPU (float16), and the NPU (int8) through the vendor's provider (Qualcomm QNN, Intel OpenVINO, AMD Vitis AI) that Windows ML downloads on Windows 11 24H2+ (`Engine/Ai/AiNpu.cs`: only on a PC that has an NPU, only the NPU providers, the first run may download one). **The NPU row has never run on real NPU hardware**; where it can't run it says why and scores 0 |
-| LLM | Gemma 3 1B's shape (seeded weights, `bc_llm_set_model`) in llama.cpp through `benchllm.dll`: CPU and Vulkan; the Vulkan device is matched to the adapter the other GPU tests use (`Engine/Llm/LlmGpuChoice.cs`). The NPU, the third engine of scoring version 5, has no LLM engine on Windows yet and counts 0 |
 
 The benchmark runs full screen on the window's monitor: the browser tests render a fixed 1920×1080 physical pixels on the phones, and the
 stage is as big as the window, so a small window would render fewer pixels and score higher. A section that crashed the app twice in the same build
@@ -52,11 +50,10 @@ The checks run on a Mac under CrossOver's Wine (real Direct3D 11 on the Mac's GP
 ThermoHammer.exe --gpuTest lake|neon --seconds 8 --png frame.png
 ThermoHammer.exe --uxTest qr|photo|video --seconds 6 --png frame.png
 ThermoHammer.exe --aiTest cpu|gpu|npu --png prefix
-ThermoHammer.exe --llmTest cpu|gpu
-ThermoHammer.exe --headlessBenchmark --only gpu,ux,ai,llm
+ThermoHammer.exe --headlessBenchmark --only gpu,ux,ai
 ```
 
-Their numbers land in `%LOCALAPPDATA%\ThermoHammer\{gpu,ux,ai,llm}-test.txt` and `headless-benchmark.txt`.
+Their numbers land in `%LOCALAPPDATA%\ThermoHammer\{gpu,ux,ai}-test.txt` and `headless-benchmark.txt`.
 `THERMOHAMMER_SHADER_DEBUG=1` compiles shaders without optimisation and logs them (Wine's HLSL compiler is slow);
 `THERMOHAMMER_MF_SOFTWARE=1` keeps Media Foundation off Direct3D (Wine). Wine has no WebView2, DirectML or hardware
 codecs: those parts need a real PC.

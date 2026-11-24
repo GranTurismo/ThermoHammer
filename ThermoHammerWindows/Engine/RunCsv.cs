@@ -128,23 +128,6 @@ public static class RunCsv
                 foreach (var a in AiTests.Scored)
                     Row("ai", $"{Key(t.ToString())}_{Key(a.ToString())}", ai.Ips(t, a), "inferences/s");
         }
-        if (r.Llm is { } llm)
-        {
-            // version 5: each engine's points, half of the section each; then the best engine's points at each phase, shown as on
-            // the phones
-            foreach (var a in LlmAccels.All) Pts("llm", $"{Key(a.ToString())}_points", llm.Points(a));
-            Pts("llm", "prefill_points", llm.PrefillPoints);
-            Pts("llm", "decode_points", llm.DecodePoints);
-            foreach (var a in LlmAccels.All)
-            {
-                var run = llm.Run(a);
-                Row("llm", $"{Key(a.ToString())}_prefill", run?.Prefill ?? 0, "tokens/s");
-                Row("llm", $"{Key(a.ToString())}_decode", run?.Decode ?? 0, "tokens/s");
-            }
-            Row("llm", "free_memory", llm.FreeGb, "GB");
-            Row("llm", "largest_model", llm.LargestModel, "B params", 0);
-        }
-
         var scores = SectionScores.Of(r);
         foreach (var key in SectionScores.Keys) Pts("score", key, scores[key]);
         Pts("score", "total", r.Total);

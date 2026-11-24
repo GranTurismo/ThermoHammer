@@ -1,9 +1,9 @@
 namespace ThermoHammer.Engine;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BENCHMARK — the same six sections and the same scoring as the Android app
+// BENCHMARK — the same five sections and the same scoring as the Android app
 // (engine/Benchmark.kt), the iPhone app (BenchmarkModels.swift) and the server
-// (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI + LLM, every test 6000 points
+// (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI, every test 6000 points
 // on the Snapdragon 8 Elite reference phone (Honor VKP-NX9) in Performance mode —
 // the median of its runs of 2026-11-23, scoring version 5. Change a number here
 // only together with those three (BenchmarkScoreTests pins the same medians).
@@ -345,62 +345,6 @@ public static class AiScore
     public static int Overall(int cpu, int gpu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0);
 }
 
-// ── LLM ──
-
-/// <summary>The engines llama.cpp runs Gemma 3 1B on: version 5 scores the CPU and the GPU, half each (the NPU isn't scored on any platform).</summary>
-public enum LlmAccel { Cpu, Gpu }
-public enum LlmPhase { Build, Warmup, Prefill, Decode }
-
-public static class LlmAccels
-{
-    public static readonly LlmAccel[] All = [LlmAccel.Cpu, LlmAccel.Gpu];
-    public static string Label(this LlmAccel a) => a == LlmAccel.Cpu ? "CPU" : "GPU";
-    public static int Seconds(this LlmAccel a) => a == LlmAccel.Cpu ? 20 : 16;
-}
-
-public sealed record LlmRun(LlmAccel Accel, double Prefill, double Decode, int Threads = 0, string? Error = null, int BatchThreads = 0);
-
-public sealed record LlmResult(List<LlmRun> Runs, string? GpuName, double FreeGb, int LargestModel, string? Error = null)
-{
-    public LlmRun? Run(LlmAccel a) => Runs.FirstOrDefault(r => r.Accel == a);
-    /// <summary>One engine's points: its prompt and reply rates against the same engine's reference (LlmScore).</summary>
-    public int Points(LlmAccel a) => Run(a) is { } r ? LlmScore.Engine(a, r.Prefill, r.Decode) : 0;
-    /// <summary>The fastest engine at each phase — what a chat app on this PC could get (shown, not scored).</summary>
-    public double Prefill => Runs.Count == 0 ? 0 : Runs.Max(r => r.Prefill);
-    public double Decode => Runs.Count == 0 ? 0 : Runs.Max(r => r.Decode);
-    /// <summary>The best engine's points for each phase, against that engine's own reference (CSV, the report; shown, not scored).</summary>
-    public int PrefillPoints => Math.Max(Run(LlmAccel.Cpu) is { } c ? LlmScore.Phase(c.Prefill, LlmScore.RefCpuPrefill) : 0,
-        Run(LlmAccel.Gpu) is { } g ? LlmScore.Phase(g.Prefill, LlmScore.RefGpuPrefill) : 0);
-    public int DecodePoints => Math.Max(Run(LlmAccel.Cpu) is { } c ? LlmScore.Phase(c.Decode, LlmScore.RefCpuDecode) : 0,
-        Run(LlmAccel.Gpu) is { } g ? LlmScore.Phase(g.Decode, LlmScore.RefGpuDecode) : 0);
-    /// <summary>Version 5: the CPU and the GPU each count half — an engine that can't run the task counts 0.</summary>
-    public int Score => LlmScore.Overall(Points(LlmAccel.Cpu), Points(LlmAccel.Gpu));
-}
-
-public static class LlmScore
-{
-    // Version 5: Gemma 3 1B (4-bit) through llama.cpp on the CPU and the GPU (seeded weights, the model's exact shape), each
-    // against the same engine's reference, then the two averaged (BENCHMARK_V5_PLAN.md). The NPU isn't scored on any platform:
-    // no way to run it reaches every device yet. Tokens per second worth 6000 points per engine: the Honor VKP-NX9 in
-    // Performance mode (Benchmark.kt).
-    public const double RefCpuPrefill = 160, RefCpuDecode = 55;
-    public const double RefGpuPrefill = 890, RefGpuDecode = 32;
-
-    /// <summary>One phase's points against `reference` tokens/s.</summary>
-    public static int Phase(double tokensPerS, double reference) => BenchmarkScore.Round(6000 * Math.Max(tokensPerS, 0) / reference);
-
-    /// <summary>One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0.</summary>
-    public static int Engine(double prefill, double decode, double refPrefill, double refDecode) =>
-        !(prefill > 0) || !(decode > 0) ? 0 : BenchmarkScore.Round(6000 * Math.Sqrt(prefill / refPrefill * (decode / refDecode)));
-
-    public static int Engine(LlmAccel a, double prefill, double decode) => a == LlmAccel.Cpu
-        ? Engine(prefill, decode, RefCpuPrefill, RefCpuDecode)
-        : Engine(prefill, decode, RefGpuPrefill, RefGpuDecode);
-
-    /// <summary>The CPU and the GPU each count half; one the PC lacks or can't run the task on scores 0 there.</summary>
-    public static int Overall(int cpu, int gpu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0);
-}
-
 // ── the whole run ──
 
 public sealed class BenchmarkResult
@@ -412,7 +356,6 @@ public sealed class BenchmarkResult
     public string? RayTracingProblem;
     public UxResult? Ux;
     public AiResult? Ai;
-    public LlmResult? Llm;
     public int ValidityFlags;
     public float StartCpuShare = 1;
     public int QuietWaitSec;
@@ -424,9 +367,8 @@ public sealed class BenchmarkResult
     public int GpuScore => BenchmarkScore.Overall(Gpu);
     public int UxScore => Ux?.Score ?? 0;
     public int AiScore => Ai?.Score ?? 0;
-    public int LlmScore => Llm?.Score ?? 0;
-    public int Total => CpuScore + MemScore + GpuScore + UxScore + AiScore + LlmScore;
+    public int Total => CpuScore + MemScore + GpuScore + UxScore + AiScore;
     public bool IsVerified => ValidityFlags == 0;
     /// <summary>Every section ran — what the server needs to accept the run.</summary>
-    public bool IsComplete => Cpu != null && Mem != null && Gpu.Count == GpuTests.All.Length && Ux != null && Ai != null && Llm != null;
+    public bool IsComplete => Cpu != null && Mem != null && Gpu.Count == GpuTests.All.Length && Ux != null && Ai != null;
 }

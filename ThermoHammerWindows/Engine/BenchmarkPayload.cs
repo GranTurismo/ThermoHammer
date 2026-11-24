@@ -45,11 +45,11 @@ public sealed class BenchmarkPayload
     public double StorageSeqRead, StorageSeqWrite, StorageRandomRead, StorageRandomWrite;
     public bool StorageDirect;
     public double DbInsert, DbUpdate, DbQuery;
+    // the LLM test's fields: version 5 has no LLM test, so the app always sends 0 and none. They stay in the payload and in the
+    // signed text, in the same places, because the server's layout (BenchmarkScoring.Canonical) still has them
     public double LlmPrefillCpu, LlmDecodeCpu, LlmPrefillGpu, LlmDecodeGpu;
     public string? LlmGpu;
     public double LlmFreeGb;
-    // version 5: the LLM's NPU engine — tokens/s (0 = no result) and the engine and model file it ran. Windows has no NPU engine
-    // yet, so it always sends 0, 0 and none; the fields are in the signed text all the same, where the server expects them
     public double LlmPrefillNpu, LlmDecodeNpu;
     public string? LlmNpu;
     public int ValidityFlags;

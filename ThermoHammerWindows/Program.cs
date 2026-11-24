@@ -30,13 +30,6 @@ public static class Program
             Engine.Ai.AiCheck.Run(args[ai + 1], double.TryParse(Arg("--seconds"), out var s) ? s : 3, Arg("--png"));
             return 0;
         }
-        int llm = Array.IndexOf(args, "--llmTest");
-        if (llm >= 0 && llm + 1 < args.Length)
-        {
-            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
-            Engine.Llm.LlmCheck.Run(args[llm + 1]);
-            return 0;
-        }
         if (Array.IndexOf(args, "--headlessBenchmark") >= 0)
         {
             string? Arg(string name) { int i = Array.IndexOf(args, name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }

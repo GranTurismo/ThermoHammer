@@ -123,7 +123,7 @@ public sealed class BenchmarkBoard : Grid
     {
         refresh = Ui.Button(Ui.Text("↻", 18, Forge.Ink0, Forge.W.Bold), () => _ = Load(), Colors.Transparent, 8, 6, 2);
         var head = Ui.HStack(0, Ui.VStack(2, Ui.Text("DEVICE BENCHMARK", 18, Forge.Ink0, Forge.W.Black),
-            Ui.Text("All six sections · best verified run per device", 9, Forge.Ink0.WithAlpha(0.4))), Ui.Spacer(), compareSlot, refresh);
+            Ui.Text("All five sections · best verified run per device", 9, Forge.Ink0.WithAlpha(0.4))), Ui.Spacer(), compareSlot, refresh);
         RenderCompareButton();
         var (search, _) = LeaderboardTab.Search("Search device or GPU…", q => { query = q; Render(); });
         var scroll = Ui.Scroll(Ui.VStack(8, head, search, list).Pad(16, 12));
@@ -253,7 +253,7 @@ public sealed class BenchmarkBoard : Grid
         foreach (FrameworkElement c in top.Children) c.VerticalAlignment = VerticalAlignment.Center;
         // each label stays with its number when the line wraps (non-breaking spaces)
         var sections = Ui.Text($"CPU\u00A0{e.CpuScore.N0()} · MEM\u00A0{e.MemScore.N0()} · GPU\u00A0{e.Score.N0()} · UX\u00A0{e.UxScore.N0()} · " +
-            $"AI\u00A0{e.AiScore.N0()} · LLM\u00A0{e.LlmScore.N0()} · " + (e.RayTracing ? $"RT\u00A0{e.Test3Fps.F(0)}\u00A0FPS" : "NO\u00A0RT"),
+            $"AI\u00A0{e.AiScore.N0()} · " + (e.RayTracing ? $"RT\u00A0{e.Test3Fps.F(0)}\u00A0FPS" : "NO\u00A0RT"),
             7, Forge.Ink0.WithAlpha(0.4), wrap: true);
         var bar = new ScoreBar(fraction);
         Color? pickColor = slot == 0 ? BenchmarkCompareView.ColorA : slot == 1 ? BenchmarkCompareView.ColorB : null;

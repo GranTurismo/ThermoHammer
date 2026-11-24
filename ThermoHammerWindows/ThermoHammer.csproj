@@ -79,7 +79,6 @@
   <!-- benchcore.dll for the architecture being built (native/build.sh puts it in runtimes/) -->
   <ItemGroup>
     <None Include="runtimes\$(RuntimeIdentifier)\native\benchcore.dll" Condition="'$(RuntimeIdentifier)' != ''" Link="benchcore.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Include="runtimes\$(RuntimeIdentifier)\native\benchllm.dll" Condition="'$(RuntimeIdentifier)' != '' And Exists('runtimes\$(RuntimeIdentifier)\native\benchllm.dll')" Link="benchllm.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- DXC (the compiler and its validator) for the architecture being built -->
