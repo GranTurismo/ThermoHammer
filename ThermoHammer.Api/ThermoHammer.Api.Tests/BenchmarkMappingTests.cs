@@ -84,9 +84,10 @@ public class BenchmarkMappingTests
         return r;
     }
 
-    // fps that score exactly 6000 in each GPU test
-    private static readonly double F1 = 6000 / BenchmarkScoring.Test1Weight, F2 = 6000 / BenchmarkScoring.Test2Weight,
-        F3 = 6000 / BenchmarkScoring.Test3Weight;
+    // fps that score exactly the reference (7200) in each GPU test
+    private const int R = BenchmarkScoring.RefPoints;
+    private static readonly double F1 = R / BenchmarkScoring.Test1Weight, F2 = R / BenchmarkScoring.Test2Weight,
+        F3 = R / BenchmarkScoring.Test3Weight;
 
     internal static string Sign(string key, BenchmarkRequest r) =>
         Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(BenchmarkScoring.Canonical(r))));
@@ -147,16 +148,16 @@ public class BenchmarkMappingTests
     public void ScoreIsRecomputedFromFps()
     {
         var run = Request(r => { r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8; }).ToDao();
-        Assert.Equal(6000, run.Test1Score);
-        Assert.Equal(6000, run.Test2Score);
-        Assert.Equal(6000, run.Test3Score);
-        Assert.Equal(6000, run.Score);
+        Assert.Equal(7200, run.Test1Score);
+        Assert.Equal(7200, run.Test2Score);
+        Assert.Equal(7200, run.Test3Score);
+        Assert.Equal(7200, run.Score);
 
         var uneven = Request(r => { r.Test1Fps = F1 * 4 / 3; r.Test2Fps = F2 / 3; r.Test3Fps = F3 * 5 / 3; r.Test3LowFps = F3; }).ToDao();
-        Assert.Equal(8000, uneven.Test1Score);
-        Assert.Equal(2000, uneven.Test2Score);
-        Assert.Equal(10000, uneven.Test3Score);
-        Assert.Equal(6000, uneven.Score);                      // (2 · geomean 4000 + 10000) / 3
+        Assert.Equal(9600, uneven.Test1Score);
+        Assert.Equal(2400, uneven.Test2Score);
+        Assert.Equal(12000, uneven.Test3Score);
+        Assert.Equal(7200, uneven.Score);                      // (2 · geomean 4800 + 12000) / 3
     }
 
     private static void ReferenceUx(BenchmarkRequest r)
@@ -171,33 +172,33 @@ public class BenchmarkMappingTests
         r.ExportAvc = r.ExportHevc = r.ExportAv1 = BenchmarkScoring.RefExport;
         r.Export8kHevc = BenchmarkScoring.RefExport8k;
         r.ExportAvcPsnr = r.ExportHevcPsnr = r.ExportAv1Psnr = r.Export8kHevcPsnr = 38;
-        r.QrRate = 6000 / BenchmarkScoring.QrWeight;
+        r.QrRate = R / BenchmarkScoring.QrWeight;
     }
 
     [Fact]
     public void UxIsScoredFromRawResultsAndAddedToTheTotal()
     {
         var reference = Request(r => { r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8; ReferenceUx(r); }).ToDao();
-        Assert.Equal(6000, reference.WebScore);
-        Assert.Equal(6000, reference.ScrollScore);
-        Assert.Equal(6000, reference.GalleryScore);
-        Assert.Equal(6000, reference.PhotoScore);
-        Assert.Equal(6000, reference.VideoScore);
-        Assert.Equal(6000, reference.ExportScore);
-        Assert.Equal(6000, reference.QrScore);
-        Assert.Equal(6000, reference.UxScore);
+        Assert.Equal(7200, reference.WebScore);
+        Assert.Equal(7200, reference.ScrollScore);
+        Assert.Equal(7200, reference.GalleryScore);
+        Assert.Equal(7200, reference.PhotoScore);
+        Assert.Equal(7200, reference.VideoScore);
+        Assert.Equal(7200, reference.ExportScore);
+        Assert.Equal(7200, reference.QrScore);
+        Assert.Equal(7200, reference.UxScore);
 
         var run = Request(r =>
         {
-            r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8;   // GPU 6000
+            r.Test1Fps = F1; r.Test2Fps = F2; r.Test3Fps = F3; r.Test3LowFps = F3 * 0.8;   // GPU 7200
             ReferenceUx(r);
-            r.WebLayout = BenchmarkScoring.RefLayout * 32;                              // web 12000: 32^(1/5) = 2
-            r.QrRate = 2000 / BenchmarkScoring.QrWeight; r.MlKitQrRate = 40;            // 2000 points; ML Kit unscored
+            r.WebLayout = BenchmarkScoring.RefLayout * 32;                              // web 14400: 32^(1/5) = 2
+            r.QrRate = 2400 / BenchmarkScoring.QrWeight; r.MlKitQrRate = 40;            // 2400 points; ML Kit unscored
         }).ToDao();
-        Assert.Equal(12000, run.WebScore);
-        Assert.Equal(2000, run.QrScore);
-        Assert.Equal(5664, run.UxScore);                         // (6 · 6000 · (2 · ⅓)^(1/6) + export 6000) / 7
-        Assert.Equal(run.CpuScore + run.MemScore + 6000 + 5664 + run.AiScore, run.TotalScore);
+        Assert.Equal(14400, run.WebScore);
+        Assert.Equal(2400, run.QrScore);
+        Assert.Equal(6797, run.UxScore);                         // (6 · 7200 · (2 · ⅓)^(1/6) + export 7200) / 7
+        Assert.Equal(run.CpuScore + run.MemScore + 7200 + 6797 + run.AiScore, run.TotalScore);
         Assert.Equal(40, run.MlKitQrRate);
     }
 
@@ -205,17 +206,17 @@ public class BenchmarkMappingTests
     public void MissingCodecsAndFormatsCostAShareNotEverything()
     {
         var noAv1 = Request(r => { ReferenceUx(r); r.VideoAv1 = 0; r.VideoHardware = 0b0111; }).ToDao();
-        Assert.Equal(4875, noAv1.VideoScore);                    // 4K: three codecs of four, three quarters; 8K whole
+        Assert.Equal(5850, noAv1.VideoScore);                    // 4K: three codecs of four, three quarters; 8K whole
         Assert.Equal(0b0111, noAv1.VideoHardware);
         var no8k = Request(r => { ReferenceUx(r); r.Video8kHevc = r.Video8kAv1 = 0; r.Export8kHevc = 0; r.Export8kHevcPsnr = 0; }).ToDao();
-        Assert.Equal(4500, no8k.VideoScore);                     // no 8K: a quarter off, not half
-        Assert.Equal(4500, no8k.ExportScore);
+        Assert.Equal(5400, no8k.VideoScore);                     // no 8K: a quarter off, not half
+        Assert.Equal(5400, no8k.ExportScore);
         var noEncoder = Request(r => { ReferenceUx(r); r.ExportAvc = r.ExportHevc = r.ExportAv1 = r.Export8kHevc = 0;
             r.ExportAvcPsnr = r.ExportHevcPsnr = r.ExportAv1Psnr = r.Export8kHevcPsnr = 0; }).ToDao();
         Assert.Equal(0, noEncoder.ExportScore);
-        Assert.Equal(5143, noEncoder.UxScore);                   // no 4K encoder: a seventh off, not the whole section
+        Assert.Equal(6171, noEncoder.UxScore);                   // no 4K encoder: a seventh off, not the whole section
         var noAvif = Request(r => { ReferenceUx(r); r.GalleryAvif = 0; }).ToDao();
-        Assert.Equal(4000, noAvif.GalleryScore);                 // two formats of three
+        Assert.Equal(4800, noAvif.GalleryScore);                 // two formats of three
         Assert.True(noAv1.UxScore > 0 && noAvif.UxScore > 0);
         Assert.Equal(0, Request(r => { ReferenceUx(r); r.PhotoEdit = 0; }).ToDao().UxScore);   // a failed test zeroes UX
     }
@@ -226,10 +227,10 @@ public class BenchmarkMappingTests
         // H.264 ten times the reference but below the quality floor: as if there were no H.264 export
         var broken = Request(r => { ReferenceUx(r); r.ExportAvc = BenchmarkScoring.RefExport * 10; r.ExportAvcPsnr = 22.5;
             r.Export8kHevc = 0; r.Export8kHevcPsnr = 0; }).ToDao();
-        Assert.Equal(3000, broken.ExportScore);
+        Assert.Equal(3600, broken.ExportScore);
         Assert.Equal(BenchmarkScoring.RefExport, BenchmarkScoring.Counted(BenchmarkScoring.RefExport, BenchmarkScoring.MinExportPsnr));
         Assert.Equal(0, BenchmarkScoring.Counted(500, BenchmarkScoring.MinExportPsnr - 0.01));
-        Assert.Equal(6000, BenchmarkScoring.Parts(Request(ReferenceUx).ToDao())["ux.export"]);
+        Assert.Equal(7200, BenchmarkScoring.Parts(Request(ReferenceUx).ToDao())["ux.export"]);
         Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.ExportHevcPsnr = 120)));
         Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.ExportHardware = 16)));
     }
@@ -248,14 +249,14 @@ public class BenchmarkMappingTests
     public void AiCountsCpuAndGpuHalfEachAndNeverTheNpu()
     {
         var withNpu = Request(r => ReferenceAi(r, npu: true)).ToDao();
-        Assert.Equal(6000, withNpu.AiCpuScore);
+        Assert.Equal(7200, withNpu.AiCpuScore);
         Assert.Equal(0, withNpu.AiNpuScore);                   // NPU numbers never count in version 5
-        Assert.Equal(6000, withNpu.AiScore);
+        Assert.Equal(7200, withNpu.AiScore);
         var noNpu = Request(r => ReferenceAi(r, npu: false)).ToDao();
-        Assert.Equal(6000, noNpu.AiScore);
-        Assert.Equal(noNpu.CpuScore + noNpu.MemScore + noNpu.Score + noNpu.UxScore + 6000, noNpu.TotalScore);
-        Assert.Equal(5000, Request(r => { ReferenceAi(r, npu: true); r.AiSoundCpu = 0; }).ToDao().AiCpuScore);
-        Assert.Equal(3000, Request(r => { ReferenceAi(r, npu: true); r.AiClassifyGpu = r.AiDetectGpu = r.AiSegmentGpu =
+        Assert.Equal(7200, noNpu.AiScore);
+        Assert.Equal(noNpu.CpuScore + noNpu.MemScore + noNpu.Score + noNpu.UxScore + 7200, noNpu.TotalScore);
+        Assert.Equal(6000, Request(r => { ReferenceAi(r, npu: true); r.AiSoundCpu = 0; }).ToDao().AiCpuScore);
+        Assert.Equal(3600, Request(r => { ReferenceAi(r, npu: true); r.AiClassifyGpu = r.AiDetectGpu = r.AiSegmentGpu =
             r.AiUpscaleGpu = r.AiDepthGpu = r.AiSoundGpu = 0; }).ToDao().AiScore);   // no GPU: its half
         Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.AiDepthNpu = -3)));
     }
@@ -282,10 +283,10 @@ public class BenchmarkMappingTests
     {
         var run = Request(r =>
         {
-            r.CpuMath = BenchmarkScoring.RefCpuMath * 4 / 3; r.CpuData = BenchmarkScoring.RefCpuData / 3;   // 8000, 2000
+            r.CpuMath = BenchmarkScoring.RefCpuMath * 4 / 3; r.CpuData = BenchmarkScoring.RefCpuData / 3;   // 9600, 2400
             r.CpuCrypto = BenchmarkScoring.RefCpuCrypto * 4 / 3; r.CpuMulti = BenchmarkScoring.RefCpuMulti / 3;
         }).ToDao();
-        Assert.Equal(4000, run.CpuScore);
+        Assert.Equal(4800, run.CpuScore);
         Assert.Equal(0, Request(r => r.CpuMulti = 0).ToDao().CpuScore);
         Assert.Equal(run.CpuScore + run.MemScore + run.Score + run.UxScore + run.AiScore, run.TotalScore);
         Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.CpuMath = -5)));
@@ -305,12 +306,12 @@ public class BenchmarkMappingTests
     {
         // Same expectations as BenchmarkScoreTest.`MEM is the geometric mean …` in the app.
         var reference = Request(ReferenceMem).ToDao();
-        Assert.Equal(6000, reference.RamScore);
-        Assert.Equal(6000, reference.StorageScore);
-        Assert.Equal(6000, reference.DbScore);
-        Assert.Equal(6000, reference.MemScore);
-        Assert.Equal(reference.CpuScore + 6000 + reference.Score + reference.UxScore + reference.AiScore, reference.TotalScore);
-        Assert.Equal(7135, Request(r => { ReferenceMem(r); r.MemLatency /= 2; }).ToDao().RamScore);   // half the latency
+        Assert.Equal(7200, reference.RamScore);
+        Assert.Equal(7200, reference.StorageScore);
+        Assert.Equal(7200, reference.DbScore);
+        Assert.Equal(7200, reference.MemScore);
+        Assert.Equal(reference.CpuScore + 7200 + reference.Score + reference.UxScore + reference.AiScore, reference.TotalScore);
+        Assert.Equal(8562, Request(r => { ReferenceMem(r); r.MemLatency /= 2; }).ToDao().RamScore);   // half the latency
         Assert.Equal(0, Request(r => { ReferenceMem(r); r.MemLatency = 0; }).ToDao().MemScore);
         Assert.Equal(4000, BenchmarkScoring.Mem(8000, 2000, 4000));
         Assert.True(Request(ReferenceMem).ToDao().StorageDirect);
@@ -365,13 +366,13 @@ public class BenchmarkMappingTests
 
     /// <summary>
     /// The reference phone (Honor VKP-NX9, Snapdragon 8 Elite, Performance mode): the median of each measurement over its
-    /// runs of 2026-11-23 scores 6000 on every test — the same numbers as BenchmarkScoreTest.`the reference phone's
-    /// medians score 6000 on every test` in the app, so the server's references can't drift from the apps'.
+    /// runs of 2026-11-23 scores RefPoints (7200) on every test — the same numbers as BenchmarkScoreTest.`the reference
+    /// phone's medians score 7200 on every test` in the app, so the server's references can't drift from the apps'.
     /// </summary>
     [Fact]
-    public void TheReferencePhonesMediansScore6000OnEveryTest()
+    public void TheReferencePhonesMediansScore7200OnEveryTest()
     {
-        static void Near(int points, string what) => Assert.True(points is >= 5970 and <= 6030, $"{what} scored {points}");
+        static void Near(int points, string what) => Assert.True(points is >= 7164 and <= 7236, $"{what} scored {points}");
         Near(BenchmarkScoring.CpuPoints(3039.31, BenchmarkScoring.RefCpuMath), "math");
         Near(BenchmarkScoring.CpuPoints(1533.32, BenchmarkScoring.RefCpuData), "data");
         Near(BenchmarkScoring.CpuPoints(1184.12, BenchmarkScoring.RefCpuCrypto), "crypto");
@@ -388,7 +389,7 @@ public class BenchmarkMappingTests
         Near(BenchmarkScoring.PhotoPoints(349.95), "photo");
         Near(BenchmarkScoring.VideoPoints(269.0, 331.4, 309.6, 274.2, 91.13, 75.02), "video");
         Near(BenchmarkScoring.QrPoints(1171.51), "QR");
-        Assert.Equal(3000, BenchmarkScoring.ExportPoints(136.3, 136.3, 0, 0));   // two of three 4K encoders, no 8K
+        Assert.Equal(3600, BenchmarkScoring.ExportPoints(136.3, 136.3, 0, 0));   // two of three 4K encoders, no 8K
         Near(BenchmarkScoring.AiAccel([543.63, 28.67, 7.73, 4.59, 64.54, 3967.59], BenchmarkScoring.RefAiCpu), "AI CPU");
         Near(BenchmarkScoring.AiAccel([280.7, 36.7, 16.6, 38.8, 74.2, 582.0], BenchmarkScoring.RefAiGpu), "AI GPU");
     }
@@ -411,7 +412,7 @@ public class BenchmarkMappingTests
         Assert.Null(BenchmarkScoring.Problem(r));
         var run = r.ToDao();
         Assert.Equal(0, run.Test3Score);
-        Assert.Equal(4000, run.Score);                         // raster keeps two thirds
+        Assert.Equal(4800, run.Score);                         // raster keeps two thirds
         Assert.NotNull(BenchmarkScoring.Problem(Request(x => { x.RayTracing = false; x.Test3Fps = 30; })));
     }
 

@@ -307,14 +307,20 @@ public static class BenchmarkScoring
 {
     /// <summary>Scene/scoring version the server accepts — matches BenchmarkScore.VERSION in the app.</summary>
     public const int CurrentVersion = 5;
-    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode scores 6000 on each test — the
+    /// <summary>
+    /// Points a test's reference result is worth. 7,200 since the LLM test went (2026-11-24): five sections × 7,200 =
+    /// 36,000 for the reference phone, what six sections × 6,000 gave — BenchmarkScore.REF_POINTS in the apps.
+    /// </summary>
+    public const int RefPoints = 7200;
+    // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode scores RefPoints on each test — the
     // median of each measurement over its runs of 2026-11-23 (scoring version 5). They must match engine/Benchmark.kt in
     // the app (BenchmarkModels.swift and BenchmarkModels.cs repeat them); BenchmarkMappingTests pins them.
-    public const double Test1Weight = 46.21; // Lake Valley:  129.85 fps → 6000 points
-    public const double Test2Weight = 207.0; // Neon City:     28.98 fps → 6000 points
-    public const double Test3Weight = 424.9; // Neon City RT:  14.12 fps → 6000 points
+    // fps → points: the 6,000-point weights × 1.2 exactly (46.21, 207.0, 424.9), so every GPU score is 1.2× the old scale
+    public const double Test1Weight = 55.452; // Lake Valley:  129.85 fps → 7200 points
+    public const double Test2Weight = 248.4;  // Neon City:     28.98 fps → 7200 points
+    public const double Test3Weight = 509.88; // Neon City RT:  14.12 fps → 7200 points
 
-    // UX references, 6000 points each
+    // UX references, RefPoints each
     public const double RefLayout = 3061, RefCanvas = 4818, RefCss = 3061, RefSvg = 4898, RefJs = 4002;
     public const double RefScroll = 66560;   // feed px/s held
     public const double RefJpeg = 229.3, RefWebp = 167.8, RefAvif = 173.6;   // gallery MP/s per format
@@ -325,19 +331,19 @@ public static class BenchmarkScoring
     public const double RefExport = 136.3;   // encoded 4K frames/s per encoder, mean of H.264, HEVC, AV1
     public const double RefExport8k = 34.1;  // encoded 8K frames/s, HEVC
     public const double MinExportPsnr = 26;  // dB: below it the export is broken and its speed doesn't count
-    public const double QrWeight = 5.122;    // zxing-cpp decodes/s → points (1,171.5/s → 6000)
+    public const double QrWeight = 6.1464;   // zxing-cpp decodes/s → points (1,171.5/s → 7200; 5.122 × 1.2)
 
-    // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), 6000 points each
+    // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), RefPoints each
     public const double RefCpuMath = 3039, RefCpuData = 1533, RefCpuCrypto = 1184, RefCpuMulti = 8884;
     public const double MaxFps = 5000;
 
-    // AI references: inferences/s worth 6000 points per model (classify, detect, segment, upscale, depth, sound)
+    // AI references: inferences/s worth RefPoints per model (classify, detect, segment, upscale, depth, sound)
     // and accelerator (GPU through LiteRT's OpenGL backend). Version 5 doesn't score the NPU (no NPU runtime reaches
     // every device): its fields stay in the payload, always 0 from the apps.
     public static readonly double[] RefAiCpu = [543.6, 28.67, 7.73, 4.59, 64.5, 3968];
     public static readonly double[] RefAiGpu = [280.7, 36.7, 16.6, 38.8, 74.2, 582];
 
-    // MEM references, 6000 points each
+    // MEM references, RefPoints each
     public const double RefMemRead = 63.5, RefMemWrite = 28.3, RefMemCopy = 19.7, RefMemLatency = 134;  // GB/s, ns
     public const double RefSeqRead = 1780, RefSeqWrite = 1309, RefRandomRead = 24700, RefRandomWrite = 13380; // MB/s, IOPS
     public const double RefDbInsert = 15700, RefDbUpdate = 389000, RefDbQuery = 43800;                 // per second, warmed up
@@ -366,25 +372,25 @@ public static class BenchmarkScoring
     {
         double[] parts = [layout / RefLayout, canvas / RefCanvas, css / RefCss, svg / RefSvg, js / RefJs];
         if (parts.Any(p => !(p > 0))) return 0;
-        return (int)Math.Round(6000 * Math.Exp(parts.Sum(Math.Log) / parts.Length), MidpointRounding.AwayFromZero);
+        return (int)Math.Round(RefPoints * Math.Exp(parts.Sum(Math.Log) / parts.Length), MidpointRounding.AwayFromZero);
     }
 
     public static int QrPoints(double rate) => (int)Math.Round(Math.Max(rate, 0) * QrWeight, MidpointRounding.AwayFromZero);
 
-    public static int ScrollPoints(double speed) => (int)Math.Round(6000 * Math.Max(speed, 0) / RefScroll, MidpointRounding.AwayFromZero);
+    public static int ScrollPoints(double speed) => (int)Math.Round(RefPoints * Math.Max(speed, 0) / RefScroll, MidpointRounding.AwayFromZero);
 
     /// <summary>Mean over the three formats — a WebView without AVIF loses a third.</summary>
     public static int GalleryPoints(double jpeg, double webp, double avif) => (int)Math.Round(
-        6000 * (Math.Max(jpeg, 0) / RefJpeg + Math.Max(webp, 0) / RefWebp + Math.Max(avif, 0) / RefAvif) / 3,
+        RefPoints * (Math.Max(jpeg, 0) / RefJpeg + Math.Max(webp, 0) / RefWebp + Math.Max(avif, 0) / RefAvif) / 3,
         MidpointRounding.AwayFromZero);
 
-    public static int PhotoPoints(double mps) => (int)Math.Round(6000 * Math.Max(mps, 0) / RefPhoto, MidpointRounding.AwayFromZero);
+    public static int PhotoPoints(double mps) => (int)Math.Round(RefPoints * Math.Max(mps, 0) / RefPhoto, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// 4K three quarters (mean of the four codecs), 8K one quarter (mean of HEVC and AV1) — UxScore.videoPoints.
     /// </summary>
     public static int VideoPoints(double avc, double hevc, double vp9, double av1, double hevc8k, double av18k) => (int)Math.Round(
-        6000 * (0.75 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(vp9, 0) + Math.Max(av1, 0)) / (RefVideo * 4) +
+        RefPoints * (0.75 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(vp9, 0) + Math.Max(av1, 0)) / (RefVideo * 4) +
                 0.25 * (Math.Max(hevc8k, 0) + Math.Max(av18k, 0)) / (RefVideo8k * 2)),
         MidpointRounding.AwayFromZero);
 
@@ -393,12 +399,12 @@ public static class BenchmarkScoring
 
     /// <summary>4K (mean of H.264, HEVC, AV1) three quarters, 8K HEVC one quarter — UxScore.exportPoints.</summary>
     public static int ExportPoints(double avc, double hevc, double av1, double hevc8k) => (int)Math.Round(
-        6000 * (0.75 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(av1, 0)) / (RefExport * 3) +
+        RefPoints * (0.75 * (Math.Max(avc, 0) + Math.Max(hevc, 0) + Math.Max(av1, 0)) / (RefExport * 3) +
                 0.25 * Math.Max(hevc8k, 0) / RefExport8k),
         MidpointRounding.AwayFromZero);
 
     public static int CpuPoints(double value, double reference) =>
-        (int)Math.Round(6000 * Math.Max(value, 0) / reference, MidpointRounding.AwayFromZero);
+        (int)Math.Round(RefPoints * Math.Max(value, 0) / reference, MidpointRounding.AwayFromZero);
 
     /// <summary>Geometric mean of the four CPU tests (0 if any is 0).</summary>
     public static int Cpu(double math, double data, double crypto, double multi)
@@ -408,9 +414,9 @@ public static class BenchmarkScoring
         return (int)Math.Round(Math.Exp(p.Sum(x => Math.Log(x)) / p.Length), MidpointRounding.AwayFromZero);
     }
 
-    /// <summary>6000 × the geometric mean of value ÷ reference; 0 if any part is 0 — MemScore.geo in the app.</summary>
+    /// <summary>RefPoints × the geometric mean of value ÷ reference; 0 if any part is 0 — MemScore.geo in the app.</summary>
     private static int Geo(params double[] ratios) => ratios.Any(r => !(r > 0)) ? 0
-        : (int)Math.Round(6000 * Math.Exp(ratios.Sum(Math.Log) / ratios.Length), MidpointRounding.AwayFromZero);
+        : (int)Math.Round(RefPoints * Math.Exp(ratios.Sum(Math.Log) / ratios.Length), MidpointRounding.AwayFromZero);
 
     /// <summary>Latency counts inversely: half the nanoseconds, twice as good.</summary>
     public static int RamPoints(double read, double write, double copy, double latencyNs) =>
@@ -424,7 +430,7 @@ public static class BenchmarkScoring
 
     /// <summary>One accelerator: mean of its six model points — a model it can't run costs a sixth.</summary>
     public static int AiAccel(double[] ips, double[] refs) => (int)Math.Round(
-        ips.Select((v, i) => 6000 * Math.Max(v, 0) / refs[i]).Sum() / refs.Length, MidpointRounding.AwayFromZero);
+        ips.Select((v, i) => RefPoints * Math.Max(v, 0) / refs[i]).Sum() / refs.Length, MidpointRounding.AwayFromZero);
 
     /// <summary>Version 5: the CPU and the GPU each half; a missing one scores 0 there — AiScore.overall in the app.</summary>
     public static int Ai(int cpu, int gpu) =>
@@ -684,16 +690,24 @@ public static class BenchmarkScoring
         };
     }
 
+    // Version 4's CPU references, worth 6000 points: a stored version 4 run keeps its own CPU sub-test points on its page
+    // (the rest of a run's parts are stored as scored)
+    private const double V4RefCpuMath = 1469, V4RefCpuData = 647, V4RefCpuCrypto = 580, V4RefCpuMulti = 5003;
+
+    private static int CpuPart(BenchmarkRun r, double value, double reference, double v4Reference) => r.BenchmarkVersion < 5
+        ? (int)Math.Round(6000 * Math.Max(value, 0) / v4Reference, MidpointRounding.AwayFromZero)
+        : CpuPoints(value, reference);
+
     /// <summary>
-    /// The parts of a run's score, each 6000 points on the reference phone — named the same in the apps' Phone
+    /// The parts of a run's score, each RefPoints on the reference phone — named the same in the apps' Phone
     /// Health, which compares them with the model's medians.
     /// </summary>
     public static Dictionary<string, int> Parts(BenchmarkRun r) => new()
     {
-        ["cpu.math"] = CpuPoints(r.CpuMath, RefCpuMath),
-        ["cpu.data"] = CpuPoints(r.CpuData, RefCpuData),
-        ["cpu.crypto"] = CpuPoints(r.CpuCrypto, RefCpuCrypto),
-        ["cpu.multi"] = CpuPoints(r.CpuMulti, RefCpuMulti),
+        ["cpu.math"] = CpuPart(r, r.CpuMath, RefCpuMath, V4RefCpuMath),
+        ["cpu.data"] = CpuPart(r, r.CpuData, RefCpuData, V4RefCpuData),
+        ["cpu.crypto"] = CpuPart(r, r.CpuCrypto, RefCpuCrypto, V4RefCpuCrypto),
+        ["cpu.multi"] = CpuPart(r, r.CpuMulti, RefCpuMulti, V4RefCpuMulti),
         ["mem.ram"] = r.RamScore,
         ["mem.storage"] = r.StorageScore,
         ["mem.db"] = r.DbScore,
