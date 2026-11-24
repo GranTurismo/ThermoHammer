@@ -15,7 +15,7 @@ IN="$BASE/.npu-incoming"          # outside what the site serves
 ssh "$HOST" "mkdir -p '$DIR' '$IN'"
 for f in "$@"; do
     name="$(basename "$f")"
-    [[ "$name" =~ ^Gemma3-1B-IT_q[48]_ekv1280_[a-z]+[0-9]+\.litertlm$ ]] || { echo "not a model file name: $name" >&2; exit 1; }
+    [[ "$name" =~ ^Gemma3-1B-IT_q[48](att8)?_ekv1280_[a-z]+[0-9]+\.litertlm$ ]] || { echo "not a model file name: $name" >&2; exit 1; }
     sha="$(shasum -a 256 "$f" | cut -d' ' -f1)"
     # copy, check, then move into place: a phone never downloads half a file under the published name
     rsync -a --partial --progress "$f" "$HOST:$IN/$name"

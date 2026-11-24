@@ -1,6 +1,6 @@
 """Publish gate for a built Gemma 3 1B NPU file: is it the LLM test's model, and does the whole model run on the NPU?
 
-python -I verify.py Gemma3-1B-IT_q<4|8>_ekv1280_<soc>.litertlm [--json result.json]
+python -I verify.py Gemma3-1B-IT_<q4|q8|q4att8>_ekv1280_<soc>.litertlm [--json result.json]
 
 Exit 0 only when:
   * the file has the five sections the apps' LiteRT-LM 0.19.1 runtime expects (LlmMetadata, SentencePiece
@@ -30,10 +30,10 @@ SIZE_RANGE = {(4, "Qualcomm"): (600e6, 800e6), (4, "MediaTek"): (900e6, 1150e6),
 
 def check(path):
   problems = []
-  m = re.search(r"_q([48])_ekv1280_([a-z]+[0-9]+)\.litertlm$", os.path.basename(path))
+  m = re.search(r"_(q([48])(?:att8)?)_ekv1280_([a-z]+[0-9]+)\.litertlm$", os.path.basename(path))
   if not m:
-    return [f"can't read the precision and chip from {os.path.basename(path)}"], {}
-  bits, soc = int(m.group(1)), m.group(2)
+    return [f"can't read the model form and chip from {os.path.basename(path)}"], {}
+  bits, soc = int(m.group(2)), m.group(3)
   vendor = VENDOR.get(soc[:2])
   if not vendor:
     return [f"unknown chip maker for {soc}"], {}

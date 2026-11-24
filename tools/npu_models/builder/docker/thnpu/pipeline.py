@@ -167,13 +167,35 @@ def cmd_quantize(a):
   orig = quant_utils.add_main_model_quant_recipe
 
   def recipe(q, **kw):
+    if a.act_bits == 8:
+      kw["a16w8"] = False  # the library's a8w8: for NPUs without int16 arithmetic
     q = orig(q, **kw)  # a16w8 everywhere (+ the library's special cases)
+    if a.act_bits == 8:
+      # the library keeps the norms (STABLEHLO_COMPOSITE rms_norm) at 16 bits even in a8w8; an NPU without int16 can't
+      log("recipe: activations int8, norms included")
+      q.add_static_config(
+          regex=".*",
+          operation_name=qtyping.TFLOperationName.STABLEHLO_COMPOSITE,
+          activation_num_bits=8,
+          weight_num_bits=8,
+      )
+      q = quant_utils._add_stablehlo_composite_graph_recipe(q, activation_num_bits=8)  # pylint: disable=protected-access
+    if a.attn_bits:
+      # attention's two matmuls per layer (QK^T, PV) are BATCH_MATMULs between activations; the library's own
+      # attn_bits option matches tensor names (dot_product_attention) this export doesn't have
+      log(f"recipe: attention BATCH_MATMULs at int{a.attn_bits}")
+      q.add_static_config(
+          regex=".*",
+          operation_name=qtyping.TFLOperationName.BATCH_MATMUL,
+          activation_num_bits=a.attn_bits,
+          weight_num_bits=8,
+      )
     if a.weight_bits == 4:
-      log("recipe: FULLY_CONNECTED weights int4 per channel, activations int16")
+      log(f"recipe: FULLY_CONNECTED weights int4 per channel, activations int{a.act_bits}")
       q.add_static_config(
           regex=".*",
           operation_name=qtyping.TFLOperationName.FULLY_CONNECTED,
-          activation_num_bits=16,
+          activation_num_bits=a.act_bits,
           weight_num_bits=4,
           weight_granularity=qtyping.QuantGranularity.CHANNELWISE,
       )
@@ -262,6 +284,9 @@ def main(argv=None):
   p.add_argument("--num_prompts", type=int, default=10)
   p.add_argument("--decode_steps", type=int, default=32)
   p.add_argument("--weight_bits", type=int, default=4, choices=[4, 8])
+  p.add_argument("--act_bits", type=int, default=16, choices=[8, 16])
+  p.add_argument("--attn_bits", type=int, default=0, choices=[0, 8, 16],
+                 help="activation bits for the attention ops only (0 = same as the rest)")
   p.add_argument("--float_norm", action="store_true")
   p.add_argument("--range_scale", type=float, default=1.0)
   p.add_argument("--out", default=None)

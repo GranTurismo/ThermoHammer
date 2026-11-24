@@ -7,8 +7,11 @@
 #    sha256 3dddcbaeec1e8b310dbd98fdb581d07c948859ff6c8e7a2b5ea17c1b33ae07e7)
 #   MODEL_DIR=... ./build.sh sm8650 mt6993 ...      (several SoCs, shared prep)
 #
-# Output: $OUT_DIR/Gemma3-1B-IT_q<WEIGHT_BITS>_ekv1280_<soc>.litertlm (+ .report.md); WEIGHT_BITS=8 only for chips
-# whose NPU has no 4-bit weights (tools/npu_models/plan.py NEEDS_W8)
+# Output: $OUT_DIR/Gemma3-1B-IT_<QUANT>_ekv1280_<soc>.litertlm (+ .report.md). QUANT is the model's form, the same
+# model everywhere, the most compact one the chip's NPU runs whole (tools/npu_models/plan.py VARIANT):
+#   q4      int16 activations, int4 weights: Google's "q4", every chip that can
+#   q8      int16 activations, int8 weights: NPUs without int4 weights
+#   q4att8  q4 with attention's two matmuls at int8: NPUs without int16 x int16 matmul
 #
 # Pipeline (see docker/thnpu/pipeline.py):
 #   1 export     HF weights -> float split-cache .litertlm   (litert-torch 0.10.0)
@@ -23,7 +26,7 @@
 # (under Rosetta on a Mac: QNN/NeuroPilot host compilers are x86-64 only).
 #
 # Env: MODEL_DIR (required)  OUT_DIR=./out  CACHE_DIR=./cache  PREP=auto|docker|host
-#      NUM_PROMPTS=50  DECODE_STEPS=32  WEIGHT_BITS=4  REF_DIR (reference files
+#      NUM_PROMPTS=50  DECODE_STEPS=32  QUANT=q4  REF_DIR (reference files
 #      named like Google's, for the structural report)  KEEP=0
 set -euo pipefail
 
@@ -33,11 +36,17 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT_DIR="$(mkdir -p "${OUT_DIR:-$HERE/out}" && cd "${OUT_DIR:-$HERE/out}" && pwd)"
 CACHE_DIR="$(mkdir -p "${CACHE_DIR:-$HERE/cache}" && cd "${CACHE_DIR:-$HERE/cache}" && pwd)"
 PREP="${PREP:-auto}"
-NUM_PROMPTS="${NUM_PROMPTS:-50}"; DECODE_STEPS="${DECODE_STEPS:-32}"; WEIGHT_BITS="${WEIGHT_BITS:-4}"
+NUM_PROMPTS="${NUM_PROMPTS:-50}"; DECODE_STEPS="${DECODE_STEPS:-32}"; QUANT="${QUANT:-q4}"
+case "$QUANT" in
+  q4) WEIGHT_BITS=4; ATTN_BITS=0;;
+  q8) WEIGHT_BITS=8; ATTN_BITS=0;;
+  q4att8) WEIGHT_BITS=4; ATTN_BITS=8;;
+  *) echo "unknown QUANT $QUANT (q4, q8, q4att8)" >&2; exit 2;;
+esac
 CACHE_LEN=1280; PREFILL=128
 WORK="$OUT_DIR/work"; mkdir -p "$WORK"
 # calibration is shared by every precision; each weight precision has its own quantized model
-QFILE="quantized.litertlm"; [ "$WEIGHT_BITS" = 4 ] || QFILE="quantized-w$WEIGHT_BITS.litertlm"
+QFILE="quantized.litertlm"; [ "$QUANT" = q4 ] || QFILE="quantized-$QUANT.litertlm"
 
 QAIRT_VERSION=2.52.0.261104
 QAIRT_SHA256=e4c88416efa47eb8ed32fe2bd36fe63df58a3f4b48a347de5cf565a8c38e0961
@@ -108,8 +117,8 @@ prep() { # export -> calibrate -> quantize, once for all SoCs (Qualcomm and
     run_prep calibrate --cache $CACHE_LEN --num_prompts "$NUM_PROMPTS" --decode_steps "$DECODE_STEPS"
     [ -f "$WORK/common/calib/.done" ] || { echo "calibration left no .done marker" >&2; exit 1; }   # pipeline.py writes it
   fi
-  log "stage 3 quantize (int$WEIGHT_BITS FC weights, int16 activations)"
-  run_prep quantize --quant "$(w "common/$QFILE")" --weight_bits "$WEIGHT_BITS"
+  log "stage 3 quantize $QUANT (int$WEIGHT_BITS FC weights, int16 activations, attention int${ATTN_BITS/#0/16})"
+  run_prep quantize --quant "$(w "common/$QFILE")" --weight_bits "$WEIGHT_BITS" --attn_bits "$ATTN_BITS"
 }
 
 # --------------------------------------------------------------- stage 4
@@ -119,7 +128,7 @@ for SOC in "$@"; do
   SOC="$(echo "$SOC" | tr A-Z a-z)"; V="$(vendor_of "$SOC")"
   prep
   PLAT=linux/amd64; IMG="${COMPILE_IMG:-$(image compile "$PLAT")}"; COMPILE_IMG="$IMG"
-  NAME="Gemma3-1B-IT_q${WEIGHT_BITS}_ekv${CACHE_LEN}_${SOC}.litertlm"
+  NAME="Gemma3-1B-IT_${QUANT}_ekv${CACHE_LEN}_${SOC}.litertlm"
   log "stage 4 compile $SOC ($V) in $IMG"
   docker run --rm --platform "$PLAT" -v "$WORK":/work -v "$OUT_DIR":/out "$IMG" \
     python -I /opt/thnpu/thnpu/pipeline.py compile --work /work/common --soc "$SOC" \

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       socs:
-        description: "Chips to build, space-separated; soc:8 for 8-bit weights (e.g. sm8845 mt6983:8). Empty: what plan.py finds."
+        description: "Chips to build, space-separated; soc:<form> for another model form (e.g. sm8845 mt6983:q8). Empty: plan.py."
         required: false
         default: ""
       publish:
@@ -114,12 +114,12 @@ jobs:
         run: |
           mkdir -p "$NPU/out" "$NPU/publish"
           : > "$NPU/failed.txt"
-          # each token: "soc" (4-bit weights) or "soc:8" (8-bit weights, for an NPU without 4-bit ones)
+          # each token: "soc" (the standard q4) or "soc:<form>" (q8, q4att8: plan.py VARIANT)
           for tok in $SOCS; do
-            soc="${tok%%:*}"; bits=4; case "$tok" in *:*) bits="${tok#*:}";; esac
-            if WEIGHT_BITS="$bits" MODEL_DIR="$NPU/gemma" OUT_DIR="$NPU/out" CACHE_DIR="$NPU/cache" COMPILE_IMG="${COMPILE_IMG:-}" \
+            soc="${tok%%:*}"; quant=q4; case "$tok" in *:*) quant="${tok#*:}";; esac
+            if QUANT="$quant" MODEL_DIR="$NPU/gemma" OUT_DIR="$NPU/out" CACHE_DIR="$NPU/cache" COMPILE_IMG="${COMPILE_IMG:-}" \
                  tools/npu_models/builder/build.sh "$soc" 2>&1 | tee "$NPU/out/build-$soc.log"; then
-              echo "built $soc ($bits-bit weights)"
+              echo "built $soc ($quant)"
             else
               echo "$soc (build failed)" >> "$NPU/failed.txt"
               # export and calibration are shared: if they failed, every other chip would fail the same way
@@ -147,7 +147,7 @@ jobs:
 
       - name: Publish gate (whole model on the NPU, Google's settings)
         run: |
-          for f in "$NPU"/out/Gemma3-1B-IT_q[48]_ekv1280_*.litertlm; do
+          for f in "$NPU"/out/Gemma3-1B-IT_q*_ekv1280_*.litertlm; do
             [ -f "$f" ] || continue
             name="$(basename "$f")"
             if docker run --rm --platform linux/amd64 -v "$NPU/out":/out:ro thnpu:compile-amd64 \

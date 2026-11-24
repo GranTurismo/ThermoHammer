@@ -7,7 +7,7 @@ IN="$(cd "$(dirname "$0")" && pwd)"
 OUT="$(dirname "$IN")/models/android"
 mkdir -p "$OUT"
 cd "$IN"
-for f in Gemma3-1B-IT_q[48]_ekv1280_*.litertlm; do
+for f in Gemma3-1B-IT_q*_ekv1280_*.litertlm; do
     [ -f "$f" ] || continue
     if [ -f "$f.sha256" ] && [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$(cat "$f.sha256")" ]; then
         chmod 644 "$f" "$f.sha256"
