@@ -30,11 +30,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The LLM test's NPU engine (scoring version 5, BENCHMARK_V5_PLAN.md): Gemma 3 1B on the phone's NPU through Google's
- * LiteRT-LM — a third of the LLM score (LlmResult.npuPoints).
+ * Test builds only, report only: Gemma 3 1B on the phone's NPU through Google's LiteRT-LM. Scoring version 5 doesn't
+ * score the NPU (no way to run it reaches every chip yet, BENCHMARK_V5_PLAN.md); Play builds get the stub in
+ * src/release, without LiteRT-LM's ~23 MB library.
  *
- * The model is Google's own per-chip build, Gemma3-1B-IT_q4_ekv1280_<soc>.litertlm (4-bit, a 1,280-token context; the
- * same model and precision on every supported Snapdragon and Dimensity), delivered by Play as an AI pack (NpuModels).
+ * The model is a per-chip build, Gemma3-1B-IT_<form>_ekv1280_<soc>.litertlm (Google's, or tools/npu_models'), found by
+ * NpuModels.
  *
  * Speed: LiteRT-LM's own benchmark with the LLM test's task size, a 512-token prompt and a 32-token reply.
  * Answer: one fixed question, greedy (top-k 1), whose reply must name the expected word; a wrong one scores 0.
@@ -66,7 +67,7 @@ object NpuLlmProbe {
      */
     suspend fun runIsolated(context: Context, model: File? = null, stepTimeoutMs: Long = STEP_TIMEOUT_MS,
                             onStep: (String, Float) -> Unit): LlmNpuRun = withContext(Dispatchers.Main.immediate) {
-        // the model is found here, in the app's process (Play's AI pack), and handed to the engine's process
+        // the model is found here, in the app's process, and handed to the engine's process
         val soc = NpuModels.soc()
         @Suppress("NAME_SHADOWING") val model = model ?: NpuModels.modelFile(context)
         // a failure once the file was found (its process crashed or hung, the libraries didn't load) keeps the model's
@@ -76,8 +77,7 @@ object NpuLlmProbe {
             val supported = NpuModels.supported(context, soc)
             val why = if (supported)
                 "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone yet — " +
-                    (if (NpuModels.inPack(soc)) "Google Play downloads it after the install" else "the app downloads it over Wi-Fi") +
-                    "; this run can't be submitted"
+                    "the app downloads it over Wi-Fi"
             else "not run: no Gemma 3 1B NPU model exists for this chip (${soc.ifBlank { "unknown" }}): no NPU compiler targets it yet — counts 0"
             return@withContext LlmNpuRun(0.0, 0.0, false, error = why.removePrefix("not run: "), lines = listOf("$HEAD · $why"),
                 missingModel = supported)

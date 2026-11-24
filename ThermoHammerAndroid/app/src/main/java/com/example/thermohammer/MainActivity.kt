@@ -25,15 +25,6 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private var npuConfirm: androidx.activity.result.ActivityResultLauncher<androidx.activity.result.IntentSenderRequest>? = null
-
-    override fun onDestroy() {
-        // not this activity's launcher once it's gone (a rotation makes a new one)
-        if (com.example.thermohammer.engine.llm.NpuModels.confirmLauncher === npuConfirm)
-            com.example.thermohammer.engine.llm.NpuModels.confirmLauncher = null
-        super.onDestroy()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -56,13 +47,9 @@ class MainActivity : ComponentActivity() {
                 if (only.isNotEmpty()) engine.startBenchmark(only = only)
             }
 
-        // Play's "download over mobile data?" dialog for the NPU model, when Play holds the pack for the user's OK
-        npuConfirm = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()) { }
-        com.example.thermohammer.engine.llm.NpuModels.confirmLauncher = npuConfirm
-        // The LLM test's NPU model (version 5): Play downloads it after the install (fast-follow); asking again here
-        // restarts a download that stopped, so it's on the phone by the first benchmark. Nothing on other chips.
-        // The site's list of chips added since this release (NpuServerModels) is refreshed too, twice a day at most.
-        if (savedInstanceState == null)
+        // Test builds: the report-only NPU LLM run's model (not scored in version 5: no NPU path covers every chip yet).
+        // The site's list of chips (NpuServerModels) is refreshed too, twice a day at most.
+        if (savedInstanceState == null && com.example.thermohammer.TestBuild.PROBES)
             lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 val app = applicationContext
                 com.example.thermohammer.engine.llm.NpuServerModels.refreshManifest(app)

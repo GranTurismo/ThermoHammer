@@ -541,28 +541,25 @@ data class LlmResult(
     // the short probe of the CPU kernel builds and what this phone's CPU and GPU drivers offer. The CPU run in `runs` ran
     // in the kernel build the probe chose (the i8mm one only where it measured clearly faster); the rest is reported only
     val probe: LlmProbeResult? = null,
-    /** The NPU: Google's own Gemma 3 1B file for this chip through LiteRT-LM (null: no NPU path was tried on this phone). */
+    /** Test builds, report only: the NPU through LiteRT-LM (null: not tried). Not scored: no NPU path covers every chip. */
     val npu: LlmNpuRun? = null
 ) {
     fun run(a: LlmAccel): LlmRun? = runs.firstOrNull { it.accel == a }
     /** One engine's points: its prompt and reply rates against the same engine's reference (LlmScore). */
     fun points(a: LlmAccel): Int = run(a)?.let { LlmScore.engine(a, it.prefill, it.decode) } ?: 0
-    /** The NPU's points; 0 when it didn't run, failed, or answered the check question wrongly. */
+    /** What the NPU would score against its reference (test builds' report only; never part of the score). */
     val npuPoints: Int get() = npu?.takeIf { it.right && it.error == null }?.let { LlmScore.npu(it.prefill, it.decode) } ?: 0
-    private val rates: List<Pair<Double, Double>> get() =
-        runs.map { it.prefill to it.decode } + listOfNotNull(npu?.takeIf { it.right && it.error == null }?.let { it.prefill to it.decode })
+    private val rates: List<Pair<Double, Double>> get() = runs.map { it.prefill to it.decode }
     /** The fastest engine at each — what a chat app on this phone could get (shown, not scored). */
     val prefill: Double get() = rates.maxOfOrNull { it.first } ?: 0.0
     val decode: Double get() = rates.maxOfOrNull { it.second } ?: 0.0
     /** The best engine's points for each phase, against that engine's own reference (CSV, the health memo). */
     val prefillPoints: Int get() = maxOf(run(LlmAccel.CPU)?.let { LlmScore.phase(it.prefill, LlmScore.REF_CPU_PREFILL) } ?: 0,
-        run(LlmAccel.GPU)?.let { LlmScore.phase(it.prefill, LlmScore.REF_GPU_PREFILL) } ?: 0,
-        if (npuPoints > 0) LlmScore.phase(npu!!.prefill, LlmScore.REF_NPU_PREFILL) else 0)
+        run(LlmAccel.GPU)?.let { LlmScore.phase(it.prefill, LlmScore.REF_GPU_PREFILL) } ?: 0)
     val decodePoints: Int get() = maxOf(run(LlmAccel.CPU)?.let { LlmScore.phase(it.decode, LlmScore.REF_CPU_DECODE) } ?: 0,
-        run(LlmAccel.GPU)?.let { LlmScore.phase(it.decode, LlmScore.REF_GPU_DECODE) } ?: 0,
-        if (npuPoints > 0) LlmScore.phase(npu!!.decode, LlmScore.REF_NPU_DECODE) else 0)
-    /** Version 5's rule: the CPU, the GPU and the NPU each count a third — an engine that can't run the task counts 0. */
-    val score: Int get() = LlmScore.overall(points(LlmAccel.CPU), points(LlmAccel.GPU), npuPoints)
+        run(LlmAccel.GPU)?.let { LlmScore.phase(it.decode, LlmScore.REF_GPU_DECODE) } ?: 0)
+    /** Version 5's rule: the CPU and the GPU each count half — an engine that can't run the task counts 0. */
+    val score: Int get() = LlmScore.overall(points(LlmAccel.CPU), points(LlmAccel.GPU))
 }
 
 /**
@@ -576,9 +573,10 @@ data class LlmNpuRun(val prefill: Double, val decode: Double, val right: Boolean
                      val missingModel: Boolean = false)
 
 object LlmScore {
-    // Version 5: Gemma 3 1B (4-bit) on each engine — llama.cpp on the CPU and the GPU (seeded weights, the model's exact
-    // shape), LiteRT-LM on the NPU (Google's own file for the chip) — each against the same engine's reference, then the
-    // three averaged (rule B, BENCHMARK_V5_PLAN.md). Tokens per second worth 6000 points per engine.
+    // Version 5: Gemma 3 1B (4-bit) on the CPU and the GPU through llama.cpp (seeded weights, the model's exact shape),
+    // each against the same engine's reference, then the two averaged (BENCHMARK_V5_PLAN.md). The NPU isn't scored: no
+    // NPU path covers every chip yet (Exynos, Snapdragon 7/8s, Windows NPUs), so it would cost those devices points for
+    // a software reason; test builds still measure it (REF_NPU_*: what it would score). Tokens/s worth 6000 per engine.
     // The Honor VKP-NX9 (Snapdragon 8 Elite) in Performance mode, the median of the test runs of 2026-11-23 (CPU i8mm
     // 150–190 / 45–61, GPU OpenCL 880–909 / 27–33, NPU 5,345–5,724 / 49–59). Repeated in BenchmarkScoring.cs.
     const val REF_CPU_PREFILL = 160.0
@@ -602,9 +600,8 @@ object LlmScore {
 
     fun npu(prefill: Double, decode: Double): Int = engine(prefill, decode, REF_NPU_PREFILL, REF_NPU_DECODE)
 
-    /** Each engine counts a third; one the phone lacks or can't run the task on scores 0 there. */
-    fun overall(cpu: Int, gpu: Int, npu: Int): Int =
-        ((cpu.coerceAtLeast(0) + gpu.coerceAtLeast(0) + npu.coerceAtLeast(0)) / 3.0).roundToInt()
+    /** The CPU and the GPU each count half; an engine the device lacks or can't run the task on scores 0 there. */
+    fun overall(cpu: Int, gpu: Int): Int = ((cpu.coerceAtLeast(0) + gpu.coerceAtLeast(0)) / 2.0).roundToInt()
 }
 
 object BenchmarkScore {

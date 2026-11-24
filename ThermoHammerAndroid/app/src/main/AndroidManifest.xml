@@ -31,13 +31,6 @@
             android:exported="false"
             android:process=":drivercheck" />
 
-        <!-- The LLM test's NPU engine (engine/llm/NpuLlmProbe.kt): LiteRT-LM and the NPU driver in a process of their
-             own, so a native crash there costs the NPU's third of the LLM score, not the run -->
-        <service
-            android:name=".engine.llm.NpuLlmProbeService"
-            android:exported="false"
-            android:process=":npullm" />
-
         <!-- System libraries MediaTek's NeuroPilot adapters (npu/mtk_v8, npu/mtk_v9) load by name. From Android 12 an
              app may load a chip maker's public library only if it names it here, and the list LiteRT brings leaves
              these out. Without them the adapter cannot reach the VPU (xrp) or its own CPU fallback (nir_neon, cmdl);

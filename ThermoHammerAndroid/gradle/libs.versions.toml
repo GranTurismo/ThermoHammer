@@ -21,7 +21,6 @@ litert = "2.3.0"
 # Test builds only: LiteRT-LM on the NPU (engine/llm/NpuLlmProbe.kt, src/nonRelease), and the LiteRT dispatch ABI it needs
 litertlm = "0.19.1"
 litertNpuForLm = "2.4.0"
-aiDelivery = "0.2.0-beta01"
 # 2.52 (version 5): LiteRT-LM's NPU path (LiteRT 2.4 dispatch) needs QNN System API 1.16, which 2.51 (1.15) lacks
 qnnRuntime = "2.52.0"
 playReview = "2.0.2"
@@ -62,7 +61,6 @@ litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
 litert-gpu = { module = "com.google.ai.edge.litert:litert-gpu", version.ref = "litert" }
 litert-npu-qualcomm = { module = "com.google.ai.edge.litert:litert-npu-runtime-qualcomm", version.ref = "litert" }
 litert-npu-mediatek = { module = "com.google.ai.edge.litert:litert-npu-runtime-mediatek", version.ref = "litert" }
-ai-delivery = { module = "com.google.android.play:ai-delivery", version.ref = "aiDelivery" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
 litertlm-npu-qualcomm = { module = "com.google.ai.edge.litert:litert-npu-runtime-qualcomm", version.ref = "litertNpuForLm" }
 litertlm-npu-mediatek = { module = "com.google.ai.edge.litert:litert-npu-runtime-mediatek", version.ref = "litertNpuForLm" }

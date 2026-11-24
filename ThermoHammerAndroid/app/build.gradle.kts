@@ -123,26 +123,17 @@ android {
     // on the chips in these device groups
     dynamicFeatures += listOf(":npu:qnn_htp", ":npu:qnn_v68", ":npu:qnn_v69", ":npu:qnn_v73", ":npu:qnn_v75",
         ":npu:qnn_v79", ":npu:qnn_v81", ":npu:mtk_v8", ":npu:mtk_v9")
-    // The LLM test's NPU model (version 5): Google's Gemma 3 1B file for the phone's chip, a fast-follow AI pack split
-    // by the same device groups (ai/gemma_npu/build.gradle.kts) — each phone downloads only its own chip's file
-    assetPacks += listOf(":ai:gemma_npu")
-    bundle {
-        deviceTargetingConfig = file("device_targeting_configuration.xml")
-        deviceGroup {
-            enableSplit = true
-            defaultGroup = "other"
-        }
-    }
+    bundle { deviceTargetingConfig = file("device_targeting_configuration.xml") }
 }
 
 kotlin {
     jvmToolchain(17)
 }
 
-// The LLM test's NPU engine (engine/llm/NpuLlmProbe.kt): LiteRT-LM 0.19 loads NPU dispatch libraries
+// Test builds' report-only NPU LLM engine (engine/llm/NpuLlmProbe.kt in src/nonRelease): LiteRT-LM 0.19 loads NPU dispatch libraries
 // with the versioned dispatch ABI (LiteRtDispatchQueryInterface), which LiteRT 2.4's have and the scored AI test's 2.3
 // ones don't. So 2.4's go in as assets (litertlm-npu/), copied out beside the app's QNN runtime at run time; the scored
-// AI test keeps 2.3's in jniLibs. Every build carries them (the LLM test's NPU third, version 5).
+// AI test keeps 2.3's in jniLibs. Release builds get none of this: version 5 doesn't score the NPU.
 val litertLmNpu: Configuration by configurations.creating { isTransitive = false }
 
 abstract class LiteRtLmNpuAssets : DefaultTask() {
@@ -173,7 +164,8 @@ val litertLmNpuAssets = tasks.register<LiteRtLmNpuAssets>("litertLmNpuAssets") {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
-        variant.sources.assets?.addGeneratedSourceDirectory(litertLmNpuAssets, LiteRtLmNpuAssets::outputDir)
+        if (variant.buildType != "release")
+            variant.sources.assets?.addGeneratedSourceDirectory(litertLmNpuAssets, LiteRtLmNpuAssets::outputDir)
     }
 }
 
@@ -237,10 +229,9 @@ dependencies {
   implementation(libs.litert.npu.mediatek)
   implementation(libs.litert.npu.google.tensor)
   "benchImplementation"(libs.qnn.runtime)
-  // The LLM test's NPU engine (version 5): Google's LiteRT-LM (engine/llm/NpuLlmProbe.kt), and Play's AI Delivery
-  // library for its model, the gemma_npu AI pack (engine/llm/NpuModels.kt)
-  implementation(libs.litertlm.android)
-  implementation(libs.ai.delivery)
+  // Test builds only: Google's LiteRT-LM, for the report-only NPU LLM engine (engine/llm/NpuLlmProbe.kt in src/nonRelease)
+  "benchImplementation"(libs.litertlm.android)
+  debugImplementation(libs.litertlm.android)
   litertLmNpu(variantOf(libs.litertlm.npu.qualcomm) { artifactType("aar") })
   litertLmNpu(variantOf(libs.litertlm.npu.mediatek) { artifactType("aar") })
 
@@ -264,7 +255,3 @@ tasks.configureEach {
         enabled = false
     }
 }
-
-// A Play bundle carries the NPU model for every supported chip, or none is built: a chip whose file is missing would
-// get an empty pack, and its phones' runs couldn't be submitted
-tasks.matching { it.name == "bundleRelease" }.configureEach { dependsOn(":ai:gemma_npu:checkGemmaModels") }

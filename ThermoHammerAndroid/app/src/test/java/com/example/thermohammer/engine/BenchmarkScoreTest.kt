@@ -248,32 +248,34 @@ class BenchmarkScoreTest {
     }
 
     @Test
-    fun `LLM version 5 - each engine against its own reference, each a third`() {
-        // the reference phone on every engine: 6000 each, 6000 in all
+    fun `LLM version 5 - the CPU and the GPU against their own references, each half, the NPU not scored`() {
+        // the reference phone on both engines: 6000 each, 6000 in all; a test build's NPU run is report only
         val reference = LlmResult(listOf(
             LlmRun(LlmAccel.CPU, LlmScore.REF_CPU_PREFILL, LlmScore.REF_CPU_DECODE, threads = 6),
             LlmRun(LlmAccel.GPU, LlmScore.REF_GPU_PREFILL, LlmScore.REF_GPU_DECODE)), "Adreno", freeGb = 9.0, largestModel = 8,
             npu = LlmNpuRun(LlmScore.REF_NPU_PREFILL, LlmScore.REF_NPU_DECODE, right = true, model = "Gemma3-1B-IT_q4_ekv1280_sm8750.litertlm"))
         assertEquals(6000, reference.points(LlmAccel.CPU))
         assertEquals(6000, reference.points(LlmAccel.GPU))
-        assertEquals(6000, reference.npuPoints)
+        assertEquals(6000, reference.npuPoints)                         // what it would score: shown, not counted
         assertEquals(6000, reference.score)
         // an engine is the geometric mean of its two phases: twice the prompt rate and half the reply rate is still 6000
         assertEquals(6000, LlmScore.engine(LlmAccel.CPU, 2 * LlmScore.REF_CPU_PREFILL, LlmScore.REF_CPU_DECODE / 2))
-        // no NPU model for the chip, no usable GPU: the CPU's third only (the 11T's case)
+        // no usable GPU: the CPU's half only
         val cpuOnly = LlmResult(listOf(LlmRun(LlmAccel.CPU, LlmScore.REF_CPU_PREFILL / 2, LlmScore.REF_CPU_DECODE / 2),
             LlmRun(LlmAccel.GPU, 0.0, 0.0, error = "no GPU driver llama.cpp can use")), null, 5.0, 4,
             npu = LlmNpuRun(0.0, 0.0, false, error = "no model file for mt6893"))
         assertEquals(3000, cpuOnly.points(LlmAccel.CPU))
         assertEquals(0, cpuOnly.npuPoints)
-        assertEquals(1000, cpuOnly.score)                               // (3000 + 0 + 0) / 3
-        // an NPU that answers the check question wrongly scores 0 however fast it ran
+        assertEquals(1500, cpuOnly.score)                               // (3000 + 0) / 2
+        // the NPU never moves the score: a wrong answer, a fast run or none at all
         val wrong = reference.copy(npu = LlmNpuRun(2 * LlmScore.REF_NPU_PREFILL, 2 * LlmScore.REF_NPU_DECODE, right = false))
         assertEquals(0, wrong.npuPoints)
-        assertEquals(4000, wrong.score)
+        assertEquals(6000, wrong.score)
+        assertEquals(6000, reference.copy(npu = LlmNpuRun(4 * LlmScore.REF_NPU_PREFILL, 4 * LlmScore.REF_NPU_DECODE, right = true)).score)
+        assertEquals(6000, reference.copy(npu = null).score)
         assertEquals(0, LlmScore.engine(LlmAccel.GPU, 120.0, 0.0))     // no reply: 0
         val total = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, llm = cpuOnly)
-        assertEquals(5000 + 1000, total.total)
+        assertEquals(5000 + 1500, total.total)
     }
 
     /**

@@ -94,8 +94,8 @@ object BenchmarkReport {
                 ai.gpuPrecision?.forEach { appendLine(it) }
             }
             r.llm?.let { llm ->
-                appendLine("LLM · %,d pts = CPU %,d · GPU %,d · NPU %,d (each a third; Gemma 3 1B on every engine) · %.2f GB free, largest model %dB%s".format(
-                    llm.score, llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU), llm.npuPoints, llm.freeGb, llm.largestModel,
+                appendLine("LLM · %,d pts = CPU %,d · GPU %,d (each half; Gemma 3 1B on both) · %.2f GB free, largest model %dB%s".format(
+                    llm.score, llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU), llm.freeGb, llm.largestModel,
                     llm.error?.let { " · not run: $it" } ?: ""))
                 for (a in LlmAccel.entries) {
                     val run = llm.run(a)
@@ -112,9 +112,9 @@ object BenchmarkReport {
                 }
                 llm.probe?.let { p -> LlmProbe.lines(p).forEach { appendLine(it) } }
                 llm.npu?.let { n ->
-                    appendLine(if (n.right && n.error == null) "LLM NPU · %,d pts · prefill %.2f tok/s · decode %.2f tok/s · LiteRT-LM · %s · answer right".format(
+                    appendLine(if (n.right && n.error == null) "LLM NPU (report only, not scored) · would be %,d pts · prefill %.2f tok/s · decode %.2f tok/s · LiteRT-LM · %s · answer right".format(
                         llm.npuPoints, n.prefill, n.decode, n.model ?: "?")
-                        else "LLM NPU · 0 (${n.error ?: "its answer was wrong"})")
+                        else "LLM NPU (report only, not scored) · no result (${n.error ?: "its answer was wrong"})")
                 }
                 r.npuLlm?.forEach { appendLine(it) }
             }

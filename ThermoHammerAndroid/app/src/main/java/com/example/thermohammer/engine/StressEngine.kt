@@ -743,17 +743,16 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val wantLlm = want(BenchSection.LLM)
         val settled = if (wantLlm) settleForLlm() ?: return else null
         val llamaRuns = if (wantLlm) runLlm() ?: return else null
-        // version 5: the LLM's third engine, the NPU — Google's own Gemma 3 1B file for the chip through LiteRT-LM, in a
-        // process of its own, after the same short cooldown the GPU part had. No NPU path: it counts 0 (LlmResult.npuPoints)
+        // test builds, report only: the NPU — Gemma 3 1B through LiteRT-LM, in a process of its own, after the same short
+        // cooldown the GPU part had. Not scored (LlmScore): no NPU path covers every chip yet
         var npuCool: String? = null
-        val npuRun = if (llamaRuns != null && com.example.thermohammer.engine.llm.NpuLlmProbe.AVAILABLE && llamaRuns.error == null) {
+        val npuRun = if (com.example.thermohammer.TestBuild.PROBES && llamaRuns != null &&
+            com.example.thermohammer.engine.llm.NpuLlmProbe.AVAILABLE && llamaRuns.error == null) {
             npuCool = coolForLlm("the LLM GPU test") ?: return
             npuLlmRun()
         } else null
         if (!_state.value.isRunning) return
         val llm = llamaRuns?.copy(npu = npuRun)
-        // a supported chip without its model can't give the NPU third: incomplete, never submitted as "no NPU"
-        if (npuRun?.missingModel == true) flags = flags or ValidityFlag.NPU_MODEL_MISSING
         val npuLlm = listOfNotNull(settled?.let { "LLM settle · $it" }, llmGpuCool?.let { "LLM settle · before the GPU test · $it" },
             npuCool?.let { "LLM settle · before the NPU test · $it" }) + npuRun?.lines.orEmpty()
         // a test build's run never goes to the live leaderboard (its scoring is version 5's, the server's isn't yet)
@@ -1715,10 +1714,8 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                      else "GLES 3.x unavailable — GPU 3D mode will not run"
         )
 
-        // The LLM test's NPU model (version 5), on the chips that have one: Play downloads it after the install (the
-        // pack's chips), or the app from the site (NpuServerModels: chips added since this release).
-        // Never blocking — a run without it is incomplete (can't be submitted), and the checklist says so before it starts.
-        if (benchmark && com.example.thermohammer.engine.llm.NpuModels.supported(appContext)) {
+        // Test builds: the NPU model the report-only NPU run uses, on the chips that have one (never blocking, not scored)
+        if (benchmark && com.example.thermohammer.TestBuild.PROBES && com.example.thermohammer.engine.llm.NpuModels.supported(appContext)) {
             val models = com.example.thermohammer.engine.llm.NpuModels
             // ask Play once per app session to fetch it, if it isn't coming already; afterwards just read its progress
             val status = models.status(appContext, fetch = !npuFetchAsked).also { npuFetchAsked = true }
@@ -1730,15 +1727,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 detail = when (status) {
                     is com.example.thermohammer.engine.llm.NpuModels.Status.Ready -> "Gemma 3 1B for $chip ready"
                     is com.example.thermohammer.engine.llm.NpuModels.Status.Downloading ->
-                        "Downloading ${status.percent}% of $size — wait, or this run can't be submitted"
+                        "Downloading ${status.percent}% of $size (report only, not scored)"
                     com.example.thermohammer.engine.llm.NpuModels.Status.WaitingForWifi ->
-                        "Waiting for Wi-Fi ($size) — connect, or this run can't be submitted"
+                        "Waiting for Wi-Fi ($size) (report only, not scored)"
                     is com.example.thermohammer.engine.llm.NpuModels.Status.Unavailable ->
-                        "Not on the phone: ${status.why} — this run can't be submitted"
+                        "Not on the phone: ${status.why} (report only, not scored)"
                     com.example.thermohammer.engine.llm.NpuModels.Status.NotNeeded -> "Not needed on this chip"
                 }
             )
-            if (status !is com.example.thermohammer.engine.llm.NpuModels.Status.Ready) hints = hints or ValidityFlag.NPU_MODEL_MISSING
         }
 
         val canRun = gates.filter { it.blocking }.all { it.passed }

@@ -702,7 +702,7 @@ private fun LlmCard(llm: LlmResult) {
             }
             Spacer(Modifier.height(6.dp))
         }
-        // the third engine: the NPU through LiteRT-LM, with Google's own file for the chip
+        // test builds: the NPU through LiteRT-LM, report only (not scored in version 5)
         llm.npu?.let { n ->
             val ok = n.right && n.error == null
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -710,22 +710,22 @@ private fun LlmCard(llm: LlmResult) {
                 Metric("NPU DECODE TOK/S", if (ok) rate(n.decode) else "—", if (ok) Forge.ink0 else Ramp.at(0.85f))
                 Metric("ANSWER", when { n.error != null -> "—"; n.right -> "RIGHT"; else -> "WRONG" }, if (ok) Forge.ink1 else Ramp.at(0.85f))
             }
-            n.error?.let { Text("NPU: $it", style = ThermoType.annotation(8f, Ramp.at(0.85f))) }
+            Text("NPU: report only, not scored" + (n.error?.let { " — $it" } ?: ""), style = ThermoType.annotation(8f, Ramp.at(0.85f)))
             Spacer(Modifier.height(6.dp))
         }
-        Text("CPU %,d · GPU %,d · NPU %,d points — each a third".format(llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU), llm.npuPoints),
+        Text("CPU %,d · GPU %,d points — each half".format(llm.points(LlmAccel.CPU), llm.points(LlmAccel.GPU)),
             style = ThermoType.annotation(8f, Forge.ink1))
         llm.error?.let { Text("Not run: $it.", style = ThermoType.annotation(8f, Ramp.at(0.85f))) }
         Text(if (llm.largestModel > 0) "Largest common model that fits in the memory free now: ${llm.largestModel}B (4-bit, %.1f GB free).".format(llm.freeGb)
             else "Memory free now: %.1f GB — too little for even a 1B model.".format(llm.freeGb),
             style = ThermoType.annotation(8f, Forge.ink1))
         Spacer(Modifier.height(2.dp))
-        Text("The same task on every engine: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token " +
-            "(decode). llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real); " +
-            "the NPU runs Google's own file for the chip and must answer a fixed question right. Each engine is measured " +
-            "against its own reference and counts a third; one the phone can't run counts 0.",
+        Text("The same task on both engines: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token " +
+            "(decode). llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real). " +
+            "Each engine is measured against its own reference and counts half; one the phone can't run counts 0. The NPU " +
+            "isn't scored: no way to run it reaches every chip yet.",
             style = ThermoType.annotation(8f, Forge.ink2))
-        // the notice Gemma's terms ask of anyone passing its files on (the NPU file comes with the app from Play)
+        // the notice Gemma's terms ask of anyone passing its files on (the test runs Gemma 3 1B's shape)
         Text("Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms. " +
             "Terms of use: thermohammer.gtgroup.dev/terms",
             style = ThermoType.annotation(7f, Forge.ink2))
@@ -750,8 +750,6 @@ internal fun validityNote(flags: Int): String {
         if (flags and (ValidityFlag.COOLDOWN_TIMEOUT or ValidityFlag.WARM_STARTED) != 0) add("started warm")   // as PhoneHealth
         if (flags and ValidityFlag.INTERFERENCE != 0) add("the phone was busy with background work")
         if (flags and ValidityFlag.TEST_PROBES != 0) add("a test build (its runs never go to the leaderboard)")
-        if (flags and ValidityFlag.NPU_MODEL_MISSING != 0)
-            add("the LLM test's NPU model wasn't on the phone yet (Google Play downloads it after the install) — run again once it is")
     }
     return if (notes.isEmpty()) "Unverified." else "Unverified: " + notes.joinToString(", ") + "."
 }

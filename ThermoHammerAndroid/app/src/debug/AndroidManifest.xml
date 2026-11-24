@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Test builds only: "Open with" / Share for a LiteRT-LM model file, copied for the NPU LLM engine (a sideloaded test
-     build gets no Play AI pack), and the adb hooks of src/nonRelease. -->
+<!-- Test builds only: "Open with" / Share for a LiteRT-LM model file, copied for the report-only NPU LLM engine, its
+     process, and the adb hooks of src/nonRelease. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <activity
@@ -20,6 +20,11 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+        <!-- the report-only NPU LLM engine's own process: a native crash there ends it, not the benchmark -->
+        <service
+            android:name="com.example.thermohammer.engine.llm.NpuLlmProbeService"
+            android:exported="false"
+            android:process=":npullm" />
         <!-- the GPU AI diagnosis (adb-started through the activity above), in a process of its own -->
         <service
             android:name="com.example.thermohammer.engine.ai.AiGpuDiagnosisService"
