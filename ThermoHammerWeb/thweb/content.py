@@ -59,7 +59,7 @@ CATALOG = {
     },
 }
 
-# What 6,000 points per section stood for, by scoring version (BenchmarkScoring.CurrentVersion on the server). A new
+# What a section's reference points (6,000 up to version 4, 7,200 since 5) stood for, by scoring version (BenchmarkScoring.CurrentVersion on the server). A new
 # version restarts the board; runs of an earlier one stay on their pages, measured against their own reference.
 REFERENCES = {
     4: "a Snapdragon 8 Elite phone as it ships, in Balanced mode",
@@ -86,7 +86,7 @@ PHASES = [
 
 def faq(site) -> list[tuple[str, str]]:
     """Questions and answers for the home page (also given to search engines as structured data). Plain text only."""
-    from .model import reference_total, sections_of    # model doesn't import content: no cycle, but keep it local
+    from .model import reference_points, reference_total, sections_of    # model doesn't import content: no cycle, but keep it local
     n = len(sections_of(site.version))
     word = {5: "five", 6: "six"}.get(n, str(n))
     qa = [
@@ -97,8 +97,9 @@ def faq(site) -> list[tuple[str, str]]:
          "export does. The operating system stays in charge of every temperature limit; ThermoHammer only measures what "
          "the device does to protect itself. It will get warm, which is the point, and you can stop at any time."),
         ("What does the score mean?",
-         f"Each of the {word} sections is scored against one reference, {reference(site.version)}: it gets 6,000 points "
-         f"per section and {reference_total(site.version):,} in total. A section score of 12,000 means about twice that "
+         f"Each of the {word} sections is scored against one reference, {reference(site.version)}: it gets {reference_points(site.version):,} "
+         f"points per section and {reference_total(site.version):,} in total. A section score of "
+         f"{2 * reference_points(site.version):,} means about twice that "
          f"phone's measured speed in that section. The total is the {word} sections added up."),
         ("What is stability?",
          "The share of its full speed a device delivers over a sustained, full-load run. 95% means it barely slowed "

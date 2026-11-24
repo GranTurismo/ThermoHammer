@@ -23,13 +23,13 @@
   {% if not run.current %}{{ m.earlier_note(run) }}{% endif %}
   <div class="grid2">
     <figure class="panel brackets">
-      <div class="panel-head"><span class="panel-title">{{ number_word(run.section_list | length) | capitalize }} sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
-      {{ charts.radar(run.section_list, 380, d.title ~ ', run #' ~ run.id ~ ': section scores against the 6,000-point reference') | safe }}
+      <div class="panel-head"><span class="panel-title">{{ number_word(run.section_list | length) | capitalize }} sections</span><span class="panel-note">dashed: the {{ reference_points(run.benchmark_version) | num }} reference</span></div>
+      {{ charts.radar(run.section_list, 380, d.title ~ ', run #' ~ run.id ~ ': section scores against the ' ~ (reference_points(run.benchmark_version) | num) ~ '-point reference') | safe }}
     </figure>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">Against the reference</span><span class="panel-note">this run</span></div>
       {{ m.section_bars(run.section_list) }}
-      <p class="keyline"><span><i></i>6,000 points: {{ reference_text(run.benchmark_version) }}</span></p>
+      <p class="keyline"><span><i></i>{{ reference_points(run.benchmark_version) | num }} points: {{ reference_text(run.benchmark_version) }}</span></p>
     </div>
   </div>
 

@@ -15,8 +15,6 @@ from pathlib import Path
 
 from .api import Api
 
-REFERENCE = 6000          # points per section on the reference phone
-
 PLATFORMS = {1: ("iOS", "ios"), 2: ("Android", "android"), 3: ("macOS", "macos"), 4: ("Windows", "windows")}
 
 # The benchmark's sections since scoring version 5: key, short label, long label, the board's field, accent (the apps'
@@ -40,9 +38,15 @@ def sections_of(version: int) -> list[tuple]:
     return SECTIONS + [LLM_SECTION] if 0 < version <= LAST_LLM_VERSION else SECTIONS
 
 
+def reference_points(version: int) -> int:
+    """Points the reference phone scores per test and section in a scoring version (BenchmarkScoring.RefPoints): 6,000
+    up to version 4 (six sections), 7,200 since version 5 dropped the LLM test, so five sections still total 36,000."""
+    return 6000 if 0 < version <= LAST_LLM_VERSION else 7200
+
+
 def reference_total(version: int) -> int:
-    """The reference phone's total in a scoring version: 6,000 per section."""
-    return REFERENCE * len(sections_of(version))
+    """The reference phone's total in a scoring version: its points per section times its sections."""
+    return reference_points(version) * len(sections_of(version))
 
 DURATION_MIN = {0: 5, 1: 15, 2: 30}
 HEALTH_MIN_RUNS = 3       # verified runs of a model before one run is judged against them (PhoneHealth.MIN_RUNS)
@@ -249,14 +253,15 @@ class BenchRun:
     current: bool = True                   # scored with the board's version; an earlier run is never ranked or compared
 
     def ratio(self, key: str) -> float:
-        return self.scores.get(key, 0) / REFERENCE
+        return self.scores.get(key, 0) / reference_points(self.benchmark_version)
 
     @property
     def section_list(self) -> list[dict]:
-        """The sections of this run's scoring version, against the 6,000-point reference (as Device.section_list does
+        """The sections of this run's scoring version, against that version's reference (as Device.section_list does
         for the best)."""
+        ref = reference_points(self.benchmark_version)
         return [{"key": key, "short": short, "label": long_, "points": self.scores.get(key, 0),
-                 "ratio": self.scores.get(key, 0) / REFERENCE, "color": color,
+                 "ratio": self.scores.get(key, 0) / ref, "ref": ref, "color": color,
                  "share": self.scores.get(key, 0) / self.total if self.total else 0}
                 for key, short, long_, _, color in sections_of(self.benchmark_version)]
 
@@ -365,13 +370,14 @@ class Device:
 
     @property
     def section_list(self) -> list[dict]:
-        """The sections of the best run, with how they stand against the 6,000-point reference."""
+        """The sections of the best run, with how they stand against its version's reference."""
         if not self.best:
             return []
         out = []
+        ref = reference_points(self.best.benchmark_version)
         for key, short, long_, _, color in sections_of(self.best.benchmark_version):
             pts = self.best.scores.get(key, 0)
-            out.append({"key": key, "short": short, "label": long_, "points": pts, "ratio": pts / REFERENCE, "color": color,
+            out.append({"key": key, "short": short, "label": long_, "points": pts, "ratio": pts / ref, "ref": ref, "color": color,
                         "share": pts / self.best.total if self.best.total else 0})
         return out
 

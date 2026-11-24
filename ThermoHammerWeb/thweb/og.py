@@ -12,7 +12,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw, ImageFont
 
-from .model import SECTIONS, BenchRun, Comparison, Device, Site, StressRun, capacity_t, ramp_rgb
+from .model import SECTIONS, BenchRun, Comparison, Device, Site, StressRun, capacity_t, ramp_rgb, reference_points
 
 VERSION = 7             # bump to redraw every card
 W, H, S = 1200, 630, 2  # drawn at twice the size, then scaled down, so lines and type come out smooth
@@ -222,7 +222,7 @@ class Cards:
             else:
                 self.text(d, (60, 510), f"SCORING VERSION {run.benchmark_version} · NOT ON TODAY'S BOARD", "mono", 20, INK1,
                           spacing=0.08)
-            top = max(12000, max((s["points"] for s in run.section_list), default=1))
+            top = max(2 * reference_points(run.benchmark_version), max((s["points"] for s in run.section_list), default=1))
             y = 318
             for s in run.section_list:
                 color = _hex(s["color"])

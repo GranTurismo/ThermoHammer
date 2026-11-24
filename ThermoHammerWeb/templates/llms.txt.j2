@@ -2,7 +2,7 @@
 
 > ThermoHammer is a free benchmark and thermal stress test for Android, iPhone and Windows. It scores a whole device in {{ SECTIONS_WORD }} sections ({{ SECTIONS_TEXT }}) against a fixed reference, and runs a sustained-load stress test that shows when a device throttles and how much of its speed it keeps. This site publishes the public leaderboard: verified runs only, scored on the server.
 
-Scale (scoring version {{ site.version }}): 6,000 points per section is {{ reference_text(site.version) }}; the total is the {{ SECTIONS_WORD }} sections added up ({{ REFERENCE_TOTAL | num }} for the reference). Stability is the share of full speed a device delivers over a 5, 15 or 30 minute full-load run.
+Scale (scoring version {{ site.version }}): {{ REFERENCE | num }} points per section is {{ reference_text(site.version) }}; the total is the {{ SECTIONS_WORD }} sections added up ({{ REFERENCE_TOTAL | num }} for the reference). Stability is the share of full speed a device delivers over a 5, 15 or 30 minute full-load run.
 
 Data as of {{ changed.strftime('%Y-%m-%d') }}: {{ site.stats.devices }} devices, {{ site.stats.bench_runs }} verified benchmark runs, {{ site.stats.stress_runs }} verified stress runs.
 

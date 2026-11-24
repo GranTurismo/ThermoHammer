@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from html import escape
 
-from .model import LLM_SECTION, RAMP, REFERENCE, SECTIONS, THERMAL_NAMES, StressRun, ramp_hex
+from .model import LLM_SECTION, RAMP, SECTIONS, THERMAL_NAMES, StressRun, ramp_hex
 
 A_COLOR = "#00E6FF"     # the apps' comparison pair: A cyan, B amber
 B_COLOR = "#FFAB00"
@@ -176,20 +176,21 @@ def _poly(points: list[tuple[float, float]]) -> str:
 
 def radar(sections: list[dict], size: int = 380, title: str = "") -> str:
     """One run's sections (BenchRun.section_list: five since scoring version 5, six with the LLM before) on a common
-    scale, with the 6,000-point reference drawn dashed."""
+    scale, with its version's reference (each section dict's "ref": 7,200 since version 5) drawn dashed."""
     cx = cy = size / 2
     radius = size / 2 - 58
     values = [max(0, s["points"]) for s in sections]
     n = len(values)
-    top = max(max(values), REFERENCE) or 1
-    label = title or "Section scores against the 6,000-point reference"
+    reference = sections[0]["ref"] if sections else 0
+    top = max(max(values), reference) or 1
+    label = title or f"Section scores against the {reference:,}-point reference"
     out = [f'<svg class="radar" viewBox="0 0 {size} {size}" role="img" aria-label="{escape(label)}" xmlns="http://www.w3.org/2000/svg">',
            f"<title>{escape(label)}</title>"]
     for ring in (0.25, 0.5, 0.75, 1.0):
         out.append(f'<polygon points="{_poly(_axis_points(cx, cy, [radius * ring] * n))}" fill="none" stroke="{GRID}"/>')
     for px, py in _axis_points(cx, cy, [radius] * n):
         out.append(f'<line x1="{cx}" y1="{cy}" x2="{_f(px)}" y2="{_f(py)}" stroke="{GRID}"/>')
-    ref = _axis_points(cx, cy, [radius * REFERENCE / top] * n)
+    ref = _axis_points(cx, cy, [radius * reference / top] * n)
     out.append(f'<polygon points="{_poly(ref)}" fill="none" stroke="{INK1}" stroke-opacity=".7" stroke-dasharray="4 5" stroke-width="1.2"/>')
     shape = _axis_points(cx, cy, [radius * v / top for v in values])
     out.append(f'<polygon points="{_poly(shape)}" fill="rgba(61,232,194,.16)" stroke="#3DE8C2" stroke-width="2" stroke-linejoin="round"/>')

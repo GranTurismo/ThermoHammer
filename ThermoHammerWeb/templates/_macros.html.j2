@@ -101,12 +101,13 @@
 </section>
 {% endmacro %}
 
-{# A run's sections as bars against the 6,000 reference (the device page draws the same for its best run). #}
+{# A run's sections as bars against its version's reference (the device page draws the same for its best run). #}
 {% macro section_bars(sections) %}
-{% set top = [sections | map(attribute='points') | max, REFERENCE] | max %}
+{% set ref = sections[0].ref if sections else REFERENCE %}
+{% set top = [sections | map(attribute='points') | max, ref] | max %}
 <ul class="bars">
   {% for s in sections %}
-  <li style="--c:{{ s.color }};--w:{{ '%.2f' | format(s.points / top * 100) }}%;--ref:{{ '%.2f' | format(REFERENCE / top * 100) }}%">
+  <li style="--c:{{ s.color }};--w:{{ '%.2f' | format(s.points / top * 100) }}%;--ref:{{ '%.2f' | format(ref / top * 100) }}%">
     <b>{{ s.short }}</b>
     <span class="track"><i></i><u></u></span>
     <span>{{ s.points | num }}</span>
@@ -138,7 +139,7 @@
 {# A run scored with an earlier scoring version: what its points meant then, and why it isn't on today's board. #}
 {% macro earlier_note(run) %}
 <div class="block callout">
-  <b>Scored with {{ 'the previous' if run.benchmark_version == site.version - 1 else 'an earlier' }} scoring, version {{ run.benchmark_version }}.</b> Back then, 6,000 points per section was {{ reference_text(run.benchmark_version) }}. The board now uses version {{ site.version }}, measured against {{ reference_text(site.version) }}, so this run isn't comparable with today's scores and isn't on the board.
+  <b>Scored with {{ 'the previous' if run.benchmark_version == site.version - 1 else 'an earlier' }} scoring, version {{ run.benchmark_version }}.</b> Back then, {{ reference_points(run.benchmark_version) | num }} points per section was {{ reference_text(run.benchmark_version) }}. The board now uses version {{ site.version }}, measured against {{ reference_text(site.version) }}, so this run isn't comparable with today's scores and isn't on the board.
 </div>
 {% endmacro %}
 

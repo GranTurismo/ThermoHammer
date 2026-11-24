@@ -55,7 +55,7 @@
     <header class="sec-head">
       <p class="kicker"><span>01</span>The benchmark</p>
       <h2>{{ SECTIONS_WORD | capitalize }} sections. One score you can read.</h2>
-      <p class="sec-lede">Every test is scored against the same reference: a Snapdragon 8 Elite phone in its Performance power mode is 6,000 points per section. Twice the points means about twice the measured speed. Add the {{ SECTIONS_WORD }} up and you have the total.</p>
+      <p class="sec-lede">Every test is scored against the same reference: a Snapdragon 8 Elite phone in its Performance power mode is {{ REFERENCE | num }} points per section. Twice the points means about twice the measured speed. Add the {{ SECTIONS_WORD }} up and you have the total.</p>
     </header>
     <div class="cards6">
       {% for key, short, label, field, color in SECTIONS if key in CATALOG %}

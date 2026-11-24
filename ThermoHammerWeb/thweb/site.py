@@ -15,8 +15,8 @@ from markupsafe import Markup
 
 from . import charts, content, og
 from .config import ROOT, Config
-from .model import (LLM_SECTION, REFERENCE, SECTIONS, THERMAL_NAMES, BenchRun, Comparison, Device, Site, StressRun,
-                    capacity_hex, percent_text, ramp_hex, reference_total, sections_of)
+from .model import (LLM_SECTION, SECTIONS, THERMAL_NAMES, BenchRun, Comparison, Device, Site, StressRun,
+                    capacity_hex, percent_text, ramp_hex, reference_points, reference_total, sections_of)
 
 NUMBER_WORDS = {5: "five", 6: "six"}
 # how a section is named inside a sentence ("CPU, memory, GPU, everyday UX and AI")
@@ -161,7 +161,9 @@ class Builder:
             # the board's sections (five since scoring version 5); an earlier run's own are sections_of(its version)
             SECTIONS=sections_of(site.version), sections_of=sections_of, SECTIONS_WORD=sections_word(site.version),
             SECTIONS_TEXT=sections_text(site.version), number_word=lambda n: NUMBER_WORDS.get(n, str(n)),
-            REFERENCE=REFERENCE, REFERENCE_TOTAL=reference_total(site.version), THERMAL_NAMES=THERMAL_NAMES, CATALOG=content.CATALOG,
+            # points per section: the board's version's, and any run's own (reference_points(run.benchmark_version))
+            REFERENCE=reference_points(site.version), reference_points=reference_points,
+            REFERENCE_TOTAL=reference_total(site.version), THERMAL_NAMES=THERMAL_NAMES, CATALOG=content.CATALOG,
             PHASES=content.PHASES, TEST_COUNT=sum(len(c["tests"]) for c in content.CATALOG.values()), capacity_hex=capacity_hex, ramp_hex=ramp_hex, percent_text=percent_text,
             built=site.built, changed=self.changed, year=site.built.year, A_COLOR=charts.A_COLOR, B_COLOR=charts.B_COLOR,
             section_meta={s[0]: {"short": s[1], "label": s[2], "color": s[4]} for s in SECTIONS + [LLM_SECTION]},
@@ -452,7 +454,7 @@ class Builder:
             "/how-it-works/", "how.html.j2", priority="0.8",
             title="How ThermoHammer tests and scores a device",
             description=f"What each of the {sections_word(site.version)} benchmark sections measures, how points are calculated "
-                        "against the 6,000-point reference, what counts as a verified run, and how the stress test measures "
+                        f"against the {reference_points(site.version):,}-point reference, what counts as a verified run, and how the stress test measures "
                         "throttling.",
             crumbs=[("How it works", "/how-it-works/")],
             jsonld_blocks=[{"@context": "https://schema.org", "@type": "TechArticle",

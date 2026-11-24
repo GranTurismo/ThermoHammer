@@ -36,17 +36,18 @@
 
 <section class="wrap page-body">
   {% if d.has_bench %}
-  {% set top = [d.strongest.points, REFERENCE] | max %}
+  {% set dref = reference_points(d.best.benchmark_version) if d.best else REFERENCE %}
+  {% set top = [d.strongest.points, dref] | max %}
   <div class="grid2">
     <figure class="panel brackets">
-      <div class="panel-head"><span class="panel-title">{{ number_word(d.section_list | length) | capitalize }} sections</span><span class="panel-note">dashed: the 6,000 reference</span></div>
-      {{ charts.radar(d.section_list, 380, d.title ~ ': section scores against the 6,000-point reference') | safe }}
+      <div class="panel-head"><span class="panel-title">{{ number_word(d.section_list | length) | capitalize }} sections</span><span class="panel-note">dashed: the {{ dref | num }} reference</span></div>
+      {{ charts.radar(d.section_list, 380, d.title ~ ': section scores against the ' ~ (dref | num) ~ '-point reference') | safe }}
     </figure>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">Against the reference</span><span class="panel-note">best verified run</span></div>
       <ul class="bars">
         {% for s in d.section_list %}
-        <li style="--c:{{ s.color }};--w:{{ '%.2f' | format(s.points / top * 100) }}%;--ref:{{ '%.2f' | format(REFERENCE / top * 100) }}%">
+        <li style="--c:{{ s.color }};--w:{{ '%.2f' | format(s.points / top * 100) }}%;--ref:{{ '%.2f' | format(dref / top * 100) }}%">
           <b>{{ s.short }}</b>
           <span class="track"><i></i><u></u></span>
           <span>{{ s.points | num }}</span>
@@ -54,7 +55,7 @@
         </li>
         {% endfor %}
       </ul>
-      <p class="keyline"><span><i></i>6,000 points: {{ reference_text(d.best.benchmark_version) }}</span></p>
+      <p class="keyline"><span><i></i>{{ dref | num }} points: {{ reference_text(d.best.benchmark_version) }}</span></p>
       <p class="fine" style="margin-top:14px">Strongest: <b>{{ d.strongest.label }}</b> at {{ d.strongest.ratio | times }} the reference.{% if d.weakest and d.weakest.key != d.strongest.key %} Weakest: <b>{{ d.weakest.label }}</b> at {{ d.weakest.ratio | times }}.{% endif %}</p>
     </div>
   </div>

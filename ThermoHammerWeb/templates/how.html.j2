@@ -36,12 +36,12 @@
     <h2 id="scoring">How points are made</h2>
     <p>Every test produces a plain rate: operations, frames, megapixels or inferences per second. Points are that rate measured against one reference device:</p>
     <div class="bigfig">
-      <div><small>The reference</small><b>6,000</b><span>points per section: a Snapdragon 8 Elite phone (HONOR 600 Pro) in its Performance power mode</span></div>
+      <div><small>The reference</small><b>{{ REFERENCE | num }}</b><span>points per section: a Snapdragon 8 Elite phone (HONOR 600 Pro) in its Performance power mode</span></div>
       <div><small>Its total</small><b>{{ REFERENCE_TOTAL | num }}</b><span>{{ SECTIONS_WORD }} sections added up</span></div>
       {% if site.board %}<div><small>Top of the board today</small><b class="hot">{{ site.board[0].total | num }}</b><span>{{ site.board[0].title }}, {{ (site.board[0].total / REFERENCE_TOTAL) | times }} the reference</span></div>{% endif %}
     </div>
     <ul>
-      <li>Points scale with speed. A test that runs twice as fast as on the reference is worth 12,000.</li>
+      <li>Points scale with speed. A test that runs twice as fast as on the reference is worth {{ (2 * REFERENCE) | num }}.</li>
       <li>A section's score combines the points of its tests, and the total is the {{ SECTIONS_WORD }} sections added up.</li>
       <li>A test a device can't run, such as ray tracing, scores 0, and its section is lower for it.</li>
       <li>Only what every device can be measured on counts. The NPU isn't scored, because no way to run models on it reaches every chip.</li>
