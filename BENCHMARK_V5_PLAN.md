@@ -353,7 +353,13 @@ The user rejected every rule that lets a newer chip lose points while its Gemma 
 
 ## Release runbook (version 5)
 
-Nothing below has run. Steps 1–4 can happen in any order; step 5 is the switch.
+Steps 1–4 can happen in any order; step 5 is the switch.
+
+**Done on 2026-11-24, with the user's OK:**
+- **Site config on the server:** only the `/models` route and folder (Caddyfile and docker-compose.yaml; backups `*.bak-20261124` in `~/docker/thweb`). The version 5 page text is **not** deployed; that's step 5.4.
+- **Uploaded:** `models/gemma3-1b-it-lut4-ctx1280-v1.aar` (iPhone/Mac, SHA-256 checked) and `models/android/…_sm8845.litertlm` with `manifest.json`.
+- **Pushed to main:** `9572609 [skip ci]`, only `tools/npu_models` and `npu-models.yml`, so thapi wasn't redeployed. Run 45393468629 builds the MediaTek v8 chips, and issue #1 lists mt6899 and s5e9945.
+- The Honor compare run is done (see "Android NPU files for every chip"). Decision: Google's files stay in the pack, ours for every other chip.
 
 1. **Android NPU files (our builds):**
    - On the Honor's test build, push our 8 Elite file to `…/files/npu-llm/compare/` and run LLM only with the picker. The report then has Google's line and `LLM NPU COMPARE` for ours, measured on the same phone.
