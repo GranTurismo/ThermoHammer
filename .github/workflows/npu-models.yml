@@ -120,6 +120,11 @@ jobs:
               echo "built $soc"
             else
               echo "$soc (build failed)" >> "$NPU/failed.txt"
+              # export, calibration and quantization are shared: if they failed, every other chip would fail the same way
+              if [ ! -f "$NPU/out/work/common/quantized.litertlm" ]; then
+                for rest in $SOCS; do grep -q "^$rest " "$NPU/failed.txt" || echo "$rest (not tried: the shared preparation failed)" >> "$NPU/failed.txt"; done
+                break
+              fi
             fi
             # the compile image is built once; reused for the next chips if it exists
             if docker image inspect thnpu:compile-amd64 >/dev/null 2>&1; then COMPILE_IMG=thnpu:compile-amd64; fi
