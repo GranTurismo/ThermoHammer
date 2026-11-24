@@ -120,7 +120,7 @@ struct PresentView: View {
         }
     }
 
-    // MARK: benchmark — the total and the six section bars, large
+    // MARK: benchmark — the total and the five section bars, large
 
     @ViewBuilder private func benchmark(_ b: BenchmarkCard, size: CGSize, wide: Bool, unit: CGFloat) -> some View {
         let total = VStack(alignment: .leading, spacing: unit * 0.005) {

@@ -98,7 +98,6 @@ struct ContentView: View {
             if showPreflight {
                 PreflightOverlay(
                     engine: engine,
-                    benchmark: runBenchmark,
                     onProceed: {
                         withAnimation(.easeOut(duration: 0.2)) { showPreflight = false }
                         if runBenchmark { bench.start() }
@@ -657,7 +656,7 @@ struct ContentView: View {
                     }
                 }
                 if runBenchmark {
-                    Text("WHOLE PHONE · SIX SECTIONS · SAME TESTS AS ANDROID")
+                    Text("WHOLE PHONE · FIVE SECTIONS · SAME TESTS AS ANDROID")
                         .font(ThermoFont.mono(8)).foregroundColor(Forge.ink2)
                     myRunsButton
                 }

@@ -13,7 +13,7 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────────
 
 extension BenchmarkRecord {
-    /// The six section scores, re-derived from the run's raw numbers with the app's scoring (as the server re-scores
+    /// The five section scores, re-derived from the run's raw numbers with the app's scoring (as the server re-scores
     /// a submitted run); a section the run doesn't have is missing.
     var sectionScores: [String: Int] {
         var s: [String: Int] = [:]
@@ -42,9 +42,6 @@ extension BenchmarkRecord {
             AiTest.allCases.map { t in let i = (t.rawValue - 1) * AiAccel.allCases.count + a.rawValue; return i < ai.count ? ai[i] : 0 }
         }
         put("ai", AiScore.overall(AiScore.accel(.cpu, ips(.cpu)), AiScore.accel(.gpu, ips(.gpu))))
-        if let l = llm {
-            put("llm", LlmScore.overall(LlmScore.engine(.cpu, l.prefillCpu, l.decodeCpu), LlmScore.engine(.gpu, l.prefillGpu, l.decodeGpu)))
-        }
         return s
     }
 }
@@ -54,7 +51,7 @@ enum BenchmarkUpdateImpact {
     /// A change smaller than this (3 %) is within run-to-run noise.
     static let noiseFloor = 0.03
     static let maxRunsPerSide = 3
-    static let sections: [(key: String, label: String)] = [("cpu", "CPU"), ("mem", "MEM"), ("gpu", "GPU"), ("ux", "UX"), ("ai", "AI"), ("llm", "LLM")]
+    static let sections: [(key: String, label: String)] = [("cpu", "CPU"), ("mem", "MEM"), ("gpu", "GPU"), ("ux", "UX"), ("ai", "AI")]
 
     enum Verdict { case slower, faster, noClearChange }
 

@@ -1,7 +1,7 @@
 import XCTest
 @testable import CpuThrottlingTest
 
-/** Scoring version 5: the references every platform repeats, and the LLM's rule B (Android's BenchmarkScoreTest). */
+/** Scoring version 5: the references every platform repeats, and the five sections (Android's BenchmarkScoreTest). */
 final class BenchmarkScoreTests: XCTestCase {
 
     /**
@@ -34,50 +34,17 @@ final class BenchmarkScoreTests: XCTestCase {
         near(AiScore.accel(.cpu, [543.63, 28.67, 7.73, 4.59, 64.54, 3967.59]), "AI CPU")
         near(AiScore.accel(.gpu, [280.7, 36.7, 16.6, 38.8, 74.2, 582.0]), "AI GPU")
         near(AiScore.accel(.npu, [1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38]), "AI NPU")
-        near(LlmScore.engine(.cpu, 160.0, 55.0), "LLM CPU")
-        near(LlmScore.engine(.gpu, 890.0, 32.0), "LLM GPU")
-        near(LlmScore.npu(5450.0, 52.0), "LLM NPU")
         XCTAssertEqual(BenchmarkScore.version, 5)
     }
 
-    func testLlmVersion5CpuAndGpuHalfEachTheNpuNotScored() {
-        // the reference phone on both engines: 6000 each, 6000 in all; a report-only NPU run never counts
-        let reference = LlmResult(runs: [LlmRun(accel: .cpu, prefill: LlmScore.refCpuPrefill, decode: LlmScore.refCpuDecode, threads: 6),
-                                         LlmRun(accel: .gpu, prefill: LlmScore.refGpuPrefill, decode: LlmScore.refGpuDecode)],
-                                  gpuName: "Apple A19 Pro GPU", freeGb: 9, largestModel: 8,
-                                  npu: LlmNpuRun(prefill: LlmScore.refNpuPrefill, decode: LlmScore.refNpuDecode, right: true, model: "gemma-3-1b"))
-        XCTAssertEqual(reference.points(.cpu), 6000)
-        XCTAssertEqual(reference.points(.gpu), 6000)
-        XCTAssertEqual(reference.npuPoints, 6000)                                  // what it would score: shown, not counted
-        XCTAssertEqual(reference.score, 6000)
-        XCTAssertEqual(reference.prefill, LlmScore.refGpuPrefill)                  // the fastest scored engine at each phase (shown)
-        XCTAssertEqual(reference.prefillPoints, 6000)
-        // an engine is the geometric mean of its two phases: twice the prompt rate and half the reply rate is still 6000
-        XCTAssertEqual(LlmScore.engine(.cpu, 2 * LlmScore.refCpuPrefill, LlmScore.refCpuDecode / 2), 6000)
-        // no usable GPU: the CPU's half only
-        let cpuOnly = LlmResult(runs: [LlmRun(accel: .cpu, prefill: LlmScore.refCpuPrefill / 2, decode: LlmScore.refCpuDecode / 2),
-                                       LlmRun(accel: .gpu, prefill: 0, decode: 0, error: "llama.cpp found no Metal GPU it can run on")],
-                                gpuName: nil, freeGb: 5, largestModel: 4,
-                                npu: LlmNpuRun(prefill: 0, decode: 0, right: false, error: "no Neural Engine LLM engine in this build yet"))
-        XCTAssertEqual(cpuOnly.points(.cpu), 3000)
-        XCTAssertEqual(cpuOnly.npuPoints, 0)
-        XCTAssertNil(cpuOnly.npuCounted)
-        XCTAssertEqual(cpuOnly.score, 1500)                                        // (3000 + 0) / 2
-        // the NPU never moves the score: a wrong answer, a fast run or none at all
-        var wrong = reference
-        wrong.npu = LlmNpuRun(prefill: 2 * LlmScore.refNpuPrefill, decode: 2 * LlmScore.refNpuDecode, right: false)
-        XCTAssertEqual(wrong.npuPoints, 0)
-        XCTAssertEqual(wrong.score, 6000)
-        var fast = reference
-        fast.npu = LlmNpuRun(prefill: 4 * LlmScore.refNpuPrefill, decode: 4 * LlmScore.refNpuDecode, right: true)
-        XCTAssertEqual(fast.score, 6000)
-        var none = reference
-        none.npu = nil
-        XCTAssertEqual(none.score, 6000)
-        XCTAssertEqual(LlmScore.engine(.gpu, 120, 0), 0)                           // no reply: 0
-        var total = BenchmarkResult()
-        total.llm = cpuOnly
-        XCTAssertEqual(total.total, 1500)
+    func testTheTotalIsTheFiveSectionsWithNoLlm() {
+        var r = BenchmarkResult()
+        r.ai = AiResult(runs: AiTest.allCases.flatMap { t in [AiAccel.cpu, .gpu].map { AiRun(test: t, accel: $0, ips: AiScore.ref(t, $0)) } },
+                        npuRuntime: nil)
+        XCTAssertEqual(r.aiScore, 6000)
+        XCTAssertEqual(r.total, 6000)                                                 // CPU + MEM + GPU + UX + AI: nothing else adds
+        XCTAssertFalse(PhoneHealth.parts(r).keys.contains { $0.hasPrefix("llm.") })   // nothing for Phone Health to compare
+        XCTAssertFalse(r.isComplete)                                                  // CPU, MEM, GPU and UX didn't run
     }
 
     func testAiCountsTheCpuAndTheGpuHalfEachTheNpuNever() {
@@ -95,16 +62,5 @@ final class BenchmarkScoreTests: XCTestCase {
         var r = BenchmarkResult()
         r.ai = result(npu: true)
         XCTAssertNil(PhoneHealth.parts(r)["ai.npu"])
-    }
-
-    func testPhoneHealthNamesEachLlmEngine() {
-        var r = BenchmarkResult()
-        r.llm = LlmResult(runs: [LlmRun(accel: .cpu, prefill: LlmScore.refCpuPrefill, decode: LlmScore.refCpuDecode)],
-                          gpuName: nil, freeGb: 5, largestModel: 4)
-        let parts = PhoneHealth.parts(r)
-        XCTAssertEqual(parts["llm.cpu"], 6000)
-        XCTAssertEqual(parts["llm.gpu"], 0)
-        XCTAssertNil(parts["llm.npu"])                                             // not scored, not a part
-        XCTAssertNil(parts["llm.prefill"])
     }
 }

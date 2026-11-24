@@ -3,7 +3,7 @@ import UIKit
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK ENGINE — the run, in Android's order: getting ready (cool and
-// quiet), then CPU → MEM → GPU → UX → AI → LLM. The work runs on its own thread;
+// quiet), then CPU → MEM → GPU → UX → AI. The work runs on its own thread;
 // the stage reads the published state.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,22 +45,14 @@ final class BenchmarkEngine: ObservableObject {
     @Published private(set) var aiRate = -1.0
     @Published private(set) var aiDetail = ""
     @Published private(set) var aiVisual: AiVisual?
-    @Published private(set) var llmAccel: LlmAccel?     // where llama.cpp runs the model now — the stage is up while set
-    @Published private(set) var llmNpu = false          // the LLM's third engine, the Neural Engine, is running (LlmNpuEngine)
-    @Published private(set) var llmPhase: LlmPhase = .build
-    @Published private(set) var llmProgress = 0.0       // 0..1 through this accelerator
-    @Published private(set) var llmRate = -1.0          // tokens/s so far
-    @Published private(set) var llmDetail = ""
-    @Published private(set) var llmReply: [Int] = []    // the reply being written, token ids
-    @Published private(set) var llmPrompts = 0          // prompts read so far on this accelerator
     @Published private(set) var inBackground = false  // on a Mac: another app is in front of the run
     private let runActivity = RunActivity()           // a Mac: no App Nap while the run is on
     @Published private(set) var result: BenchmarkResult?
     @Published private(set) var error: String?
     @Published private(set) var record: BenchmarkRecord?
 
-    /// Sections after MEM, in run order (GPU, UX, AI, LLM).
-    var laterSections: [BenchmarkSection] = [GpuSection(), UxSection(), AiSection(), LlmSection()]
+    /// Sections after MEM, in run order (GPU, UX, AI).
+    var laterSections: [BenchmarkSection] = [GpuSection(), UxSection(), AiSection()]
 
     static let cooldownMaxS = 30.0
     static let quietShare: Float = 0.85        // starts once it gets ≥ 85 % of the CPU…
@@ -91,15 +83,15 @@ final class BenchmarkEngine: ObservableObject {
         }
     }
 
-    // MARK: - the AI and LLM tests' crash markers
+    // MARK: - the AI test's crash marker
 
     /*
-     * TensorFlow Lite's, Core ML's and llama.cpp's crashes can't be caught: while an accelerator runs, the AI and LLM
-     * tests leave a "running" marker (AiSection, LlmSection), and one found at the next launch means the app went down.
+     * TensorFlow Lite's and Core ML's crashes can't be caught: while an accelerator runs, the AI test leaves a "running"
+     * marker (AiSection), and one found at the next launch means the app went down.
      * Only the front counts — iOS ends apps suspended in the background, a user swipes one away there — so while the app
      * is in the background its marker is kept aside, including one set there, and comes back if the app does.
      */
-    private static let markerKeys = ["benchmark.aiRunning", "benchmark.llmRunning"]
+    private static let markerKeys = ["benchmark.aiRunning"]
     private static let aside = ".background"
     private static let markerLock = NSLock()
     nonisolated(unsafe) private static var inBackground = false     // guarded by markerLock
@@ -122,7 +114,7 @@ final class BenchmarkEngine: ObservableObject {
         }
     }
 
-    /** `-benchFrom gpu|rt|ux|photo|qr|ai|llm` (simulator checks) skips everything before that test. */
+    /** `-benchFrom gpu|rt|ux|photo|qr|ai` (simulator checks) skips everything before that test. */
     let startFrom: String? = ProcessInfo.processInfo.arguments.firstIndex(of: "-benchFrom").flatMap { i in
         ProcessInfo.processInfo.arguments.dropFirst(i + 1).first }
 
@@ -130,7 +122,6 @@ final class BenchmarkEngine: ObservableObject {
         guard !isRunning else { return }
         UIDevice.current.isBatteryMonitoringEnabled = true
         lock.withLock { active = true }
-        if LlmSection.npuReport { LlmNpuEngine.noteRunStart() }   // report-only NPU run: only if its model was ready now
         result = nil; error = nil; record = nil; cpuTest = nil; memTest = nil; cpuProgress = nil; memProgress = nil
         phase = .preparing
         watchFront()
@@ -188,34 +179,6 @@ final class BenchmarkEngine: ObservableObject {
     }
 
     func publishAiVisual(_ v: AiVisual?) { ui { self.aiVisual = v } }
-
-    /** The LLM test on the stage now: the accelerator (nil when the section is over), its phase and live rate. */
-    func publishLlm(_ accel: LlmAccel?, phase: LlmPhase, progress: Double, rate: Double, detail: String, reply: [Int] = [], prompts: Int = 0) {
-        ui {
-            self.uxTest = nil; self.aiTest = nil; self.aiVisual = nil
-            self.llmAccel = accel; self.llmNpu = false; self.llmPhase = phase; self.llmProgress = progress; self.llmRate = rate
-            self.llmDetail = detail; self.llmReply = reply; self.llmPrompts = prompts
-        }
-    }
-
-    /** The LLM's NPU engine on the stage: how far it is (0…1) and its own line (LlmNpuEngine's progress). */
-    func publishLlmNpu(progress: Double, detail: String) {
-        ui {
-            self.llmAccel = nil; self.llmNpu = true; self.llmPhase = .build; self.llmProgress = min(1, max(0, progress)); self.llmRate = -1
-            self.llmDetail = detail; self.llmReply = []; self.llmPrompts = 0
-        }
-    }
-
-    /// The LLM test is on the stage (llama.cpp's CPU or GPU run, or the NPU engine).
-    var llmOnStage: Bool { llmAccel != nil || llmNpu }
-
-    /// The LLM engine on the stage: its number (1 CPU, 2 GPU, 3 NPU), name and planned seconds; nil when none is.
-    var llmStep: (number: Int, label: String, seconds: Int)? {
-        llmNpu ? (3, "NPU", LlmSection.npuSeconds) : llmAccel.map { ($0.rawValue + 1, $0.label, $0.seconds) }
-    }
-
-    /// Every LLM engine's planned seconds, in run order (the progress bar).
-    static let llmSeconds = LlmAccel.allCases.map(\.seconds) + (LlmSection.npuReport ? [LlmSection.npuSeconds] : [])
 
     /** The UX test on the stage now: its progress, what it's doing and its live number. */
     func publishUx(_ test: UxTest?, progress: Double = 0, detail: String = "", value: Double = -1, unit: String = "") {
@@ -322,10 +285,9 @@ final class BenchmarkEngine: ObservableObject {
                 guard isActive else { return finish(nil, error: nil) }
             }
             for section in laterSections where !(["ux", "photo", "video", "export", "qr", "ai"].contains(from) && section is GpuSection)
-                && !(from == "ai" && section is UxSection) && !(from == "rt" && !(section is GpuSection))
-                && !(from == "llm" && !(section is LlmSection)) {
+                && !(from == "ai" && section is UxSection) && !(from == "rt" && !(section is GpuSection)) {
                 if charging() { r.validityFlags |= BenchFlag.powerEvent }
-                let secName = section is GpuSection ? "gpu" : section is UxSection ? "ux" : section is AiSection ? "ai" : section is LlmSection ? "llm" : "other"
+                let secName = section is GpuSection ? "gpu" : section is UxSection ? "ux" : section is AiSection ? "ai" : "other"
                 AppTelemetry.setPhaseContext(mode: "benchmark", section: secName)
                 try section.run(self, &r)
                 guard isActive else { return finish(nil, error: nil) }
@@ -352,7 +314,6 @@ final class BenchmarkEngine: ObservableObject {
             self.cpuTest = nil; self.memTest = nil; self.gpuTest = nil; self.uxTest = nil; self.webPage = nil
             self.videoFrame = nil; self.qrFrame = nil; self.qrFound = nil; self.stageTitle = ""
             self.aiTest = nil; self.aiAccel = nil; self.aiVisual = nil
-            self.llmAccel = nil; self.llmNpu = false; self.llmReply = []
             self.inBackground = false
             self.error = error
             self.result = r

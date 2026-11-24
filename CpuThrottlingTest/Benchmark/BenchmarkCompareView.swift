@@ -13,7 +13,6 @@ private func sectionColor(_ key: String) -> Color {
     case "mem": return BenchColor.mem
     case "gpu": return Forge.phaseCalibration
     case "ai": return BenchColor.ai
-    case "llm": return BenchColor.llm
     default: return Forge.phaseMeasured
     }
 }
@@ -22,7 +21,7 @@ private func lit(_ duel: Duel, _ side: Lead) -> Bool { duel.winner == side || du
 private func beaten(_ duel: Duel, _ side: Lead) -> Bool { (duel.winner == .a || duel.winner == .b) && duel.winner != side }
 
 /**
- Two leaderboard runs head to head: who leads overall and by how much, the shape of both across the six sections, every
+ Two leaderboard runs head to head: who leads overall and by how much, the shape of both across the five sections, every
  section as mirrored bars that open into each test's numbers (the better one lit in its side's colour), and the facts of
  both devices. `a` and `b` are board entries; their full runs are loaded here. Android: BenchmarkCompareOverlay.kt.
  */

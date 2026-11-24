@@ -33,7 +33,7 @@ struct BenchmarkRecord: Codable, Identifiable {
     var storageSeqRead = 0.0, storageSeqWrite = 0.0, storageRandomRead = 0.0, storageRandomWrite = 0.0
     var storageDirect = false
     var dbInsert = 0.0, dbUpdate = 0.0, dbQuery = 0.0
-    var llm: LlmRecord?        // optional: runs saved before the LLM test decode without it
+    // runs saved by earlier versions may have an "llm" entry (the LLM test, gone in version 5): decoding skips it
     var media: MediaRecord?    // optional: UX 5's 8K clips and UX 6's exports (version 4)
     var osVersion: String?     // what it ran on — Phone Health spots a slowdown after an update
     var validityFlags = 0
@@ -84,31 +84,12 @@ struct BenchmarkRecord: Codable, Identifiable {
             storageDirect = m.storage.direct
             dbInsert = q(m.db.insert); dbUpdate = q(m.db.update); dbQuery = q(m.db.query)
         }
-        if let l = r.llm {
-            llm = LlmRecord(prefillCpu: q(l.run(.cpu)?.prefill ?? 0), decodeCpu: q(l.run(.cpu)?.decode ?? 0),
-                            prefillGpu: q(l.run(.gpu)?.prefill ?? 0), decodeGpu: q(l.run(.gpu)?.decode ?? 0),
-                            gpu: l.gpuName, freeGb: q(l.freeGb),
-                            // the NPU's rates only when they count (a right answer, no error), as the server re-scores them
-                            prefillNpu: q(l.npuCounted?.prefill ?? 0), decodeNpu: q(l.npuCounted?.decode ?? 0),
-                            npu: l.npu?.model.map { "\(LlmNpuEngine.engineName) · \($0)" })
-        }
         validityFlags = r.validityFlags
         complete = r.isComplete
         osVersion = UIDevice.current.systemVersion
         osBuild = StressEngine.osBuild()
         deviceModel = LeaderboardService.shared.getDeviceModelName()
     }
-}
-
-/** The LLM test's raw results: tokens/s reading the prompt and writing the reply, per accelerator (0 = didn't run). */
-struct LlmRecord: Codable {
-    var prefillCpu = 0.0, decodeCpu = 0.0, prefillGpu = 0.0, decodeGpu = 0.0
-    var gpu: String?
-    var freeGb = 0.0
-    // version 5: the NPU (LlmNpuEngine) — 0 = it didn't run, failed or answered wrongly — and "<engine> · <model>" it ran.
-    // Optional, so runs saved by earlier versions still load
-    var prefillNpu: Double?, decodeNpu: Double?
-    var npu: String?
 }
 
 /** UX 5's 8K decode rates and UX 6's exports: fps, quality (dB) and which ran in hardware. */
@@ -154,12 +135,13 @@ struct BenchmarkPayload: Encodable {
     let storageSeqRead, storageSeqWrite, storageRandomRead, storageRandomWrite: Double
     let storageDirect: Bool
     let dbInsert, dbUpdate, dbQuery: Double
-    let llmPrefillCpu, llmDecodeCpu, llmPrefillGpu, llmDecodeGpu: Double
-    let llmGpu: String?             // the GPU it ran on (reported)
-    let llmFreeGb: Double           // memory the app could take (reported)
-    // version 5: the NPU's tokens/s (0 = none, failed, or a wrong answer) and the engine and model file it ran
-    let llmPrefillNpu, llmDecodeNpu: Double
-    let llmNpu: String?
+    // the LLM test's fields: version 5 has no LLM test, but the server's request and signed text keep its layout, so
+    // they're always sent, always 0 or empty
+    let llmPrefillCpu = 0.0, llmDecodeCpu = 0.0, llmPrefillGpu = 0.0, llmDecodeGpu = 0.0
+    let llmGpu = ""
+    let llmFreeGb = 0.0
+    let llmPrefillNpu = 0.0, llmDecodeNpu = 0.0
+    let llmNpu = ""
     let validityFlags: Int
     let appVersion: String?
 
@@ -178,8 +160,8 @@ struct BenchmarkPayload: Encodable {
             f2(aiDepthCpu), f2(aiDepthGpu), f2(aiDepthNpu), f2(aiSoundCpu), f2(aiSoundGpu), f2(aiSoundNpu), aiNpuRuntime ?? "",
             f2(memRead), f2(memWrite), f2(memCopy), f2(memLatency), f2(storageSeqRead), f2(storageSeqWrite),
             f2(storageRandomRead), f2(storageRandomWrite), storageDirect ? "1" : "0", f2(dbInsert), f2(dbUpdate), f2(dbQuery),
-            f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu ?? "", f2(llmFreeGb),
-            f2(llmPrefillNpu), f2(llmDecodeNpu), llmNpu ?? "",
+            f2(llmPrefillCpu), f2(llmDecodeCpu), f2(llmPrefillGpu), f2(llmDecodeGpu), llmGpu, f2(llmFreeGb),
+            f2(llmPrefillNpu), f2(llmDecodeNpu), llmNpu,
             "\(validityFlags)"]
         return parts.joined(separator: "|")
     }
@@ -193,7 +175,6 @@ enum BenchmarkUpload {
     static func submit(_ r: BenchmarkRecord) async throws -> BenchmarkSubmitResponse {
         let session = try await LeaderboardService.shared.createSession()
         let a = r.ai
-        let l = r.llm ?? LlmRecord()
         let m = r.media ?? MediaRecord()
         var payload = BenchmarkPayload(
             sessionId: session.id, hash: "", benchmarkVersion: r.version, deviceManufacturer: "Apple",
@@ -219,9 +200,6 @@ enum BenchmarkUpload {
             storageSeqRead: r.storageSeqRead, storageSeqWrite: r.storageSeqWrite,
             storageRandomRead: r.storageRandomRead, storageRandomWrite: r.storageRandomWrite, storageDirect: r.storageDirect,
             dbInsert: r.dbInsert, dbUpdate: r.dbUpdate, dbQuery: r.dbQuery,
-            llmPrefillCpu: l.prefillCpu, llmDecodeCpu: l.decodeCpu, llmPrefillGpu: l.prefillGpu, llmDecodeGpu: l.decodeGpu,
-            llmGpu: l.gpu, llmFreeGb: l.freeGb,
-            llmPrefillNpu: l.prefillNpu ?? 0, llmDecodeNpu: l.decodeNpu ?? 0, llmNpu: l.npu,
             validityFlags: r.validityFlags,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
         let mac = HMAC<SHA256>.authenticationCode(for: Data(payload.canonical().utf8), using: SymmetricKey(data: Data(session.encryptionKey.utf8)))

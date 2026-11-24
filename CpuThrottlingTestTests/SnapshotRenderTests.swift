@@ -22,10 +22,10 @@ final class SnapshotRenderTests: XCTestCase {
     }
 
     static let benchmark = BenchmarkCard(
-        device: "iPhone 17 Pro", os: "iOS 26.4", date: Date(timeIntervalSince1970: 1_762_950_000), chip: "A19 Pro", total: 41_873,
+        device: "iPhone 17 Pro", os: "iOS 26.4", date: Date(timeIntervalSince1970: 1_762_950_000), chip: "A19 Pro", total: 36_614,
         sections: [SectionScore(key: "cpu", label: "CPU", points: 7_412), SectionScore(key: "mem", label: "MEM", points: 6_120),
                    SectionScore(key: "gpu", label: "GPU", points: 8_904), SectionScore(key: "ux", label: "UX", points: 6_877),
-                   SectionScore(key: "ai", label: "AI", points: 7_301), SectionScore(key: "llm", label: "LLM", points: 5_259)],
+                   SectionScore(key: "ai", label: "AI", points: 7_301)],
         verified: true, serverId: 1234, mine: true)
 
     /// Five minutes: holds, throttles at 2:10, settles near 72 %.

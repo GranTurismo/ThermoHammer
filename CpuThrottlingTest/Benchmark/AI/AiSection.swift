@@ -8,6 +8,9 @@ import Foundation
 struct AiSection: BenchmarkSection {
     static let seconds = 1.6                    // measured per model and accelerator, as on Android
     static let showS = 3.5                      // each model's result stays up at least this long
+    /// The Neural Engine run, report only, for development (launch argument -npuReport): scoring version 5 doesn't score
+    /// the NPU — no way to run it reaches every device yet (BENCHMARK_V5_PLAN.md) — so Store builds never run it.
+    static let npuReport = ProcessInfo.processInfo.arguments.contains("-npuReport")
     private static let runningKey = "benchmark.aiRunning"
     private static let crashedKey = "benchmark.aiCrashed"
 
@@ -53,7 +56,7 @@ struct AiSection: BenchmarkSection {
         let crashed = Self.crashedAccels()
         // version 5 doesn't score the NPU: Store builds run the models on the CPU and the GPU only (-npuReport: the
         // Neural Engine too, report only)
-        let accels: [AiAccel] = LlmSection.npuReport ? AiAccel.allCases : [.cpu, .gpu]
+        let accels: [AiAccel] = Self.npuReport ? AiAccel.allCases : [.cpu, .gpu]
         let npuProblem = accels.contains(.npu) ? AiBench.npuProblem : "not part of the benchmark"
         var runs: [AiRun] = []
         for test in AiTest.allCases {

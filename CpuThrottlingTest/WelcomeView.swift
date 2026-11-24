@@ -2,7 +2,7 @@ import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WELCOME — what ThermoHammer is and why its numbers can be trusted, on six
-// pages: the instrument, its six sections, the same work on every platform,
+// pages: the instrument, its five sections, the same work on every platform,
 // scoring that can't be gamed, Phone Health and the heat test. The pictures
 // are drawn live (a TimelineView per picture, only for the pages in view);
 // each page plays its entrance as it slides in, and the pictures lag the
@@ -26,13 +26,13 @@ struct WelcomeView: View {
 
     private let pages: [WelcomePage] = [
         WelcomePage(kicker: "THERMOHAMMER", title: "The benchmark that tells the truth",
-                    body: "Six sections, scored on our server, the same test on every phone — and the only one that also tells you when your phone gets too hot to keep up.",
+                    body: "Five sections, scored on our server, the same test on every phone — and the only one that also tells you when your phone gets too hot to keep up.",
                     accent: Forge.phaseMeasured, art: 0),
-        WelcomePage(kicker: "01 · SIX SECTIONS", title: "One honest score",
-                    body: "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, AI image models, and a language model running right on your phone. Each test is 6,000 points on a Snapdragon 8 Elite.",
+        WelcomePage(kicker: "01 · FIVE SECTIONS", title: "One honest score",
+                    body: "Processor, memory and storage, 3D graphics with ray tracing, everyday apps and AI image models. Each test is 6,000 points on a Snapdragon 8 Elite.",
                     accent: Ramp.at(0.25), art: 1),
         WelcomePage(kicker: "02 · SAME WORK EVERYWHERE", title: "Byte-identical on every platform",
-                    body: "iPhone, Android and Mac run the very same C\u{2060}+\u{2060}+, the same 3D scenes, the same AI models and the same seeded language model. A score means the same thing on every device.",
+                    body: "iPhone, Android and Mac run the very same C\u{2060}+\u{2060}+, the same 3D scenes and the same AI models. A score means the same thing on every device.",
                     accent: Forge.phaseCooldown, art: 2),
         WelcomePage(kicker: "03 · CAN'T BE GAMED", title: "Scored where no one can tune for it",
                     body: "Phone makers have been caught boosting known benchmarks. Your raw results are signed and scored on our server, and only clean runs — cool, unplugged, nothing else running — reach the leaderboard.",
@@ -260,15 +260,18 @@ private struct WelcomeArt: View {
         }
     }
 
-    /** Six tiles light up one after another, each running its own little workload, the total counting up. */
+    /** Five tiles light up one after another, each running its own little workload, the total counting up. */
     private func sections(_ ctx: inout GraphicsContext, _ size: CGSize, _ t: Double, _ a: Double) {
-        let names = ["CPU", "MEM", "GPU", "UX", "AI", "LLM"]
-        let colors = [BenchColor.cpu, BenchColor.mem, Forge.phaseCalibration, Forge.phaseMeasured, BenchColor.ai, BenchColor.llm]
+        let names = ["CPU", "MEM", "GPU", "UX", "AI"]
+        let colors = [BenchColor.cpu, BenchColor.mem, Forge.phaseCalibration, Forge.phaseMeasured, BenchColor.ai]
         let gap: CGFloat = 10
         let tileW = (size.width - gap * 2) / 3, tileH = (size.height * 0.72 - gap) / 2
-        for i in 0..<6 {
+        for i in 0..<names.count {
             let p = stage(a, Double(i) * 0.09, 0.4)
-            let x = CGFloat(i % 3) * (tileW + gap), y = CGFloat(i / 3) * (tileH + gap) + (1 - p) * 30
+            // three on the first row, the rest centred under them
+            let inRow = min(3, names.count - i / 3 * 3)
+            let x = CGFloat(3 - inRow) * (tileW + gap) / 2 + CGFloat(i % 3) * (tileW + gap)
+            let y = CGFloat(i / 3) * (tileH + gap) + (1 - p) * 30
             let rect = CGRect(x: x, y: y, width: tileW, height: tileH)
             ctx.fill(Path(roundedRect: rect, cornerRadius: 14), with: .color(Forge.surface.opacity(p)))
             ctx.stroke(Path(roundedRect: rect, cornerRadius: 14), with: .color(colors[i].opacity(0.55 * p)), lineWidth: 1)
@@ -281,16 +284,16 @@ private struct WelcomeArt: View {
                          with: .color(colors[i].opacity(0.8 * p)))
             }
         }
-        let total = Int(36026 * stage(a, 0.45, 0.55))
+        let total = Int(30026 * stage(a, 0.45, 0.55))
         let ty = size.height * 0.80
         label(&ctx, "TOTAL", CGPoint(x: 0, y: ty), Forge.ink2, 10)
         label(&ctx, total.formatted(), CGPoint(x: 0, y: ty + 14), Forge.ink0, 30, bold: true)
-        label(&ctx, "CPU + MEM + GPU + UX + AI + LLM", CGPoint(x: size.width * 0.42, y: ty + 26), Forge.ink2, 9)
+        label(&ctx, "CPU + MEM + GPU + UX + AI", CGPoint(x: size.width * 0.42, y: ty + 26), Forge.ink2, 9)
     }
 
     /** The same packets, in the same order, flowing from one seed into an Android phone, an iPhone and a Mac. */
     private func sameWork(_ ctx: inout GraphicsContext, _ size: CGSize, _ t: Double, _ a: Double) {
-        let packet = [BenchColor.cpu, BenchColor.mem, Forge.phaseCalibration, Forge.phaseMeasured, BenchColor.ai, BenchColor.llm]
+        let packet = [BenchColor.cpu, BenchColor.mem, Forge.phaseCalibration, Forge.phaseMeasured, BenchColor.ai]
         let src = CGPoint(x: size.width / 2, y: size.height * 0.12)
         let chip = CGRect(x: src.x - 62, y: src.y - 16, width: 124, height: 32)
         ctx.fill(Path(roundedRect: chip, cornerRadius: 10), with: .color(Forge.surface))
@@ -306,8 +309,8 @@ private struct WelcomeArt: View {
             let c1 = CGPoint(x: src.x, y: src.y + 70), c2 = CGPoint(x: x, y: p3.y - 70)
             var path = Path(); path.move(to: p0); path.addCurve(to: p3, control1: c1, control2: c2)
             ctx.stroke(path, with: .color(Forge.ink2.opacity(0.35 * p)), lineWidth: 1.5)
-            for j in 0..<6 {
-                let u = (t * 0.32 + Double(j) / 6).truncatingRemainder(dividingBy: 1)
+            for j in packet.indices {
+                let u = (t * 0.32 + Double(j) / Double(packet.count)).truncatingRemainder(dividingBy: 1)
                 let m = 1 - u
                 let px = m * m * m * p0.x + 3 * m * m * u * c1.x + 3 * m * u * u * c2.x + u * u * u * p3.x
                 let py = m * m * m * p0.y + 3 * m * m * u * c1.y + 3 * m * u * u * c2.y + u * u * u * p3.y

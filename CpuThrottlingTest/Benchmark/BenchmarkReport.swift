@@ -10,7 +10,7 @@ enum BenchmarkReport {
         func pts(_ v: Int) -> String { v.formatted(.number.grouping(.automatic)) }
         line("ThermoHammer benchmark report · app \(appVersion) · \(time)")
         line("\(device) · \(LeaderboardService.osLabel(LeaderboardService.osPlatform, os)) · SoC \(soc) · GPU \(r.gpuName.isEmpty ? "?" : r.gpuName)")
-        line("TOTAL \(pts(r.total)) = CPU \(pts(r.cpuScore)) + MEM \(pts(r.memScore)) + GPU \(pts(r.gpuScore)) + UX \(pts(r.uxScore)) + AI \(pts(r.aiScore)) + LLM \(pts(r.llmScore)) · validity flags \(r.validityFlags)")
+        line("TOTAL \(pts(r.total)) = CPU \(pts(r.cpuScore)) + MEM \(pts(r.memScore)) + GPU \(pts(r.gpuScore)) + UX \(pts(r.uxScore)) + AI \(pts(r.aiScore)) · validity flags \(r.validityFlags)")
         line("Start · CPU share \(Int((r.startCpuShare * 100).rounded()))% · waited \(r.quietWaitSec) s for background work")
         if let cpu = r.cpu {
             for t in CpuTest.allCases {
@@ -70,25 +70,6 @@ enum BenchmarkReport {
                     parts.append(ips > 0 ? "\(a.label) \(f(ips))/s\(agreed)" : "\(a.label) 0 (\(run?.error ?? "not run"))")
                 }
                 line("AI \(t.number) \(t.title) · " + parts.joined(separator: ", "))
-            }
-        }
-        if let llm = r.llm {
-            line("LLM · \(pts(llm.score)) pts = CPU \(pts(llm.points(.cpu))) · GPU \(pts(llm.points(.gpu))) " +
-                 "(each half; Gemma 3 1B on both) · \(f(llm.freeGb)) GB free, largest model \(llm.largestModel)B" +
-                 (llm.error.map { " · not run: \($0)" } ?? ""))
-            for a in LlmAccel.allCases {
-                if let run = llm.run(a), run.decode > 0 {
-                    line("LLM \(a.label) · \(pts(llm.points(a))) pts · prefill \(f(run.prefill)) tok/s · decode \(f(run.decode)) tok/s · " +
-                         (a == .gpu ? (llm.gpuName ?? "?") : "\(run.threads) threads (prompt \(run.batchThreads))"))
-                } else {
-                    line("LLM \(a.label) · 0 (\(llm.run(a)?.error ?? "not run"))")
-                }
-            }
-            if let n = llm.npu {
-                line(llm.npuCounted != nil
-                     ? "LLM NPU (report only, not scored) · would be \(pts(llm.npuPoints)) pts · prefill \(f(n.prefill)) tok/s · decode \(f(n.decode)) tok/s · \(LlmNpuEngine.engineName) · \(n.model ?? "?") · answer right"
-                     : "LLM NPU (report only, not scored) · no result (\(n.error ?? "its answer was wrong"))")
-                n.lines.forEach(line)
             }
         }
         return s

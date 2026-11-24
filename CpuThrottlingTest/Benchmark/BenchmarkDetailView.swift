@@ -30,7 +30,14 @@ struct BenchmarkDetail: Decodable {
     let osBuild: String?
     let appVersion: String?
     let totalScore: Int
-    let sections: [Section]
+    private let serverSections: [Section]
+    /// The run's sections — without an LLM one, a test this app no longer has (runs from before scoring version 5)
+    var sections: [Section] { serverSections.filter { $0.key != "llm" } }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, createdAt, deviceManufacturer, deviceModel, socModel, gpuName, os, osVersion, osBuild, appVersion, totalScore
+        case serverSections = "sections"
+    }
 
     /// UTC time of the run, "27 Oct 2026" — the server sends .NET's 7 fractional digits, which are dropped here.
     var date: String? { createdDate?.formatted(date: .abbreviated, time: .omitted) }
@@ -51,7 +58,7 @@ extension BenchmarkUpload {
     }
 }
 
-/** A benchmark leaderboard row opened: the device and its six sections, each a card that unfolds into its groups and rows. */
+/** A benchmark leaderboard row opened: the device and its sections, each a card that unfolds into its groups and rows. */
 struct BenchmarkDetailOverlay: View {
     let entry: BenchmarkDto
     var onCompare: (() -> Void)? = nil
@@ -68,7 +75,6 @@ struct BenchmarkDetailOverlay: View {
         case "mem": return BenchColor.mem
         case "gpu": return Forge.phaseCalibration
         case "ai": return BenchColor.ai
-        case "llm": return BenchColor.llm
         default: return Forge.phaseMeasured
         }
     }

@@ -61,17 +61,12 @@ final class CsvExportTests: XCTestCase {
         XCTAssertFalse(lines.contains { $0[0] == "gpu" })                           // a section the run doesn't have
     }
 
-    func testBenchmarkLlmRowsHaveEachEngine() {
+    func testBenchmarkCsvHasNoLlmRows() {
         var r = BenchmarkResult()
-        r.llm = LlmResult(runs: [LlmRun(accel: .cpu, prefill: 80, decode: 27.5, threads: 6)], gpuName: nil, freeGb: 7.25, largestModel: 8,
-                          npu: LlmNpuRun(prefill: 5450, decode: 52, right: true, model: "gemma-3-1b"))
+        r.ai = AiResult(runs: [AiRun(test: .classify, accel: .cpu, ips: 300)], npuRuntime: nil)
         let lines = rows(CsvExport.benchmark(r))
         XCTAssertTrue(lines.allSatisfy { $0.count == 4 })
-        XCTAssertFalse(lines.contains { $0.count > 1 && $0[1] == "npu_points" })     // the NPU isn't scored: no points row
-        for row in [["llm", "cpu_points", "\(r.llm!.points(.cpu))", "points"],
-                    ["llm", "cpu_prefill", "80.00", "tokens/s"], ["llm", "gpu_decode", "0.00", "tokens/s"],
-                    ["llm", "npu_prefill", "5450.00", "tokens/s"], ["llm", "npu_decode", "52.00", "tokens/s"]] {
-            XCTAssertTrue(lines.contains(row), "\(row)")
-        }
+        XCTAssertTrue(lines.contains { $0[0] == "ai" })
+        XCTAssertFalse(lines.contains { $0[0] == "llm" || $0[1] == "llm" })          // version 5 has no LLM test
     }
 }

@@ -1,9 +1,9 @@
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BENCHMARK — the same six sections and the same scoring as the Android app
+// BENCHMARK — the same five sections and the same scoring as the Android app
 // (engine/Benchmark.kt) and the server (BenchmarkScoring.cs): CPU + MEM + GPU
-// + UX + AI + LLM, every test 6000 points on the reference phone (Honor VKP-NX9,
+// + UX + AI, every test 6000 points on the reference phone (Honor VKP-NX9,
 // Snapdragon 8 Elite) in Performance mode — scoring version 5. Change a number
 // here only together with those two (BenchmarkScoreTests pins them).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,9 +63,8 @@ enum BenchFlag {
     static let powerEvent = 1 << 2
     static let envCapped = 1 << 5
     static let cooldownTimeout = 1 << 7
-    /// Reserved (Android's NPU_MODEL_MISSING, the same bit): version 5's drafts flagged a missing NPU model; the NPU isn't
-    /// scored, so nothing sets it
-    static let npuModelMissing = 1 << 10
+    // 1 << 10 is reserved (Android's NPU_MODEL_MISSING, the same bit): version 5's drafts flagged a missing LLM NPU
+    // model; version 5 has no LLM test, so nothing sets it
 }
 
 // MARK: - GPU
@@ -479,73 +478,6 @@ enum AiScore {
     static func overall(_ cpu: Int, _ gpu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0)) / 2).rounded()) }
 }
 
-// MARK: - LLM
-
-/** Where llama.cpp runs the model: the CPU (ggml's Arm dot-product kernels) or every layer on the GPU (its Metal backend). */
-enum LlmAccel: Int, CaseIterable {
-    case cpu, gpu
-    var label: String { ["CPU", "GPU"][rawValue] }
-    var seconds: Int { [20, 16][rawValue] }
-}
-
-/** One accelerator: tokens/s reading the 512-token prompt and writing the reply (0 = it couldn't run, `error` says why). */
-struct LlmRun { let accel: LlmAccel; let prefill: Double; let decode: Double; var threads = 0; var error: String? = nil; var batchThreads = 0 }
-
-struct LlmResult {
-    let runs: [LlmRun]
-    let gpuName: String?              // the GPU llama.cpp ran on (nil when it didn't)
-    let freeGb: Double                // memory iOS still let the app take when the test began (reported)
-    let largestModel: Int             // the largest common 4-bit model that fits in it, billions of parameters (reported)
-    var error: String? = nil          // why the test couldn't run at all
-    /** Report only (-npuReport): the Neural Engine (LlmNpuEngine); nil: not run. Never part of the score. */
-    var npu: LlmNpuRun? = nil
-    func run(_ a: LlmAccel) -> LlmRun? { runs.first { $0.accel == a } }
-    /** One engine's points: its prompt and reply rates against the same engine's reference (LlmScore). */
-    func points(_ a: LlmAccel) -> Int { run(a).map { LlmScore.engine(a, $0.prefill, $0.decode) } ?? 0 }
-    /** The NPU's result when it counts: it ran, and answered the check question right. */
-    var npuCounted: LlmNpuRun? { npu.flatMap { $0.right && $0.error == nil ? $0 : nil } }
-    /** What the NPU would score against its reference (report only; never part of the score). */
-    var npuPoints: Int { npuCounted.map { LlmScore.npu($0.prefill, $0.decode) } ?? 0 }
-    private var rates: [(Double, Double)] { runs.map { ($0.prefill, $0.decode) } }
-    /// The fastest engine at each — what a chat app on this device could get (shown, not scored).
-    var prefill: Double { rates.map(\.0).max() ?? 0 }
-    var decode: Double { rates.map(\.1).max() ?? 0 }
-    /// The best engine's points for each phase, against that engine's own reference (CSV, the report).
-    var prefillPoints: Int {
-        max(run(.cpu).map { LlmScore.phase($0.prefill, LlmScore.refCpuPrefill) } ?? 0, run(.gpu).map { LlmScore.phase($0.prefill, LlmScore.refGpuPrefill) } ?? 0)
-    }
-    var decodePoints: Int {
-        max(run(.cpu).map { LlmScore.phase($0.decode, LlmScore.refCpuDecode) } ?? 0, run(.gpu).map { LlmScore.phase($0.decode, LlmScore.refGpuDecode) } ?? 0)
-    }
-    /// Version 5: the CPU and the GPU each count half — an engine that can't run the task counts 0. The NPU isn't scored.
-    var score: Int { LlmScore.overall(points(.cpu), points(.gpu)) }
-}
-
-enum LlmScore {
-    // Version 5: Gemma 3 1B (4-bit) on the CPU and the GPU, each against the same engine's reference, then the two
-    // averaged (BENCHMARK_V5_PLAN.md). Tokens/s worth 6000 points per engine: the Honor VKP-NX9 in Performance mode, the
-    // median of its test runs of 2026-11-23 (Benchmark.kt, BenchmarkScoring.cs). refNpu*: what a report-only NPU run would score
-    static let refCpuPrefill = 160.0, refCpuDecode = 55.0
-    static let refGpuPrefill = 890.0, refGpuDecode = 32.0
-    static let refNpuPrefill = 5450.0, refNpuDecode = 52.0
-
-    /// One phase's points against `ref` tokens/s.
-    static func phase(_ tokensPerS: Double, _ ref: Double) -> Int { Int((6000 * max(tokensPerS, 0) / ref).rounded()) }
-    /// One engine: 6000 × the geometric mean of its prompt and reply rates over its references; 0 if either is 0.
-    static func engine(_ prefill: Double, _ decode: Double, _ refPrefill: Double, _ refDecode: Double) -> Int {
-        prefill > 0 && decode > 0 ? Int((6000 * ((prefill / refPrefill) * (decode / refDecode)).squareRoot()).rounded()) : 0
-    }
-    static func engine(_ a: LlmAccel, _ prefill: Double, _ decode: Double) -> Int {
-        switch a {
-        case .cpu: return engine(prefill, decode, refCpuPrefill, refCpuDecode)
-        case .gpu: return engine(prefill, decode, refGpuPrefill, refGpuDecode)
-        }
-    }
-    static func npu(_ prefill: Double, _ decode: Double) -> Int { engine(prefill, decode, refNpuPrefill, refNpuDecode) }
-    /// The CPU and the GPU each count half; one the device lacks or can't run the task on scores 0 there.
-    static func overall(_ cpu: Int, _ gpu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0)) / 2).rounded()) }
-}
-
 // MARK: - The whole run
 
 struct BenchmarkResult {
@@ -556,7 +488,6 @@ struct BenchmarkResult {
     var rayTracingProblem: String? = nil
     var ux: UxResult?
     var ai: AiResult?
-    var llm: LlmResult?
     var validityFlags = 0
     var startCpuShare: Float = 1
     var quietWaitSec = 0
@@ -566,11 +497,10 @@ struct BenchmarkResult {
     var gpuScore: Int { BenchmarkScore.overall(gpu) }
     var uxScore: Int { ux?.score ?? 0 }
     var aiScore: Int { ai?.score ?? 0 }
-    var llmScore: Int { llm?.score ?? 0 }
-    var total: Int { cpuScore + memScore + gpuScore + uxScore + aiScore + llmScore }
+    var total: Int { cpuScore + memScore + gpuScore + uxScore + aiScore }
     var isVerified: Bool { validityFlags == 0 }
     /// Every section ran — what the server needs to accept the run.
-    var isComplete: Bool { cpu != nil && mem != nil && gpu.count == GpuTest.allCases.count && ux != nil && ai != nil && llm != nil }
+    var isComplete: Bool { cpu != nil && mem != nil && gpu.count == GpuTest.allCases.count && ux != nil && ai != nil }
 }
 
 /// Geometric mean; 0 if any part failed.

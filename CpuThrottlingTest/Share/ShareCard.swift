@@ -8,7 +8,7 @@ import UIKit
 // full-screen presentation (PresentView).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** One benchmark section on a card: "cpu"… "llm", its label and points. */
+/** One benchmark section on a card: "cpu"… "ai", its label and points. */
 struct SectionScore: Identifiable, Equatable {
     let key: String
     let label: String
@@ -22,22 +22,21 @@ struct SectionScore: Identifiable, Equatable {
         case "mem": return BenchColor.mem
         case "gpu": return Forge.phaseCalibration
         case "ai": return BenchColor.ai
-        case "llm": return BenchColor.llm
         default: return Forge.phaseMeasured
         }
     }
 
-    /// CPU, MEM, GPU, UX, AI, LLM — the sections this run has.
+    /// CPU, MEM, GPU, UX, AI — the sections this run has.
     static func of(_ r: BenchmarkResult) -> [SectionScore] {
         [("cpu", "CPU", r.cpuScore, r.cpu != nil), ("mem", "MEM", r.memScore, r.mem != nil), ("gpu", "GPU", r.gpuScore, !r.gpu.isEmpty),
-         ("ux", "UX", r.uxScore, r.ux != nil), ("ai", "AI", r.aiScore, r.ai != nil), ("llm", "LLM", r.llmScore, r.llm != nil)]
+         ("ux", "UX", r.uxScore, r.ux != nil), ("ai", "AI", r.aiScore, r.ai != nil)]
             .filter { $0.3 }.map { SectionScore(key: $0.0, label: $0.1, points: $0.2) }
     }
 
     /// A leaderboard run's sections; one at 0 is one it didn't have (a run from before that section existed).
     static func of(_ e: BenchmarkDto) -> [SectionScore] {
         [("cpu", "CPU", e.cpuScore), ("mem", "MEM", e.memScore), ("gpu", "GPU", e.score), ("ux", "UX", e.uxScore),
-         ("ai", "AI", e.aiScore), ("llm", "LLM", e.llmScore)]
+         ("ai", "AI", e.aiScore)]
             .filter { $0.2 > 0 }.map { SectionScore(key: $0.0, label: $0.1, points: $0.2) }
     }
 }
@@ -200,7 +199,7 @@ struct ShareCardView: View {
 
 // MARK: - Pieces shared with the presentation
 
-/** The six section bars: each bar's length is its points against max(12000, the largest section). */
+/** The five section bars: each bar's length is its points against max(12000, the largest section). */
 struct SectionBars: View {
     let sections: [SectionScore]
     var nameSize: CGFloat = 14

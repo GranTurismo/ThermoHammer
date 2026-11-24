@@ -41,7 +41,6 @@ struct BenchmarkResultView: View {
                         section("GPU", result.gpuScore, Forge.phaseCalibration, ran: !result.gpu.isEmpty)
                         section("UX", result.uxScore, Forge.phaseMeasured, ran: result.ux != nil)
                         section("AI", result.aiScore, BenchColor.ai, ran: result.ai != nil)
-                        section("LLM", result.llmScore, BenchColor.llm, ran: result.llm != nil)
                     }
                     Text("\(LeaderboardService.shared.getDeviceModelName()) · \(result.gpuName)")
                         .font(ThermoFont.mono(10, weight: .bold)).foregroundColor(Forge.ink1)
@@ -60,7 +59,6 @@ struct BenchmarkResultView: View {
                     ForEach(result.gpu, id: \.test) { gpuCard($0) }
                     if let ux = result.ux { uxCards(ux) }
                     if let ai = result.ai { aiCards(ai) }
-                    if let llm = result.llm { llmCard(llm) }
                     buttons
                 }
                 .padding(18)
@@ -338,45 +336,6 @@ struct BenchmarkResultView: View {
         }
     }
 
-    private func tokensPerS(_ v: Double) -> String {
-        v > 0 ? (v < 100 ? String(format: "%.1f", v) : v.formatted(.number.precision(.fractionLength(0)))) : "—"
-    }
-
-    @ViewBuilder private func llmCard(_ llm: LlmResult) -> some View {
-        let missing = Ramp.at(0.85)
-        card("LLM · GEMMA 3 1B · 4-BIT", "PROMPT · REPLY", llm.score, BenchColor.llm) {
-            ForEach(LlmAccel.allCases, id: \.self) { a in
-                let run = llm.run(a)
-                HStack {
-                    metric("\(a.label) PREFILL TOK/S", tokensPerS(run?.prefill ?? 0), (run?.prefill ?? 0) > 0 ? Forge.ink0 : missing); Spacer()
-                    metric("\(a.label) DECODE TOK/S", tokensPerS(run?.decode ?? 0), (run?.decode ?? 0) > 0 ? Forge.ink0 : missing); Spacer()
-                    metric(a == .cpu ? "THREADS" : "GPU", a == .cpu ? (run.map { $0.threads > 0 ? "\($0.threads)" : "—" } ?? "—")
-                           : String((llm.gpuName ?? "—").prefix(14)), Forge.ink1)
-                }
-                if llm.error == nil, let e = run?.error { note("\(a.label): \(e)", missing) }
-            }
-            // report only (-npuReport): the Neural Engine, running the real model — never part of the score
-            if let n = llm.npu {
-                let ok = llm.npuCounted != nil
-                HStack {
-                    metric("NPU PREFILL TOK/S", ok ? tokensPerS(n.prefill) : "—", ok ? Forge.ink0 : missing); Spacer()
-                    metric("NPU DECODE TOK/S", ok ? tokensPerS(n.decode) : "—", ok ? Forge.ink0 : missing); Spacer()
-                    metric("ANSWER", n.error != nil ? "—" : n.right ? "RIGHT" : "WRONG", ok ? Forge.ink1 : missing)
-                }
-                note("NPU: report only, not scored" + (n.error.map { " — \($0)" } ?? ""), missing)
-            }
-            note("CPU \(llm.points(.cpu).formatted()) · GPU \(llm.points(.gpu).formatted()) points — each half.", Forge.ink1)
-            if let e = llm.error { note("Not run: \(e).", missing) }
-            note(llm.largestModel > 0
-                 ? String(format: "Largest common model that fits in the memory iOS lets the app take now: %dB (4-bit, %.1f GB).", llm.largestModel, llm.freeGb)
-                 : String(format: "Memory the app can take now: %.1f GB — too little for even a 1B model.", llm.freeGb), Forge.ink1)
-            note("The same task on every engine: Gemma 3 1B reads a 512-token prompt (prefill), then writes the reply token by token (decode). " +
-                 "llama.cpp runs it on the CPU and the GPU with weights from a seed (the words are random, the work is real); the Neural Engine " +
-                 "runs the real model and must answer a fixed question right. Each engine is measured against its own reference and counts a " +
-                 "third; one the device can't run counts 0.")
-        }
-    }
-
     private var buttons: some View {
         VStack(spacing: 10) {
             if let submitMessage {
@@ -464,9 +423,6 @@ struct BenchmarkResultView: View {
         if flags & BenchFlag.interference != 0 {
             notes.append(LeaderboardService.isMac ? "another app was in front during the run, or the Mac was busy"
                          : "the phone was busy with background work")
-        }
-        if flags & BenchFlag.npuModelMissing != 0 {
-            notes.append("the LLM test's Neural Engine model wasn't downloaded yet (once, over Wi-Fi) — run again once it is")
         }
         return notes.isEmpty ? "Unverified." : "Unverified: " + notes.joined(separator: ", ") + "."
     }

@@ -14,14 +14,13 @@ struct BenchmarkDto: Decodable, Identifiable {
     let cpuScore: Int
     var aiScore: Int = 0
     var memScore: Int = 0
-    var llmScore: Int = 0
     let totalScore: Int
     let test3Fps: Double
     let rayTracing: Bool
     let runs: Int
 
     private enum CodingKeys: String, CodingKey {
-        case id, deviceManufacturer, deviceModel, socModel, gpuName, os, osVersion, score, uxScore, cpuScore, aiScore, memScore, llmScore
+        case id, deviceManufacturer, deviceModel, socModel, gpuName, os, osVersion, score, uxScore, cpuScore, aiScore, memScore
         case totalScore, test3Fps, rayTracing, runs
     }
 
@@ -39,7 +38,6 @@ struct BenchmarkDto: Decodable, Identifiable {
         cpuScore = try c.decode(Int.self, forKey: .cpuScore)
         aiScore = try c.decodeIfPresent(Int.self, forKey: .aiScore) ?? 0
         memScore = try c.decodeIfPresent(Int.self, forKey: .memScore) ?? 0
-        llmScore = try c.decodeIfPresent(Int.self, forKey: .llmScore) ?? 0
         totalScore = try c.decode(Int.self, forKey: .totalScore)
         test3Fps = try c.decode(Double.self, forKey: .test3Fps)
         rayTracing = try c.decode(Bool.self, forKey: .rayTracing)
@@ -178,7 +176,7 @@ struct BenchmarkBoardView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("PHONE BENCHMARK").font(ThermoFont.mono(18, weight: .black)).tracking(1.5).foregroundColor(Forge.ink0)
-                        Text("All six sections · best verified run per phone").font(ThermoFont.mono(9)).foregroundColor(Forge.ink0.opacity(0.4))
+                        Text("All five sections · best verified run per phone").font(ThermoFont.mono(9)).foregroundColor(Forge.ink0.opacity(0.4))
                     }
                     Spacer()
                     Button {
@@ -335,7 +333,7 @@ struct BenchmarkBoardView: View {
                 if let pick { PickMark(slot: pick) }
             }
             // each label stays with its number when the line wraps (non-breaking spaces)
-            Text("CPU\u{00A0}\(e.cpuScore.formatted()) · MEM\u{00A0}\(e.memScore.formatted()) · GPU\u{00A0}\(e.score.formatted()) · UX\u{00A0}\(e.uxScore.formatted()) · AI\u{00A0}\(e.aiScore.formatted()) · LLM\u{00A0}\(e.llmScore.formatted()) · "
+            Text("CPU\u{00A0}\(e.cpuScore.formatted()) · MEM\u{00A0}\(e.memScore.formatted()) · GPU\u{00A0}\(e.score.formatted()) · UX\u{00A0}\(e.uxScore.formatted()) · AI\u{00A0}\(e.aiScore.formatted()) · "
                  + (e.rayTracing ? String(format: "RT\u{00A0}%.0f\u{00A0}FPS", e.test3Fps) : "NO\u{00A0}RT"))
                 .font(ThermoFont.mono(7)).foregroundColor(Forge.ink0.opacity(0.4)).lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)

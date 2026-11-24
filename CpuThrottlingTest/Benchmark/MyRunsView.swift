@@ -1,7 +1,7 @@
 import SwiftUI
 
 /**
- MY RUNS: every benchmark run kept on this device, newest first, with the score over time, each run's six sections, and
+ MY RUNS: every benchmark run kept on this device, newest first, with the score over time, each run's five sections, and
  a submit for a verified run that hasn't been sent. Opened through AppOverlays from the home screen and the leaderboard;
  it reads the history (BenchmarkHistoryStore) itself, so a submit here shows everywhere.
  */
@@ -187,25 +187,29 @@ struct MyRunsView: View {
         }
     }
 
-    /// The six section scores, two rows of three, each in its section's colour.
+    /// The five section scores, three on the first row and two on the second, each in its section's colour.
     private func sections(_ r: BenchmarkRecord) -> some View {
         let s = r.sectionScores
         let cells: [(String, Int, Color)] = [("CPU", s["cpu"] ?? 0, BenchColor.cpu), ("MEM", s["mem"] ?? 0, BenchColor.mem),
                                              ("GPU", s["gpu"] ?? 0, Forge.phaseCalibration), ("UX", s["ux"] ?? 0, Forge.phaseMeasured),
-                                             ("AI", s["ai"] ?? 0, BenchColor.ai), ("LLM", s["llm"] ?? 0, BenchColor.llm)]
+                                             ("AI", s["ai"] ?? 0, BenchColor.ai)]
         return VStack(spacing: 6) {
             ForEach(0..<2, id: \.self) { line in
                 HStack(spacing: 6) {
                     ForEach(0..<3, id: \.self) { i in
-                        let (label, score, color) = cells[line * 3 + i]
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(label).font(ThermoFont.mono(8, weight: .black)).foregroundColor(color)
-                            Text(score.formatted()).font(ThermoFont.mono(12, weight: .black)).foregroundColor(Forge.ink0)
-                                .lineLimit(1).minimumScaleFactor(0.7)
+                        if line * 3 + i < cells.count {
+                            let (label, score, color) = cells[line * 3 + i]
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(label).font(ThermoFont.mono(8, weight: .black)).foregroundColor(color)
+                                Text(score.formatted()).font(ThermoFont.mono(12, weight: .black)).foregroundColor(Forge.ink0)
+                                    .lineLimit(1).minimumScaleFactor(0.7)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(color.opacity(0.08)).cornerRadius(8)
+                        } else {
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)    // keeps the second row's cells as wide as the first's
                         }
-                        .padding(.horizontal, 8).padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(color.opacity(0.08)).cornerRadius(8)
                     }
                 }
             }

@@ -63,13 +63,11 @@ enum PhoneHealth {
             p["ux.photo"] = u.photoPoints; p["ux.video"] = u.videoPoints; p["ux.export"] = u.exportPoints; p["ux.qr"] = u.qrPoints
         }
         if let a = r.ai { p["ai.cpu"] = a.accelScore(.cpu); p["ai.gpu"] = a.accelScore(.gpu) }
-        // version 5: each LLM engine's points (rule B) — the server's BenchmarkScoring.Parts names them the same
-        if let l = r.llm { p["llm.cpu"] = l.points(.cpu); p["llm.gpu"] = l.points(.gpu) }
         return p
     }
 
     private enum Cause: Int {
-        case heat, busy, storage, web, video, export, llm
+        case heat, busy, storage, web, video, export
         func text(_ pct: Int) -> String {
             let os = LeaderboardService.isMac ? "macOS" : "iOS"
             switch self {
@@ -79,7 +77,6 @@ enum PhoneHealth {
             case .web: return "The browser tests ran \(pct)% below other units — Safari's engine comes with \(os): update it."
             case .video: return "Video decoding ran \(pct)% below other units — a codec ran in software."
             case .export: return "Video export ran \(pct)% below other units — the encoder was slower or its output worse. Heat or a system update can do that."
-            case .llm: return "The language model ran \(pct)% below other units — usually less free memory or apps in the background."
             }
         }
     }
@@ -90,7 +87,6 @@ enum PhoneHealth {
         if ["ux.web", "ux.scroll", "ux.gallery"].contains(part) { return .web }
         if part == "ux.video" { return .video }
         if part == "ux.export" { return .export }
-        if part.hasPrefix("llm.") { return .llm }
         return .busy
     }
 

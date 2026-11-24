@@ -77,7 +77,7 @@ struct ComparedSection: Identifiable {
     var shareB: Double { share(scoreB, scoreA) }
     var short: String {
         switch key { case "cpu": return "CPU"; case "mem": return "MEM"; case "gpu": return "GPU"; case "ux": return "UX"
-        case "ai": return "AI"; case "llm": return "LLM"; default: return title }
+        case "ai": return "AI"; default: return title }
     }
 }
 

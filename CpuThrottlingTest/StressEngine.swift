@@ -385,7 +385,7 @@ final class StressEngine: ObservableObject {
     }
 
     /// Runs off-main except the UIKit battery reads (bounced to main).
-    func runPreflight(benchmark: Bool = false) async -> PreflightReport {
+    func runPreflight() async -> PreflightReport {
         var gates: [GateResult] = []
         var hints = 0
 
@@ -440,29 +440,6 @@ final class StressEngine: ObservableObject {
         gates.append(GateResult(id: "bgload", title: "BACKGROUND LOAD", blocking: true,
                                 passed: loadOK,
                                 detail: loadOK ? "\(loadPct)% ambient" : "\(loadPct)% busy — close other apps"))
-        // Development only (-npuReport): the report-only Neural Engine run's model. Never blocking, never scored.
-        #if !targetEnvironment(simulator)
-        if benchmark, LlmSection.npuReport, #available(iOS 18.0, macOS 15.0, *) {
-            let model = LlmNpuModel.shared
-            model.start()                                   // harmless when it's ready or already on its way
-            let state = await MainActor.run { model.state }
-            let ready = LlmNpuModel.isReadyForBenchmark
-            let cannot = LlmNpuModel.cannotRunReason
-            let detail: String
-            if let cannot { detail = "not on this device: \(cannot) (report only)" }
-            else if ready { detail = "Gemma 3 1B for the Neural Engine ready" }
-            else {
-                switch state {
-                case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~1 GB (report only)"
-                case .waitingForWifi: detail = "waiting for Wi-Fi (~1 GB) (report only)"
-                case .preparing: detail = "compiling for the Neural Engine (once, a few minutes) (report only)"
-                case .failed(let why): detail = "\(why.prefix(70)) — it tries again soon"
-                default: detail = "not downloaded yet (report only)"
-                }
-            }
-            gates.append(GateResult(id: "npumodel", title: "LLM NPU MODEL", blocking: false, passed: ready || cannot != nil, detail: detail))
-        }
-        #endif
 
         return PreflightReport(gates: gates,
                                canRun: gates.allSatisfy { !$0.blocking || $0.passed },

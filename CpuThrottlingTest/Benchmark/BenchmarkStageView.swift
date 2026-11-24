@@ -3,7 +3,7 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK STAGE — full screen while the benchmark runs: which test, its live
 // rate, a view of the work (CPU threads, the MEM block map, later the GPU
-// scene), and one progress bar across all six sections.
+// scene), and one progress bar across all five sections.
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum BenchColor {
@@ -11,7 +11,6 @@ enum BenchColor {
     static let mem = Color(hex: 0xF2A65A)       // copper
     static let memWrite = Color(hex: 0xFF7A6B)  // coral
     static let ai = Color(hex: 0xC792EA)        // lavender
-    static let llm = Color(hex: 0xB5E853)       // lime
     static func gpu(_ t: GpuTest) -> Color {
         switch t { case .lakeValley: return Forge.phaseCalibration; case .neonCity: return Ramp.at(0.85); case .neonCityRT: return Forge.phaseCooldown }
     }
@@ -32,7 +31,7 @@ struct BenchmarkStageView: View {
     @ObservedObject var engine: BenchmarkEngine
 
     private var accent: Color {
-        engine.llmOnStage ? BenchColor.llm : engine.cpuTest != nil ? BenchColor.cpu : engine.memTest != nil ? BenchColor.mem : engine.aiTest != nil ? BenchColor.ai
+        engine.cpuTest != nil ? BenchColor.cpu : engine.memTest != nil ? BenchColor.mem : engine.aiTest != nil ? BenchColor.ai
             : engine.gpuTest.map(BenchColor.gpu) ?? engine.uxTest.map(BenchColor.ux) ?? Forge.phaseCooldown
     }
 
@@ -44,9 +43,7 @@ struct BenchmarkStageView: View {
                     .padding(.horizontal, 20).padding(.top, 8)
                 Spacer(minLength: 12)
                 Group {
-                    if engine.llmOnStage {
-                        LlmStageView(engine: engine, accent: BenchColor.llm)
-                    } else if let test = engine.cpuTest {
+                    if let test = engine.cpuTest {
                         CpuStageView(test: test, progress: engine.cpuProgress, accent: BenchColor.cpu)
                     } else if let test = engine.memTest {
                         MemStageView(test: test, progress: engine.memProgress)
@@ -110,7 +107,7 @@ struct BenchmarkStageView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(engine.cpuTest != nil ? "CPU BENCHMARK" : engine.memTest != nil ? "MEM BENCHMARK" : engine.gpuTest != nil ? "GPU BENCHMARK"
-                     : engine.uxTest != nil ? "UX BENCHMARK" : engine.aiTest != nil ? "AI BENCHMARK" : engine.llmOnStage ? "LLM BENCHMARK" : "BENCHMARK")
+                     : engine.uxTest != nil ? "UX BENCHMARK" : engine.aiTest != nil ? "AI BENCHMARK" : "BENCHMARK")
                     .font(ThermoFont.mono(9, weight: .bold)).tracking(2).foregroundColor(accent)
                 if let t = engine.cpuTest {
                     Text("CPU TEST \(t.number)/\(CpuTest.allCases.count) · \(t.title)").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
@@ -127,9 +124,6 @@ struct BenchmarkStageView: View {
                 } else if let t = engine.aiTest {
                     Text("AI TEST \(t.number)/\(AiTest.allCases.count) · \(t.title)").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
                     Text(engine.aiDetail).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
-                } else if let s = engine.llmStep {
-                    Text("LLM TEST \(s.number)/\(BenchmarkEngine.llmSeconds.count) · \(s.label) · GEMMA 3 1B").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
-                    Text(engine.llmDetail).font(ThermoFont.mono(10)).foregroundColor(Forge.ink1).lineLimit(1).minimumScaleFactor(0.7)
                 } else {
                     Text("GETTING READY").font(ThermoFont.mono(13, weight: .black)).foregroundColor(Forge.ink0)
                 }
@@ -152,7 +146,6 @@ struct BenchmarkStageView: View {
         if engine.gpuTest != nil, engine.gpuFps >= 0 { return (engine.gpuFps, "FPS") }
         if engine.uxTest != nil, engine.uxValue >= 0 { return (engine.uxValue, engine.uxUnit) }
         if engine.aiTest != nil, engine.aiRate >= 0 { return (engine.aiRate, "INF/S") }
-        if engine.llmOnStage, engine.llmRate >= 0 { return (engine.llmRate, "TOK/S") }
         return nil
     }
 }
@@ -347,7 +340,7 @@ struct BenchProgressBar: View {
     private var segments: [(Int, Color)] {
         CpuTest.allCases.map { ($0.seconds, BenchColor.cpu) } + MemTest.allCases.map { ($0.seconds, BenchColor.mem) } +
             GpuTest.allCases.map { ($0.seconds, BenchColor.gpu($0)) } + UxTest.allCases.map { ($0.seconds, BenchColor.ux($0)) } +
-            AiTest.allCases.map { ($0.seconds, BenchColor.ai) } + BenchmarkEngine.llmSeconds.map { ($0, BenchColor.llm) }
+            AiTest.allCases.map { ($0.seconds, BenchColor.ai) }
     }
 
     private var elapsed: Double {
@@ -370,11 +363,6 @@ struct BenchProgressBar: View {
         if let t = engine.aiTest {
             return cpuTotal + memTotal + gpuTotal + uxTotal + Double(AiTest.allCases.filter { $0.number < t.number }.reduce(0) { $0 + $1.seconds }) + engine.aiProgress * Double(t.seconds)
         }
-        let aiTotal = Double(AiTest.allCases.reduce(0) { $0 + $1.seconds })
-        if let s = engine.llmStep {
-            return cpuTotal + memTotal + gpuTotal + uxTotal + aiTotal + Double(BenchmarkEngine.llmSeconds.prefix(s.number - 1).reduce(0, +))
-                + engine.llmProgress * Double(s.seconds)
-        }
         return 0
     }
 
@@ -386,7 +374,7 @@ struct BenchProgressBar: View {
             HStack {
                 Text(engine.cpuTest.map { "CPU TEST \($0.number) · \($0.title)" } ?? engine.memTest.map { "MEM TEST \($0.number) · \($0.title)" }
                      ?? engine.gpuTest.map { "GPU TEST \($0.number) · \($0.title)" } ?? engine.uxTest.map { "UX TEST \($0.number) · \($0.title)" }
-                     ?? engine.aiTest.map { "AI TEST \($0.number) · \($0.title)" } ?? engine.llmStep.map { "LLM TEST \($0.number) · \($0.label)" } ?? "PREPARING")
+                     ?? engine.aiTest.map { "AI TEST \($0.number) · \($0.title)" } ?? "PREPARING")
                     .font(ThermoFont.mono(9, weight: .bold)).tracking(1.5).foregroundColor(Forge.ink0)
                 Spacer()
                 Text("\(Int(done / total * 100))%").font(ThermoFont.mono(9)).foregroundColor(Forge.ink1)

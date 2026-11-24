@@ -19,33 +19,10 @@ targets:
       # the benchmark's CPU and MEM tests: the same C++ as the Android app, optimised in debug builds too
       - path: BenchCore/src
         compilerFlags: ["-O3"]
-      - path: BenchCore/include
+      - path: BenchCore/include/bench_core.h
       # zxing-cpp for the QR test (third-party code, so its warnings are off)
       - path: BenchCore/third_party/zxing-cpp/src
         compilerFlags: ["-O3", "-w"]
-      # the LLM test: llama.cpp b11700 with the same sources and flags as Android's libbenchllm.so — its CPU backend
-      # (Arm dot-product kernels) and its Metal backend, whose kernels compile into the app's default.metallib
-      # (all but the quantized-KV-cache attention ones the test never uses). Third-party code: warnings off.
-      - path: BenchCore/llm
-        excludes: ["test/**"]      # host tests with their own main(): built and run on the Mac, never part of the app
-        compilerFlags: ["-O3", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"]
-      - path: BenchCore/third_party/llama.cpp/src
-        compilerFlags: ["-O3", "-w", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include"]
-      - path: BenchCore/third_party/llama.cpp/ggml/src
-        excludes: ["ggml-cpu/**", "ggml-metal/**", "ggml-opencl/**", "ggml-vulkan/**"]
-        compilerFlags: ["-O3", "-w", "-D_XOPEN_SOURCE=600", "-D_DARWIN_C_SOURCE", "-DGGML_SCHED_MAX_COPIES=4",
-                        "-DGGML_USE_CPU", "-DGGML_USE_METAL", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"]
-      - path: BenchCore/third_party/llama.cpp/ggml/src/ggml-cpu
-        excludes: ["arch/arm/cpu-feats.cpp", "arch/x86/**"]
-        compilerFlags: ["-O3", "-w", "-D_XOPEN_SOURCE=600", "-D_DARWIN_C_SOURCE", "-DGGML_SCHED_MAX_COPIES=4",
-                        "-DGGML_USE_CPU", "-DGGML_USE_METAL", "-DGGML_USE_CPU_REPACK", "-DGGML_USE_LLAMAFILE",
-                        "-march=armv8.2-a+dotprod+fp16", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-cpu"]
-      - path: BenchCore/third_party/llama.cpp/ggml/src/ggml-metal
-        excludes: ["kernels/**"]
-        compilerFlags: ["-O3", "-w", "-fno-objc-arc", "-D_XOPEN_SOURCE=600", "-D_DARWIN_C_SOURCE", "-DGGML_SCHED_MAX_COPIES=4",
-                        "-DGGML_USE_CPU", "-DGGML_USE_METAL", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/include", "-I$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"]
-      - path: BenchCore/third_party/llama.cpp/ggml/src/ggml-metal/kernels
-        excludes: ["*_common.metal", "fa_q*.metal", "fa_vec_q*.metal"]
       # the benchmark's scenes, pages, media and models: the Android app's own assets, shared
       - path: ThermoHammerAndroid/app/src/main/assets/lake_valley.bin
         buildPhase: resources
@@ -74,39 +51,12 @@ targets:
         product: FirebaseCrashlytics
       - package: Firebase
         product: FirebaseAnalyticsCore
-    # the LLM test: about 1 GB for llama.cpp's Gemma 3 1B, then the Neural Engine's own model — iOS's default limit for
-    # one app leaves smaller iPhones little room
+    # more memory than iOS's default per-app limit: the UX test's 8K video decode and export on 4 GB iPhones
+    # (it was first added for the LLM test, which version 5 no longer has)
     entitlements:
       path: CpuThrottlingTest/CpuThrottlingTest.entitlements
       properties:
         com.apple.developer.kernel.increased-memory-limit: true
-    # llama.cpp's Metal 4 tensor-API kernels (A19 and later, iOS 26): their own metallib, which ggml loads where the
-    # GPU has them; built here because they need the iOS 26 target the rest of the app doesn't have
-    postCompileScripts:
-      - name: ggml tensor-API kernels
-        basedOnDependencyAnalysis: true
-        inputFiles:
-          - $(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal/kernels/mul_mm.metal
-          - $(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal/kernels/fa_tensor.metal
-          - $(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal/kernels/common.h
-          - $(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal/kernels/dequantize.h
-          - $(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal/ggml-metal-impl.h
-          - $(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-common.h
-        outputFiles:
-          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ggml-tensor.metallib
-        script: |
-          set -e
-          G="$SRCROOT/BenchCore/third_party/llama.cpp/ggml/src"
-          T="$DERIVED_FILE_DIR/ggml-tensor"
-          OS=ios26.0; [ "$PLATFORM_NAME" = iphonesimulator ] && OS=ios26.0-simulator
-          [ "${IS_MACCATALYST:-NO}" = YES ] && OS=ios26.0-macabi
-          mkdir -p "$T"
-          for k in mul_mm fa_tensor; do
-            xcrun -sdk "$PLATFORM_NAME" metal -O3 -DGGML_METAL_HAS_TENSOR -mtargetos=$OS -I "$G" -I "$G/ggml-metal" \
-              -c "$G/ggml-metal/kernels/$k.metal" -o "$T/$k.air"
-          done
-          xcrun -sdk "$PLATFORM_NAME" metallib "$T/mul_mm.air" "$T/fa_tensor.air" \
-            -o "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/ggml-tensor.metallib"
     postBuildScripts:
       - name: Upload Crashlytics dSYMs
         basedOnDependencyAnalysis: false
@@ -123,10 +73,8 @@ targets:
     settings:
       SWIFT_OBJC_BRIDGING_HEADER: CpuThrottlingTest/Benchmark/BenchCore-Bridging.h
       HEADER_SEARCH_PATHS: ["$(SRCROOT)/BenchCore/include", "$(SRCROOT)/BenchCore/third_party/zxing-cpp/src"]
-      # llama.cpp's Metal kernels include ggml-metal-impl.h and ggml-common.h
-      MTL_HEADER_SEARCH_PATHS: ["$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src/ggml-metal", "$(SRCROOT)/BenchCore/third_party/llama.cpp/ggml/src"]
       CLANG_CXX_LANGUAGE_STANDARD: "c++17"
-      # llama.cpp's CPU kernels are built for Arm only: the simulator runs on Apple silicon
+      # Arm only: the simulator runs on Apple silicon
       "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
       # The Mac app: Mac Catalyst — the same code compiled natively for macOS on Apple silicon (Arm only, as above),
       # in place of the iPad app the App Store showed on Macs. One bundle id, so it's the same App Store listing.
