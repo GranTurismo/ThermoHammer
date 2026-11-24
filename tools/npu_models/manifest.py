@@ -2,8 +2,8 @@
 
     python3 manifest.py <models/android folder>
 
-A chip is listed only when its Gemma3-1B-IT_q4_ekv1280_<soc>.litertlm has <file>.sha256 beside it and the file's size is
-what was published (a copy still in progress has neither). The apps (NpuServerModels.kt) download what it lists; the
+A chip is listed only when its Gemma3-1B-IT_q<4|8>_ekv1280_<soc>.litertlm has <file>.sha256 beside it (a copy still in
+progress has none). 8-bit weights are only for chips whose NPU has no 4-bit ones; a chip with both gets the 4-bit file. The apps (NpuServerModels.kt) download what it lists; the
 server (NpuChipCatalog.cs) then requires those chips' NPU part.
 """
 import json
@@ -15,9 +15,9 @@ import sys
 def build(folder):
     chips = {}
     for name in sorted(os.listdir(folder)):
-        m = re.fullmatch(r"Gemma3-1B-IT_q4_ekv1280_([a-z]+[0-9]+)\.litertlm", name)
+        m = re.fullmatch(r"Gemma3-1B-IT_q[48]_ekv1280_([a-z]+[0-9]+)\.litertlm", name)
         sha_file = os.path.join(folder, name + ".sha256")
-        if not m or not os.path.isfile(sha_file):
+        if not m or not os.path.isfile(sha_file) or m.group(1) in chips:     # sorted: q4 comes before q8
             continue
         sha = open(sha_file).read().split()[0].strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", sha):

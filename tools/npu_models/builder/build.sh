@@ -7,7 +7,8 @@
 #    sha256 3dddcbaeec1e8b310dbd98fdb581d07c948859ff6c8e7a2b5ea17c1b33ae07e7)
 #   MODEL_DIR=... ./build.sh sm8650 mt6993 ...      (several SoCs, shared prep)
 #
-# Output: $OUT_DIR/Gemma3-1B-IT_q4_ekv1280_<soc>.litertlm (+ .report.md)
+# Output: $OUT_DIR/Gemma3-1B-IT_q<WEIGHT_BITS>_ekv1280_<soc>.litertlm (+ .report.md); WEIGHT_BITS=8 only for chips
+# whose NPU has no 4-bit weights (tools/npu_models/plan.py NEEDS_W8)
 #
 # Pipeline (see docker/thnpu/pipeline.py):
 #   1 export     HF weights -> float split-cache .litertlm   (litert-torch 0.10.0)
@@ -35,6 +36,8 @@ PREP="${PREP:-auto}"
 NUM_PROMPTS="${NUM_PROMPTS:-50}"; DECODE_STEPS="${DECODE_STEPS:-32}"; WEIGHT_BITS="${WEIGHT_BITS:-4}"
 CACHE_LEN=1280; PREFILL=128
 WORK="$OUT_DIR/work"; mkdir -p "$WORK"
+# calibration is shared by every precision; each weight precision has its own quantized model
+QFILE="quantized.litertlm"; [ "$WEIGHT_BITS" = 4 ] || QFILE="quantized-w$WEIGHT_BITS.litertlm"
 
 QAIRT_VERSION=2.52.0.261104
 QAIRT_SHA256=e4c88416efa47eb8ed32fe2bd36fe63df58a3f4b48a347de5cf565a8c38e0961
@@ -94,7 +97,7 @@ setup_prep() {
 
 prep() { # export -> calibrate -> quantize, once for all SoCs (Qualcomm and
         # MediaTek use the same KV layout k_ts_idx=2/v_ts_idx=3 and recipe)
-  local q="$WORK/common/quantized.litertlm"
+  local q="$WORK/common/$QFILE"
   [ -f "$q" ] && { log "reuse $q"; return; }
   [ -n "${FULL_IMG:-}${HOST_VENV:-}" ] || setup_prep
   if [ ! -f "$WORK/common/export/model.litertlm" ]; then
@@ -106,7 +109,7 @@ prep() { # export -> calibrate -> quantize, once for all SoCs (Qualcomm and
     [ -f "$WORK/common/calib/.done" ] || { echo "calibration left no .done marker" >&2; exit 1; }   # pipeline.py writes it
   fi
   log "stage 3 quantize (int$WEIGHT_BITS FC weights, int16 activations)"
-  run_prep quantize --quant "$(w common/quantized.litertlm)" --weight_bits "$WEIGHT_BITS"
+  run_prep quantize --quant "$(w "common/$QFILE")" --weight_bits "$WEIGHT_BITS"
 }
 
 # --------------------------------------------------------------- stage 4
@@ -116,11 +119,11 @@ for SOC in "$@"; do
   SOC="$(echo "$SOC" | tr A-Z a-z)"; V="$(vendor_of "$SOC")"
   prep
   PLAT=linux/amd64; IMG="${COMPILE_IMG:-$(image compile "$PLAT")}"; COMPILE_IMG="$IMG"
-  NAME="Gemma3-1B-IT_q4_ekv${CACHE_LEN}_${SOC}.litertlm"
+  NAME="Gemma3-1B-IT_q${WEIGHT_BITS}_ekv${CACHE_LEN}_${SOC}.litertlm"
   log "stage 4 compile $SOC ($V) in $IMG"
   docker run --rm --platform "$PLAT" -v "$WORK":/work -v "$OUT_DIR":/out "$IMG" \
     python -I /opt/thnpu/thnpu/pipeline.py compile --work /work/common --soc "$SOC" \
-      --quant /work/common/quantized.litertlm --out "/out/$NAME" $( [ "${KEEP:-0}" = 1 ] && echo --keep )
+      --quant "/work/common/$QFILE" --out "/out/$NAME" $( [ "${KEEP:-0}" = 1 ] && echo --keep )
   if [ -n "${REF_DIR:-}" ] && [ -f "$REF_DIR/$NAME" ]; then
     docker run --rm --platform "$PLAT" -v "$OUT_DIR":/out -v "$REF_DIR":/ref:ro "$IMG" \
       python -I /opt/thnpu/thnpu/compare.py "/out/$NAME" "/ref/$NAME" --out "/out/$NAME.report.md" >/dev/null
