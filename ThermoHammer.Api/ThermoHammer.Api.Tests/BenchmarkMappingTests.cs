@@ -336,61 +336,36 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
-    public void LlmCountsCpuGpuAndNpuAThirdEach()
+    public void LlmCountsCpuAndGpuHalfEachAndNeverTheNpu()
     {
-        // Same expectations as BenchmarkScoreTest.`LLM version 5 - each engine against its own reference, each a third`.
+        // Same expectations as BenchmarkScoreTest.`LLM version 5 - the CPU and the GPU against their own references, each half, the NPU not scored`.
         var reference = Request(r =>
         {
             (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode);
             (r.LlmPrefillGpu, r.LlmDecodeGpu) = (BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode);
-            (r.LlmPrefillNpu, r.LlmDecodeNpu) = (BenchmarkScoring.RefLlmNpuPrefill, BenchmarkScoring.RefLlmNpuDecode);
         }).ToDao();
-        Assert.Equal((6000, 6000, 6000, 6000), (reference.LlmCpuScore, reference.LlmGpuScore, reference.LlmNpuScore, reference.LlmScore));
+        Assert.Equal((6000, 6000, 6000), (reference.LlmCpuScore, reference.LlmGpuScore, reference.LlmScore));
         Assert.Equal(reference.CpuScore + reference.MemScore + reference.Score + reference.UxScore + reference.AiScore + 6000,
             reference.TotalScore);
-        // a phone with no NPU model and a GPU llama.cpp can't use (the Xiaomi 11T): its CPU's third alone
+        // a GPU llama.cpp can't use (the Xiaomi 11T): its CPU's half alone
         var cpuOnly = Request(r => (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill * 4, BenchmarkScoring.RefLlmCpuDecode)).ToDao();
         Assert.Equal(12000, cpuOnly.LlmCpuScore);              // sqrt(4 × 1) × 6000
-        Assert.Equal(4000, cpuOnly.LlmScore);                  // a third of it
+        Assert.Equal(6000, cpuOnly.LlmScore);                  // half of it
         Assert.Equal(0, Request(r => r.LlmPrefillCpu = 120).ToDao().LlmScore);   // no reply: 0
         Assert.Equal(0, Request().ToDao().LlmScore);
+        // NPU numbers (the payload still carries the fields) never count, and no chip has to send them
+        var withNpu = Request(r =>
+        {
+            (r.LlmPrefillCpu, r.LlmDecodeCpu) = (BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode);
+            (r.LlmPrefillGpu, r.LlmDecodeGpu) = (BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode);
+            (r.LlmPrefillNpu, r.LlmDecodeNpu, r.LlmNpu) = (5450, 52, "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750");
+        }).ToDao();
+        Assert.Equal((0, 6000), (withNpu.LlmNpuScore, withNpu.LlmScore));
+        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = "SM8750")));
+        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.LlmPrefillNpu = 5000)));   // a prompt rate without a reply: no result
         // shown: the best engine's points at each phase
         Assert.Equal((6000, 6000), (reference.LlmPrefillScore, reference.LlmDecodeScore));
         Assert.Equal("QUALCOMM Adreno(TM) 830", Request(r => r.LlmGpu = "  QUALCOMM Adreno(TM) 830 ").ToDao().LlmGpu);
-        Assert.Equal("LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750",
-            Request(r => r.LlmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750").ToDao().LlmNpu);
-    }
-
-    [Fact]
-    public void AChipWithAnNpuModelMustSendItsNpuPart()
-    {
-        // the Honor (SM8750) without the NPU engine's line: Play hadn't delivered the model — incomplete
-        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.SocModel = "SM8750")));
-        // with it (even when it answered wrongly and scores 0) the run is complete
-        Assert.Null(BenchmarkScoring.Problem(Request(r => { r.SocModel = "SM8750"; r.LlmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8750"; })));
-        // a chip Google builds no model for (the Xiaomi 11T's Dimensity 1200), or no chip name at all: nothing to send
-        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = "MT6893")));
-        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = null)));
-        // a prompt rate without a reply rate is no result
-        Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.LlmPrefillNpu = 5000)));
-    }
-
-    [Fact]
-    public void AChipTheSiteAddedMustSendItsNpuPartToo()
-    {
-        // SM8635 isn't in the apps' Play pack; the site's manifest adds it (its file comes from the site)
-        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = "SM8635")));
-        ThermoHammer.Api.Tools.NpuChipCatalog.Set(ThermoHammer.Api.Tools.NpuChipCatalog.Parse(
-            """{"chips": {"SM8635": {"file": "Gemma3-1B-IT_q4_ekv1280_sm8635.litertlm", "sha256": "ab", "size": 1}}}"""));
-        try
-        {
-            Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.SocModel = " sm8635 ")));
-            Assert.Null(BenchmarkScoring.Problem(Request(r => { r.SocModel = "SM8635"; r.LlmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8635"; })));
-            Assert.Contains("sm8635", ThermoHammer.Api.Tools.NpuChipCatalog.All);
-            Assert.Contains("sm8750", ThermoHammer.Api.Tools.NpuChipCatalog.All);
-        }
-        finally { ThermoHammer.Api.Tools.NpuChipCatalog.Set([]); }
-        Assert.ThrowsAny<System.Text.Json.JsonException>(() => ThermoHammer.Api.Tools.NpuChipCatalog.Parse("not json"));
     }
 
     [Fact]
@@ -432,7 +407,6 @@ public class BenchmarkMappingTests
         Near(BenchmarkScoring.AiAccel([1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38], BenchmarkScoring.RefAiNpu), "AI NPU");
         Near(BenchmarkScoring.LlmEngine(160, 55, BenchmarkScoring.RefLlmCpuPrefill, BenchmarkScoring.RefLlmCpuDecode), "LLM CPU");
         Near(BenchmarkScoring.LlmEngine(890, 32, BenchmarkScoring.RefLlmGpuPrefill, BenchmarkScoring.RefLlmGpuDecode), "LLM GPU");
-        Near(BenchmarkScoring.LlmEngine(5450, 52, BenchmarkScoring.RefLlmNpuPrefill, BenchmarkScoring.RefLlmNpuDecode), "LLM NPU");
     }
 
     [Theory]
@@ -502,7 +476,7 @@ public class BenchmarkMappingTests
         Assert.Equal((int)Math.Round((totals[1] + totals[2]) / 2.0, MidpointRounding.AwayFromZero), stats.Total.Median);
         Assert.True(stats.Total.P25 <= stats.Total.Median && stats.Total.Median <= stats.Total.P75);
         Assert.Equal(6, stats.Sections.Count);
-        Assert.Equal(23, stats.Parts.Count);                   // version 5: the LLM as three engines (llm.cpu, llm.gpu, llm.npu)
+        Assert.Equal(22, stats.Parts.Count);                   // version 5: the LLM as two engines (llm.cpu, llm.gpu)
         Assert.Equal(BenchmarkScoring.Points(115, BenchmarkScoring.Test1Weight), stats.Parts["gpu.lake"]);   // median of 4 fps
         Assert.Equal("16", stats.ByOsVersion[0].OsVersion);
         Assert.Equal(3, stats.ByOsVersion[0].Runs);
@@ -601,7 +575,7 @@ public class BenchmarkMappingTests
         Assert.Null(DetailRowOf(d, "ux", "Video export", "4K60 AV1").Number);
         Assert.Null(DetailRowOf(d, "ux", "QR scanning", "ML Kit").Number);
         Assert.Null(DetailRowOf(d, "llm", "CPU", "Prompt").Number);
-        Assert.Null(DetailRowOf(d, "llm", "NPU", "Prompt").Number);
+        Assert.DoesNotContain(d.Sections.Single(x => x.Key == "llm").Groups, g => g.Title == "NPU");   // not scored, not shown
 
         // text-only rows and context have no direction
         Assert.Null(DetailRowOf(d, "mem", "Storage", "Reads").Number);

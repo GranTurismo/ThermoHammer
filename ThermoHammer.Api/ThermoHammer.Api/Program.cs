@@ -10,9 +10,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddScoped<ThermoEncryptor>();
 builder.Services.AddHttpClient<DeviceModelResolver>();
-// the chips with a Gemma NPU model beyond the apps' Play pack: the site's manifest, re-read every 30 minutes
-builder.Services.AddHttpClient();
-builder.Services.AddHostedService<NpuChipCatalogRefresher>();
 // The database login is never stored in the repo or the (public) image.
 // Production: the deploy workflow writes the ConnectionStrings__DefaultConnection environment
 // variable from the DB_APP_PASSWORD GitHub secret. Local development: dotnet user-secrets.

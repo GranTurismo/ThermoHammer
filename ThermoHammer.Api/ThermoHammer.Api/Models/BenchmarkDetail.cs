@@ -174,8 +174,8 @@ public static class BenchmarkDetail
     }
 
     /// <summary>
-    /// Version 5: one group per engine (rule B, each a third) — Gemma 3 1B through llama.cpp on the CPU and the GPU, and
-    /// through LiteRT-LM on the NPU. Older runs show their prompt and reply groups as they were scored.
+    /// Version 5: one group per engine (each half) — Gemma 3 1B through llama.cpp on the CPU and the GPU. Older runs show
+    /// their prompt and reply groups as they were scored.
     /// </summary>
     private static DetailSection Llm(BenchmarkRun r)
     {
@@ -192,8 +192,6 @@ public static class BenchmarkDetail
                     run,
                 }
             };
-        var npu = Group("NPU", r.LlmNpuScore, Row("Prompt", Tok(r.LlmPrefillNpu), Pos(r.LlmPrefillNpu)), Row("Reply", Tok(r.LlmDecodeNpu), Pos(r.LlmDecodeNpu)));
-        npu.Rows.Insert(0, Row("Engine", string.IsNullOrEmpty(r.LlmNpu) ? "no NPU model for this chip" : r.LlmNpu));
         return new DetailSection
         {
             Key = "llm", Title = "LLM", Score = r.LlmScore,
@@ -201,7 +199,6 @@ public static class BenchmarkDetail
             {
                 Group("CPU", r.LlmCpuScore, Row("Prompt", Tok(r.LlmPrefillCpu), Pos(r.LlmPrefillCpu)), Row("Reply", Tok(r.LlmDecodeCpu), Pos(r.LlmDecodeCpu))),
                 Group("GPU", r.LlmGpuScore, Row("Prompt", Tok(r.LlmPrefillGpu), Pos(r.LlmPrefillGpu)), Row("Reply", Tok(r.LlmDecodeGpu), Pos(r.LlmDecodeGpu))),
-                npu,
                 run,
             }
         };

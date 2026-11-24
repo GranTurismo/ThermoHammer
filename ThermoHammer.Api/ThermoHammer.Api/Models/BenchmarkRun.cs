@@ -136,16 +136,16 @@ public class BenchmarkRun
     public double LlmDecodeGpu { get; set; }
     public string? LlmGpu { get; set; }      // the GPU it ran on (reported)
     public double LlmFreeGb { get; set; }    // memory the app could take when the test began (reported)
-    // version 5: the NPU — Gemma 3 1B through LiteRT-LM (Android) — tokens/s (0 = none, failed or a wrong answer), and
-    // the engine and model file it ran
+    // version 5 drafts: the NPU through LiteRT-LM. Kept in the payload and the signed text, always 0 / empty from the
+    // apps, never scored: no NPU path reaches every chip yet (BENCHMARK_V5_PLAN.md)
     public double LlmPrefillNpu { get; set; }
     public double LlmDecodeNpu { get; set; }
     public string? LlmNpu { get; set; }
     public int LlmPrefillScore { get; set; } // the best engine's points at each phase (shown; version 4: what was scored)
     public int LlmDecodeScore { get; set; }
-    public int LlmCpuScore { get; set; }     // version 5: each engine's points, a third of the section each
+    public int LlmCpuScore { get; set; }     // version 5: each engine's points, half of the section each
     public int LlmGpuScore { get; set; }
-    public int LlmNpuScore { get; set; }
+    public int LlmNpuScore { get; set; }     // never scored: always 0
     public int LlmScore { get; set; }
     public int TotalScore { get; set; }
     public int ValidityFlags { get; set; }   // ValidityFlag bits from the app; 0 = clean run
@@ -348,17 +348,10 @@ public static class BenchmarkScoring
     public const double RefSeqRead = 1780, RefSeqWrite = 1309, RefRandomRead = 24700, RefRandomWrite = 13380; // MB/s, IOPS
     public const double RefDbInsert = 15700, RefDbUpdate = 389000, RefDbQuery = 43800;                 // per second, warmed up
 
-    // LLM references (version 5, rule B): Gemma 3 1B tokens/s worth 6000 points on each engine — llama.cpp on the CPU
-    // and the GPU, LiteRT-LM on the NPU — prompt (prefill) and reply (decode)
+    // LLM references (version 5): Gemma 3 1B tokens/s worth 6000 points on each engine — llama.cpp on the CPU and the
+    // GPU — prompt (prefill) and reply (decode). The NPU isn't scored: no NPU path reaches every chip yet
     public const double RefLlmCpuPrefill = 160, RefLlmCpuDecode = 55;
     public const double RefLlmGpuPrefill = 890, RefLlmGpuDecode = 32;
-    public const double RefLlmNpuPrefill = 5450, RefLlmNpuDecode = 52;
-
-    /// <summary>
-    /// The Android chips Google builds Gemma 3 1B for at 4 bits (Build.SOC_MODEL, lower case) — the app's NpuModels.CHIPS.
-    /// Play delivers their model with the app, so a run from one of them without an NPU engine line is incomplete.
-    /// </summary>
-    public static readonly HashSet<string> NpuLlmChips = ["sm8550", "sm8650", "sm8750", "sm8850", "mt6989", "mt6991", "mt6993"];
 
     /// <summary>
     /// A clean run: none of the app's validity flags — no charger, no battery saver, started cool, nothing else
@@ -480,9 +473,9 @@ public static class BenchmarkScoring
         !(prefill > 0) || !(decode > 0) ? 0
             : (int)Math.Round(6000 * Math.Sqrt(prefill / refPrefill * (decode / refDecode)), MidpointRounding.AwayFromZero);
 
-    /// <summary>Version 5's rule B: the CPU, the GPU and the NPU each a third; an engine that can't run the task counts 0 — LlmScore.overall.</summary>
-    public static int Llm(int cpu, int gpu, int npu) =>
-        (int)Math.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0) + Math.Max(npu, 0)) / 3.0, MidpointRounding.AwayFromZero);
+    /// <summary>Version 5: the CPU and the GPU each half; an engine that can't run the task counts 0 — LlmScore.overall.</summary>
+    public static int Llm(int cpu, int gpu) =>
+        (int)Math.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0, MidpointRounding.AwayFromZero);
 
     /// <summary>The string the app HMACs with the session key (BenchmarkPayload.canonical()).</summary>
     public static string Canonical(BenchmarkRequest r) => string.Join("|",
@@ -584,11 +577,6 @@ public static class BenchmarkScoring
         if (!(r.LlmFreeGb is >= 0 and < 1024)) return "Implausible free memory";
         if (!(r.LlmPrefillNpu is >= 0 and < 1e5) || !(r.LlmDecodeNpu is >= 0 and < 1e4)) return "Implausible LLM result";
         if (r.LlmPrefillNpu > 0 != r.LlmDecodeNpu > 0) return "Implausible LLM result";
-        // a phone whose chip has a Gemma NPU model gets it from Play: without the NPU engine's line the run is incomplete
-        // (the app flags it too) — scored, it would look like a phone without an NPU
-        if (r.Os == OsPlatform.Android && ThermoHammer.Api.Tools.NpuChipCatalog.Contains(r.SocModel)
-            && string.IsNullOrWhiteSpace(r.LlmNpu))
-            return "This run is missing the LLM test's NPU part. Let Google Play finish downloading ThermoHammer's NPU model, then run the benchmark again.";
         return r.ValidityFlags < 0 ? "Invalid flags" : null;
     }
 
@@ -616,13 +604,12 @@ public static class BenchmarkScoring
         int mem = Mem(ramScore, storageScore, dbScore);
         int llmCpu = LlmEngine(r.LlmPrefillCpu, r.LlmDecodeCpu, RefLlmCpuPrefill, RefLlmCpuDecode);
         int llmGpu = LlmEngine(r.LlmPrefillGpu, r.LlmDecodeGpu, RefLlmGpuPrefill, RefLlmGpuDecode);
-        int llmNpu = LlmEngine(r.LlmPrefillNpu, r.LlmDecodeNpu, RefLlmNpuPrefill, RefLlmNpuDecode);
-        int llm = Llm(llmCpu, llmGpu, llmNpu);
+        int llm = Llm(llmCpu, llmGpu);
         // shown: the best engine's points at each phase, against that engine's reference (LlmResult.prefillPoints)
-        int llmPrefill = Math.Max(Math.Max(llmCpu > 0 ? LlmPoints(r.LlmPrefillCpu, RefLlmCpuPrefill) : 0,
-            llmGpu > 0 ? LlmPoints(r.LlmPrefillGpu, RefLlmGpuPrefill) : 0), llmNpu > 0 ? LlmPoints(r.LlmPrefillNpu, RefLlmNpuPrefill) : 0);
-        int llmDecode = Math.Max(Math.Max(llmCpu > 0 ? LlmPoints(r.LlmDecodeCpu, RefLlmCpuDecode) : 0,
-            llmGpu > 0 ? LlmPoints(r.LlmDecodeGpu, RefLlmGpuDecode) : 0), llmNpu > 0 ? LlmPoints(r.LlmDecodeNpu, RefLlmNpuDecode) : 0);
+        int llmPrefill = Math.Max(llmCpu > 0 ? LlmPoints(r.LlmPrefillCpu, RefLlmCpuPrefill) : 0,
+            llmGpu > 0 ? LlmPoints(r.LlmPrefillGpu, RefLlmGpuPrefill) : 0);
+        int llmDecode = Math.Max(llmCpu > 0 ? LlmPoints(r.LlmDecodeCpu, RefLlmCpuDecode) : 0,
+            llmGpu > 0 ? LlmPoints(r.LlmDecodeGpu, RefLlmGpuDecode) : 0);
         return new BenchmarkRun
         {
             SessionId = r.SessionId,
@@ -741,7 +728,7 @@ public static class BenchmarkScoring
             LlmDecodeScore = llmDecode,
             LlmCpuScore = llmCpu,
             LlmGpuScore = llmGpu,
-            LlmNpuScore = llmNpu,
+            LlmNpuScore = 0,
             LlmScore = llm,
             TotalScore = cpu + mem + gpu + ux + ai + llm,
             ValidityFlags = r.ValidityFlags
@@ -776,7 +763,6 @@ public static class BenchmarkScoring
         ["ai.npu"] = r.AiNpuScore,
         ["llm.cpu"] = r.LlmCpuScore,
         ["llm.gpu"] = r.LlmGpuScore,
-        ["llm.npu"] = r.LlmNpuScore,
     };
 
     /// <summary>Linear-interpolated quantile of sorted values.</summary>
