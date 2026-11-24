@@ -1,1 +1,0 @@
-litert-torch==0.10.0 --hash=sha256:431d49a2d003d4f6b8617402a84da7ecc193b1fc376a94cb415c08eed5e0540c

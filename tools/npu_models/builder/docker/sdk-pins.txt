@@ -1,2 +1,0 @@
-ai-edge-litert-sdk-qualcomm==2.4.0 --hash=sha256:dd724fbdd6028209e58efc262dd59f941fa82571cd56df72fef2be58bb757122
-ai-edge-litert-sdk-mediatek==2.4.0 --hash=sha256:9bec01ac8fee6c46d4cbad210b7264dc643a25977008fda7a6122f588c85e9e0

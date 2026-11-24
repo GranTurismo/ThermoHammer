@@ -1,6 +1,6 @@
 # Benchmark v5: a fair test for non-Snapdragon phones
 
-Status: **planned, nothing built yet.** Decided with the owner on 2026-11-22.
+Status: **built on `feature/v5-gpu-tile`, not released.** Planned with the owner on 2026-11-22. Since 2026-11-24 version 5 has no NPU and no LLM test (see the last decisions); the earlier sections are kept as history.
 
 ## Why
 
@@ -355,6 +355,17 @@ Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdrago
   - the daily job, disabled in GitHub Actions.
 - **Known skew that remains:** the LLM GPU half. llama.cpp's fast OpenCL path runs only on Adreno; other GPUs get Vulkan, far slower for a software reason. Next candidate: a vendor-neutral GPU engine (e.g. LiteRT-LM's GPU backend).
 
+## Decision 2026-11-24 (late): no LLM test in version 5
+
+The user: "let's remove llm test entirely". This replaces every LLM decision above.
+- **Five sections:** CPU, MEM, GPU, UX and AI. Total = CPU + MEM + GPU + UX + AI, on Android, iPhone/Mac, Windows, the server and the site. Every device's total is about 6,000 lower than with the LLM; the board starts over with version 5 anyway.
+- **Why:** the GPU half still favoured Adreno (llama.cpp's OpenCL path), and no engine reaches every GPU and NPU the same way. By the fairness rule, a test that can't measure every device the same way stays out.
+- **The LLM never runs, in any build:** no llama.cpp, no NPU LLM, no model download, no report-only probe, no test-build picker entry.
+  - The apps drop the engine: Android's libbenchllm (and the Vulkan probe that hit the Adreno driver bug), iOS's llama.cpp/Metal and ANEMLL, Windows' benchllm.dll.
+  - `BenchCore/llm`, `bench_llm.h`, the LLM tests and the vendored llama.cpp are deleted, and so are `tools/npu_models` and the `npu-models` workflow. Git history keeps them.
+- **The data keeps its shape:** the payload and the signed text keep every LLM field (always 0 or empty). The server never scores them and keeps `llmScore` / `sections.llm` at 0 in its answers, so installed version 4 apps still read the board.
+- **Phone Health:** no `llm.*` parts.
+
 ## Android NPU files for every chip (2026-11-24, superseded the same evening: the NPU isn't scored)
 
 The user rejected every rule that lets a newer chip lose points while its Gemma file is missing: the AI-NPU proxy, the best engine, dropping the NPU, holding new chips back, and "pending" runs. We now build the files ourselves.
@@ -380,41 +391,23 @@ The user rejected every rule that lets a newer chip lose points while its Gemma 
 
 ## Release runbook (version 5)
 
-Steps 1–4 can happen in any order; step 5 is the switch.
+Version 5 has five sections (no NPU, no LLM), so the release needs **no model files and no database change**. Steps 1–3 can happen in any order; step 4 is the switch.
 
-**Done on 2026-11-24, with the user's OK:**
-- **Site config on the server:** only the `/models` route and folder (Caddyfile and docker-compose.yaml; backups `*.bak-20261124` in `~/docker/thweb`). The version 5 page text is **not** deployed; that's step 5.4.
-- **Uploaded:** `models/gemma3-1b-it-lut4-ctx1280-v1.aar` (iPhone/Mac, SHA-256 checked) and `models/android/…_sm8845.litertlm` with `manifest.json`.
-- **Pushed to main:** `9572609`, `e8894a8` and `098e0f2`, all `[skip ci]`, only `tools/npu_models` and `npu-models.yml`, so thapi wasn't redeployed.
-  - The first CI run failed: a permission bug on the calibration marker.
-  - Run 45417736085 built the MediaTek v8 chips and published mt6897 and mt8189.
-  - Every other chip is explained in `tools/npu_models/README.md` "Coverage": 11 can't run the model on their NPU (hardware), and 3 hit a compiler gap.
-  - Issue #1 lists the chips phones use that have no file (mt6886, mt6899, s5e9945). Issue #2 is closed.
-- The Honor compare run is done (see "Android NPU files for every chip"). Decision: Google's files stay in the pack, ours for every other chip.
+**Already on the server and main (2026-11-24, with the user's OK; no longer needed):**
+- **Site config:** the `/models` route and folder (backups `*.bak-20261124` in `~/docker/thweb`), with the iPhone `.aar` and the Android `.litertlm` files and `manifest.json`. The repo no longer has the route, so the next site deploy (step 4.3) drops it; the files in `~/docker/thweb/models` stay until the user decides to delete them.
+- **Main:** `tools/npu_models` and `.github/workflows/npu-models.yml` (`9572609`, `e8894a8`, `098e0f2`, `[skip ci]`). The workflow is disabled in GitHub, and merging this branch deletes both from main. Issue #1 (chips without a file) can be closed.
 
-1. **Android NPU files:** not needed any more (the NPU isn't scored). The notes below are kept for a later version.
-   - On the Honor's test build, push our 8 Elite file to `…/files/npu-llm/compare/` and run LLM only with the picker. The report then has Google's line and `LLM NPU COMPARE` for ours, measured on the same phone.
-   - The X300 Pro can do the same with our `mt6993`. The 11T needs our `mt6893` file, which the CI job builds; then put it in `npu-llm/` (its chip has no Google file).
-   - Decide: Google's files in the pack, or ours everywhere (see "Android NPU files for every chip").
-   - Publish every file that passed the gate to the site, **before** the apps go live: `tools/npu_models/publish.sh <files>` (needs the site deployed with the `/models` route, step 3).
-2. **Android:**
-   - Run `THERMOHAMMER_VK_GLSLC=/opt/homebrew/bin/glslc ./gradlew :app:bundleRelease`. There's no model pack any more.
+1. **Android:**
+   - Run `./gradlew :app:bundleRelease` (no glslc override needed any more).
    - Upload to **internal testing** first and install from Play on the Honor.
-   - Then production with **managed publishing** (held until step 5).
-3. **iPhone/Mac:**
-   - Put the model on the server: `ThermoHammerWeb/deploy/upload_model.sh ~/Downloads/gemma3-1b-it-lut4-ctx1280-v1.aar` (997 MB, SHA-256 `af5e93c1…`).
-   - Run `deploy/deploy.sh`; thweb gets the `models` volume and route.
-   - Check `curl -I https://thermohammer.gtgroup.dev/models/gemma3-1b-it-lut4-ctx1280-v1.aar` → 200.
-   - The model is no longer needed by Store builds (the Neural Engine isn't scored). It stays on the site for `-llmNpuReport`.
-   - Archive and upload iOS and macOS 2.2.0 (46). Submit both with **manual release**.
-4. **Windows:**
-   - Packages: **rebuild** with `msix/build.sh --store`. The ones in Downloads predate the CPU + GPU rule. Check the exports against the app's imports again.
-   - Run one VM test (Gemma shape on Vulkan, database warm-up).
+   - Then production with **managed publishing** (held until step 4).
+2. **iPhone/Mac:** archive and upload iOS and macOS 2.2.0 (46). Submit both with **manual release**.
+3. **Windows:**
+   - Packages: `~/Downloads/ThermoHammer_2.2.0.0_{x64,arm64}.msix`, rebuilt 2026-11-24 after the LLM removal (no `benchllm.dll`). Rebuild with `msix/build.sh --store x64 arm64` after any later change.
+   - Run one VM test (a full run, the database warm-up).
    - Partner Center submission with **manual publish**.
-5. **The switch, once all three stores have approved:**
-   1. Apply `ThermoHammer.Api/tools/migrate_v5_AddBenchmarkLlmNpu.sql` (adds 6 columns, idempotent; the version 4 server ignores them, so this can go first).
-   0. Earlier, with the user's OK: push just `.github/workflows/npu-models.yml` and `tools/npu_models/` to main, then run the workflow by hand. That builds the MediaTek v8 files (about 1.5 h) before the apps go live. It publishes to the site, so the site must have the `/models` route first.
-   2. Merge `feature/v5-gpu-tile` into main and push. GitHub Actions deploys thapi with CurrentVersion 5, and version 4 apps get "update the app". This also turns on the daily NPU model job. Its first run builds only what step 1 didn't publish. Optionally add the secret `HF_TOKEN` so the weights come from Google's repo rather than the mirror.
-   3. Release all three store versions.
-   4. Run `ThermoHammerWeb/deploy/deploy.sh`: the website's version 5 pages and the empty-board state.
-   5. Check: a version 5 submission from the Honor, the board, a run page, the "update" message from an old build.
+4. **The switch, once all three stores have approved:**
+   1. Merge `feature/v5-gpu-tile` into main and push. GitHub Actions deploys thapi with CurrentVersion 5, and version 4 apps get "update the app".
+   2. Release all three store versions.
+   3. Run `ThermoHammerWeb/deploy/deploy.sh`: the website's version 5 pages (five sections) and the empty-board state.
+   4. Check: a version 5 submission from the Honor, the board, a run page, the "update" message from an old build.
