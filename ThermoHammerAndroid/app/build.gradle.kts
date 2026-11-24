@@ -142,7 +142,7 @@ kotlin {
 // The LLM test's NPU engine (engine/llm/NpuLlmProbe.kt): LiteRT-LM 0.19 loads NPU dispatch libraries
 // with the versioned dispatch ABI (LiteRtDispatchQueryInterface), which LiteRT 2.4's have and the scored AI test's 2.3
 // ones don't. So 2.4's go in as assets (litertlm-npu/), copied out beside the app's QNN runtime at run time; the scored
-// AI test keeps 2.3's in jniLibs. Release builds get none of this.
+// AI test keeps 2.3's in jniLibs. Every build carries them (the LLM test's NPU third, version 5).
 val litertLmNpu: Configuration by configurations.creating { isTransitive = false }
 
 abstract class LiteRtLmNpuAssets : DefaultTask() {
@@ -156,8 +156,8 @@ abstract class LiteRtLmNpuAssets : DefaultTask() {
         val trees = aars.files.map { archives.zipTree(it) }
         files.sync {
             for (tree in trees) from(tree) {
-                // the dispatch library runs a model compiled for the chip; the compiler plugin compiles one on the device
-                include("jni/arm64-v8a/libLiteRtDispatch_*.so", "jni/arm64-v8a/libLiteRtCompilerPlugin_*.so")
+                // the dispatch library runs a model compiled for the chip ahead of time (no on-device compiler plugin)
+                include("jni/arm64-v8a/libLiteRtDispatch_*.so")
                 eachFile { path = "litertlm-npu/$name" }
             }
             into(outputDir)

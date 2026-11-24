@@ -1715,13 +1715,14 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                      else "GLES 3.x unavailable — GPU 3D mode will not run"
         )
 
-        // The LLM test's NPU model (version 5), on the chips Google builds one for: Play downloads it after the install.
+        // The LLM test's NPU model (version 5), on the chips that have one: Play downloads it after the install (the
+        // pack's chips), or the app from the site (NpuServerModels: chips added since this release).
         // Never blocking — a run without it is incomplete (can't be submitted), and the checklist says so before it starts.
         if (benchmark && com.example.thermohammer.engine.llm.NpuModels.supported(appContext)) {
             val models = com.example.thermohammer.engine.llm.NpuModels
             // ask Play once per app session to fetch it, if it isn't coming already; afterwards just read its progress
             val status = models.status(appContext, fetch = !npuFetchAsked).also { npuFetchAsked = true }
-            val size = "~%,d MB".format(models.sizeMb())
+            val size = "~%,d MB".format(models.sizeMb(appContext))
             val chip = models.soc().uppercase()
             gates += GateResult(
                 "npumodel", "LLM NPU MODEL", blocking = false,
@@ -1895,17 +1896,19 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val run = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext) { label, fraction ->
             _state.update { it.copy(llmProgress = fraction, llmDetail = label) }
         }
-        // test builds, report only: the same task with Google's generic file (one for every chip), compiled for this NPU
-        // on the phone — would it be as fast as the chip's own build? The first compile can take minutes; it's cached after
-        val generic = com.example.thermohammer.engine.llm.NpuModels.genericTestFile(appContext) ?: return run
-        if (!_state.value.isRunning) return run
-        val g = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext, generic, stepTimeoutMs = 20 * 60_000L) { label, fraction ->
-            _state.update { it.copy(llmProgress = fraction, llmDetail = "GENERIC · $label") }
+        // test builds, report only: other builds of this chip's model (NpuModels.compareTestFiles), the same task each
+        var out = run
+        for (file in com.example.thermohammer.engine.llm.NpuModels.compareTestFiles(appContext)) {
+            if (!_state.value.isRunning) break
+            val c = com.example.thermohammer.engine.llm.NpuLlmProbe.runIsolated(appContext, file) { label, fraction ->
+                _state.update { it.copy(llmProgress = fraction, llmDetail = "COMPARE · $label") }
+            }
+            val verdict = if (c.error == null && c.right) "prompt %.2f tok/s · reply %.2f tok/s · answer right".format(c.prefill, c.decode)
+                else "no result: ${c.error ?: "wrong answer"}"
+            out = out.copy(lines = out.lines + "LLM NPU COMPARE (report only) · ${file.name} (${file.length() / 1_000_000} MB) · $verdict" +
+                c.lines.map { "  compare · $it" })
         }
-        val verdict = if (g.error == null && g.right) "prompt %.2f tok/s · reply %.2f tok/s · answer right".format(g.prefill, g.decode)
-            else "no result: ${g.error ?: "wrong answer"}"
-        return run.copy(lines = run.lines + "LLM NPU GENERIC (report only) · ${generic.name} compiled on the phone · $verdict" +
-            g.lines.map { "  generic · $it" })
+        return out
     }
 
     private fun gpuFpsDelta(dtNs: Long, runner: GpuRunner = gpuBench): Double {

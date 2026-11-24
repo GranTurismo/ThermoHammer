@@ -15,8 +15,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * The LLM test's NPU model (version 5): Google's Gemma 3 1B build for the phone's chip, delivered by Play as the
  * fast-follow AI pack `gemma_npu` (ai/gemma_npu/build.gradle.kts) — Play downloads it right after the install, and a
- * phone gets only its own chip's file. Chips Google builds no such file for run the LLM test on the CPU and the GPU,
- * and its NPU third counts 0.
+ * phone gets only its own chip's file. Other chips get the same model built by ThermoHammer with the chip makers'
+ * compilers (tools/npu_models), downloaded from the site (NpuServerModels). A chip no compiler targets runs the LLM
+ * test on the CPU and the GPU, and its NPU third counts 0.
  *
  * A supported chip without its file (the download hasn't finished, or a copy that didn't come from Play) can't give the
  * NPU third: that run is incomplete (ValidityFlag.NPU_MODEL_MISSING) and can't be submitted — it would be scored as if
@@ -40,18 +41,19 @@ object NpuModels {
         soc.isNotBlank() && (inPack(soc) || NpuServerModels.entry(context, soc) != null)
     fun fileName(soc: String): String = "Gemma3-1B-IT_q4_ekv1280_$soc.litertlm"
 
-    /** Rough download size for the checklist: Snapdragon files are ~690 MB, Dimensity ~1,030 MB. */
-    fun sizeMb(soc: String = soc()): Int = if (soc.startsWith("mt")) 1030 else 690
+    /** Download size for the checklist: a site file's own, else Google's (Snapdragon ~690 MB, Dimensity ~1,030 MB). */
+    fun sizeMb(context: Context, soc: String = soc()): Int =
+        NpuServerModels.entry(context, soc)?.takeIf { !inPack(soc) }?.let { (it.size / 1_000_000).toInt() }
+            ?: if (soc.startsWith("mt")) 1030 else 690
 
     /**
-     * Google's generic Gemma 3 1B build (4-bit, the same file for every phone): test builds run it on the NPU too, compiled
-     * on the device by the chip maker's LiteRT plugin, beside the chip's own file — would one file for every chip be as
-     * fast as Google's per-chip builds? (report only)
+     * Test builds, report only: other builds of the same model for this chip, in [testDir]/compare/ (adb push) — e.g. our
+     * own tools/npu_models build next to Google's — each run after the scored one, with the same task and answer check.
      */
-    const val GENERIC = "gemma3-1b-it-int4.litertlm"
-
-    fun genericTestFile(context: Context): File? =
-        if (com.example.thermohammer.TestBuild.PROBES) File(testDir(context), GENERIC).takeIf { it.isFile } else null
+    fun compareTestFiles(context: Context): List<File> =
+        if (com.example.thermohammer.TestBuild.PROBES)
+            File(testDir(context), "compare").listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".litertlm") }.sortedBy { it.name }
+        else emptyList()
 
     /** Test builds' own folder (NpuModelImportActivity, adb): a sideloaded copy gets no AI pack. */
     fun testDir(context: Context): File =
@@ -84,7 +86,7 @@ object NpuModels {
     @Volatile private var confirmAsked = false
 
     sealed interface Status {
-        /** Google builds no Gemma NPU file for this chip: nothing to wait for, the NPU third counts 0. */
+        /** No Gemma NPU file exists for this chip (Play's pack nor the site): nothing to wait for, the NPU third counts 0. */
         data object NotNeeded : Status
         data class Ready(val file: File) : Status
         data class Downloading(val percent: Int) : Status

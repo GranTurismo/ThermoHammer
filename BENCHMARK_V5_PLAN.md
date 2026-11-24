@@ -326,18 +326,36 @@ Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdrago
   - Delivered from **the user's server** (user's choice over Apple-hosted asset packs): `thermohammer.gtgroup.dev/models/gemma3-1b-it-lut4-ctx1280-v1.aar`. It downloads once over Wi-Fi with a SHA-256 check, then compiles for the Neural Engine in the background.
   - A14/M1 can't load a 1,280-context chunked model (ANEMLL's limit), so those devices count NPU 0.
 - **Windows:** no NPU LLM engine; that third counts 0.
-- **New chips:** a chip without a Google file counts NPU 0 until we add its file (an app update for the pack plus the server's `NpuLlmChips`).
+- **New chips:** superseded on 2026-11-24, see below.
+
+## Android NPU files for every chip (2026-11-24)
+
+The user rejected every rule that lets a newer chip lose points while its Gemma file is missing: the AI-NPU proxy, the best engine, dropping the NPU, holding new chips back, and "pending" runs. We now build the files ourselves.
+
+- **One generic file compiled on the phone:** doesn't work. On the Honor (8 Elite), the on-device compile of Google's `gemma3-1b-it-int4.litertlm` ran QNN's HTP prepare out of memory (scudo mmap in libQnnHtpPrepare), and the `:npullm` process died. The compiler plugin is no longer in the APK, and the test-build generic run is gone.
+- **Built with Google's own open-source flow:** litert-torch 0.10.0 NPU export, then calibration and int16/int4 quantization, then the vendor compilers through LiteRT 2.4's plugins. Everything is in `tools/npu_models/` (its README explains it).
+  - Source: the QAT int4 checkpoint, which is what Google's files come from. Plain weights at 4 bits answer wrongly.
+  - Compared with Google's file for the 8 Elite: same layout, signatures, KV cache and int4 weights; size within 0.03 %. It's compiled with QNN 2.52 (the app's runtime) instead of 2.34.
+  - Speed on a phone hasn't been measured yet (the Honor compare run below).
+- **Coverage:** every phone chip LiteRT 2.4's Qualcomm and MediaTek plugins target, if the whole model fits on its NPU.
+  - **Built and passed so far:** sm8550, sm8650, sm8750, sm8845 (new; on the board), sm8850 and mt6993.
+  - **MediaTek v8 chips (mt6853 … mt6991):** their compiler runs out of memory in this Mac's 8 GB Docker VM, so the CI runner builds them. On today's board that's MT6893 (the 11T), MT6878 and MT6886.
+  - **sm8350, sm8450, sm8475 (Hexagon v68/v69):** attention can't go on the NPU, so the gate rejects them and they count 0 (the hardware's limit).
+  - Still uncovered: MT6899 (Dimensity 8400, Xiaomi 17T), where the plugin answers "Unsupported SoC model", and s5e9945 (Exynos 2400, S25 FE), which has no LiteRT compiler. Those stay NPU 0 until a compiler exists. The daily job opens an issue for them.
+- **Automatic:** `.github/workflows/npu-models.yml` runs daily (active once on main). It builds what's missing, checks the CPU answers, and runs the publish gate (`verify.py`: whole model on the NPU, Google's settings). Then it publishes to the site's `models/android/` using the deploy secrets that already exist, over a pinned host key.
+  - Phones download their file (`NpuServerModels`).
+  - The server requires that chip's NPU part within 30 minutes (`NpuChipCatalog`).
+- **Open, for the user after the Honor compare run:** keep Google's files for the seven pack chips, or ship our build for every chip (one toolchain for all; the NPU reference would then be re-measured with our sm8750 file).
 
 ## Release runbook (version 5)
 
 Nothing below has run. Steps 1–4 can happen in any order; step 5 is the switch.
 
-1. **Android NPU model decision (morning test):**
-   - On the Honor's test build, use the checklist picker to run LLM only. The report has two NPU lines:
-     - the chip's own file (Google, per chip);
-     - `LLM NPU GENERIC`: one file for every chip, compiled on the phone.
-   - If the generic file is about as fast, ship it: one pack for every chip, so new chips work on day one. Otherwise ship the per-chip pack.
-   - The 11T can try the generic file on MediaTek: import it with "NPU model for ThermoHammer Bench".
+1. **Android NPU files (our builds):**
+   - On the Honor's test build, push our 8 Elite file to `…/files/npu-llm/compare/` and run LLM only with the picker. The report then has Google's line and `LLM NPU COMPARE` for ours, measured on the same phone.
+   - The X300 Pro can do the same with our `mt6993`. The 11T needs our `mt6893` file, which the CI job builds; then put it in `npu-llm/` (its chip has no Google file).
+   - Decide: Google's files in the pack, or ours everywhere (see "Android NPU files for every chip").
+   - Publish every file that passed the gate to the site, **before** the apps go live: `tools/npu_models/publish.sh <files>` (needs the site deployed with the `/models` route, step 3).
 2. **Android:**
    - Put the chosen model file(s) in `gemma.npu.dir`.
    - Run `./gradlew :ai:gemma_npu:linkGemmaModels`, then `THERMOHAMMER_VK_GLSLC=/opt/homebrew/bin/glslc ./gradlew :app:bundleRelease`. It refuses to build while a chip's file is missing.
@@ -355,7 +373,8 @@ Nothing below has run. Steps 1–4 can happen in any order; step 5 is the switch
    - Partner Center submission with **manual publish**.
 5. **The switch, once all three stores have approved:**
    1. Apply `ThermoHammer.Api/tools/migrate_v5_AddBenchmarkLlmNpu.sql` (adds 6 columns, idempotent; the version 4 server ignores them, so this can go first).
-   2. Merge `feature/v5-gpu-tile` into main and push. GitHub Actions deploys thapi with CurrentVersion 5, and version 4 apps get "update the app".
+   0. Earlier, with the user's OK: push just `.github/workflows/npu-models.yml` and `tools/npu_models/` to main, then run the workflow by hand. That builds the MediaTek v8 files (about 1.5 h) before the apps go live. It publishes to the site, so the site must have the `/models` route first.
+   2. Merge `feature/v5-gpu-tile` into main and push. GitHub Actions deploys thapi with CurrentVersion 5, and version 4 apps get "update the app". This also turns on the daily NPU model job. Its first run builds only what step 1 didn't publish. Optionally add the secret `HF_TOKEN` so the weights come from Google's repo rather than the mirror.
    3. Release all three store versions.
    4. Run `ThermoHammerWeb/deploy/deploy.sh`: the website's version 5 pages and the empty-board state.
    5. Check: a version 5 submission from the Honor, the board, a run page, the "update" message from an old build.

@@ -61,8 +61,8 @@ object NpuLlmProbe {
      * crashed or hung on which step.
      */
     /**
-     * `model`: a file to run instead of the chip's own (test builds: Google's generic build, compiled on the device);
-     * `stepTimeoutMs`: how long one step may go without news (an on-device compile of a whole LLM can take minutes).
+     * `model`: a file to run instead of the chip's own (test builds: another build of it, NpuModels.compareTestFiles);
+     * `stepTimeoutMs`: how long one step may go without news.
      */
     suspend fun runIsolated(context: Context, model: File? = null, stepTimeoutMs: Long = STEP_TIMEOUT_MS,
                             onStep: (String, Float) -> Unit): LlmNpuRun = withContext(Dispatchers.Main.immediate) {
@@ -75,9 +75,10 @@ object NpuLlmProbe {
         if (model == null) {
             val supported = NpuModels.supported(context, soc)
             val why = if (supported)
-                "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone — Google Play " +
-                    "downloads it after the install; this run can't be submitted"
-            else "not run: Google builds no Gemma 3 1B NPU model for this chip (${soc.ifBlank { "unknown" }}) — counts 0"
+                "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone yet — " +
+                    (if (NpuModels.inPack(soc)) "Google Play downloads it after the install" else "the app downloads it over Wi-Fi") +
+                    "; this run can't be submitted"
+            else "not run: no Gemma 3 1B NPU model exists for this chip (${soc.ifBlank { "unknown" }}): no NPU compiler targets it yet — counts 0"
             return@withContext LlmNpuRun(0.0, 0.0, false, error = why.removePrefix("not run: "), lines = listOf("$HEAD · $why"),
                 missingModel = supported)
         }
@@ -145,12 +146,8 @@ object NpuLlmProbe {
         val dir = File(context.codeCacheDir, "litertlm-npu").apply { deleteRecursively(); mkdirs() }
         val name = "libLiteRtDispatch_$vendor.so"
         context.assets.open("litertlm-npu/$name").use { input -> File(dir, name).outputStream().use { input.copyTo(it) } }
-        // the vendor's on-device compiler: a model not built for this chip ahead of time is compiled here (JIT), once,
-        // and LiteRT-LM caches the result in its cache folder
-        val plugin = "libLiteRtCompilerPlugin_$vendor.so"
-        val hasPlugin = runCatching {
-            context.assets.open("litertlm-npu/$plugin").use { input -> File(dir, plugin).outputStream().use { input.copyTo(it) } }
-        }.isSuccess
+        // no compiler plugin: every model file is compiled for its chip ahead of time (Google's, or tools/npu_models).
+        // Compiling a whole LLM on the phone ran Qualcomm's HTP prepare out of memory on an 8 Elite (2026-11-24).
         var linked = 0
         for (lib in File(context.applicationInfo.nativeLibraryDir).listFiles().orEmpty()) {
             if (lib.name.startsWith("libQnn") || lib.name.startsWith("libneuron")) {
@@ -158,7 +155,7 @@ object NpuLlmProbe {
                 linked++
             }
         }
-        return dir to "LiteRT 2.4 dispatch library${if (hasPlugin) " and compiler plugin" else ""} + $linked of the app's runtime libraries"
+        return dir to "LiteRT 2.4 dispatch library + $linked of the app's runtime libraries"
     }
 
     private fun Throwable.why(): String = (message ?: javaClass.simpleName).lines().first().take(240)
