@@ -489,12 +489,15 @@ data class AiResult(
     fun ips(t: AiTest, a: AiAccel): Double = runs.firstOrNull { it.test == t && it.accel == a }?.ips ?: 0.0
     fun points(t: AiTest, a: AiAccel): Int = AiScore.points(t, a, ips(t, a))
     fun accelScore(a: AiAccel): Int = AiScore.accel(a, AiTest.entries.map { ips(it, a) })
-    val score: Int get() = AiScore.overall(accelScore(AiAccel.CPU), accelScore(AiAccel.GPU), accelScore(AiAccel.NPU))
+    /** The accelerators to show: the CPU and the GPU; the NPU only where a test build measured it (report only). */
+    val shown: List<AiAccel> get() = AiAccel.entries.filter { a -> a != AiAccel.NPU || runs.any { it.accel == AiAccel.NPU } }
+    /** Version 5: the CPU and the GPU, half each. The NPU isn't scored: no NPU runtime reaches every device. */
+    val score: Int get() = AiScore.overall(accelScore(AiAccel.CPU), accelScore(AiAccel.GPU))
 }
 
 object AiScore {
     // Inferences per second worth 6000 points, per accelerator, in AiTest order: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5)
-    // (NPU through Qualcomm QNN). Repeated in BenchmarkScoring.cs.
+    // (REF_NPU: what a test build's report-only NPU run would score; the NPU isn't scored). Repeated in BenchmarkScoring.cs.
     val REF_CPU = doubleArrayOf(543.6, 28.67, 7.73, 4.59, 64.5, 3968.0)
     // version 5: the GPU's references re-measured on the path that answers right — LiteRT's OpenGL backend on the Adreno 830
     // (its default OpenCL path never delivered an answer, so the old ones timed nothing): Performance mode, the median of
@@ -512,9 +515,8 @@ object AiScore {
     fun accel(a: AiAccel, ips: List<Double>): Int =
         (AiTest.entries.sumOf { t -> 6000 * ips[t.ordinal].coerceAtLeast(0.0) / ref(t, a) } / AiTest.entries.size).roundToInt()
 
-    /** Each accelerator counts a third; one the phone lacks (or can't run the models on) scores 0 there. */
-    fun overall(cpu: Int, gpu: Int, npu: Int): Int =
-        ((cpu.coerceAtLeast(0) + gpu.coerceAtLeast(0) + npu.coerceAtLeast(0)) / 3.0).roundToInt()
+    /** The CPU and the GPU each count half; one the phone can't run the models on scores 0 there. */
+    fun overall(cpu: Int, gpu: Int): Int = ((cpu.coerceAtLeast(0) + gpu.coerceAtLeast(0)) / 2.0).roundToInt()
 }
 
 // ── LLM test: a 3B language model through llama.cpp on the CPU and the GPU ────

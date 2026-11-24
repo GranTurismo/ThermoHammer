@@ -75,7 +75,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                 "Six sections, scored on our server, the same test on every phone — and the only one that also tells you " +
                     "when your phone gets too hot to keep up.", Forge.phaseMeasured) { t, a -> ReactorArt(t, a) },
             Page("01 · SIX SECTIONS", "One honest score",
-                "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, AI on the NPU, and a language " +
+                "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, AI image models, and a language " +
                     "model running right on your phone. Each test is 6,000 points on a Snapdragon 8 Elite.",
                 Ramp.at(0.25f)) { t, a -> SectionsArt(t, a) },
             Page("02 · SAME WORK EVERYWHERE", "Byte-identical on every platform",

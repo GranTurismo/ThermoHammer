@@ -119,11 +119,6 @@ android {
       }
     }
 
-    // Play builds get the NPU runtimes (Qualcomm QNN, MediaTek NeuroPilot) through the npu/ modules, installed only
-    // on the chips in these device groups
-    dynamicFeatures += listOf(":npu:qnn_htp", ":npu:qnn_v68", ":npu:qnn_v69", ":npu:qnn_v73", ":npu:qnn_v75",
-        ":npu:qnn_v79", ":npu:qnn_v81", ":npu:mtk_v8", ":npu:mtk_v9")
-    bundle { deviceTargetingConfig = file("device_targeting_configuration.xml") }
 }
 
 kotlin {
@@ -221,13 +216,16 @@ dependencies {
   // Google Play's in-app rating card (ui/review/ReviewPrompt.kt)
   implementation(libs.play.review)
 
-  // AI tests: LiteRT on the CPU, the GPU and the NPU (vendor dispatch libraries). Qualcomm's QNN runtime
-  // goes into the sideloaded bench build; Play builds get it, and MediaTek's adapter, from the npu/ modules.
+  // AI tests: LiteRT on the CPU and the GPU. Version 5 doesn't score the NPU, so Play builds carry no NPU runtime;
+  // test builds keep LiteRT's vendor dispatch libraries (and Qualcomm's QNN in the bench build) for a report-only NPU run.
   implementation(libs.litert)
   implementation(libs.litert.gpu)
-  implementation(libs.litert.npu.qualcomm)
-  implementation(libs.litert.npu.mediatek)
-  implementation(libs.litert.npu.google.tensor)
+  "benchImplementation"(libs.litert.npu.qualcomm)
+  "benchImplementation"(libs.litert.npu.mediatek)
+  "benchImplementation"(libs.litert.npu.google.tensor)
+  debugImplementation(libs.litert.npu.qualcomm)
+  debugImplementation(libs.litert.npu.mediatek)
+  debugImplementation(libs.litert.npu.google.tensor)
   "benchImplementation"(libs.qnn.runtime)
   // Test builds only: Google's LiteRT-LM, for the report-only NPU LLM engine (engine/llm/NpuLlmProbe.kt in src/nonRelease)
   "benchImplementation"(libs.litertlm.android)

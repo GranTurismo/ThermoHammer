@@ -53,7 +53,7 @@ object PhoneHealth {
                 put("ux.photo", u.photoPoints); put("ux.video", u.videoPoints); put("ux.export", u.exportPoints); put("ux.qr", u.qrPoints)
             }
             r.ai?.let { a ->
-                put("ai.cpu", a.accelScore(AiAccel.CPU)); put("ai.gpu", a.accelScore(AiAccel.GPU)); put("ai.npu", a.accelScore(AiAccel.NPU))
+                put("ai.cpu", a.accelScore(AiAccel.CPU)); put("ai.gpu", a.accelScore(AiAccel.GPU))
             }
             // version 5: each scored engine's points — the server's BenchmarkScoring.Parts names them the same
             r.llm?.let { l -> put("llm.cpu", l.points(LlmAccel.CPU)); put("llm.gpu", l.points(LlmAccel.GPU)) }
@@ -68,7 +68,6 @@ object PhoneHealth {
         WEB("The browser tests ran %d%% below other units — update Android System WebView and Chrome from the Play Store."),
         VIDEO("Video decoding ran %d%% below other units — a codec ran in software. A system update may restore the hardware decoder."),
         EXPORT("Video export ran %d%% below other units — the encoder was slower or its output worse. A hot phone or a system update can do that."),
-        NPU("The NPU ran %d%% below other units — this build or firmware didn't reach it the way theirs did."),
         LLM("The language model ran %d%% below other units — usually less free memory or background apps.")
     }
 
@@ -78,7 +77,6 @@ object PhoneHealth {
         part == "ux.web" || part == "ux.scroll" || part == "ux.gallery" -> Cause.WEB
         part == "ux.video" -> Cause.VIDEO
         part == "ux.export" -> Cause.EXPORT
-        part == "ai.npu" -> Cause.NPU
         part.startsWith("llm.") -> Cause.LLM
         else -> Cause.BUSY                                   // cpu.*, mem.ram, ux.qr, ai.cpu
     }

@@ -813,13 +813,13 @@ private fun BenchmarkTestRows(rayTracingProblem: String?, rayTracingChecked: Boo
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(t.title, style = ThermoType.data(12f, Forge.ink0, FontWeight.Bold))
-                Text("${t.model} · CPU, GPU and NPU", style = ThermoType.annotation(8f, Forge.ink2))
+                Text("${t.model} · CPU and GPU", style = ThermoType.annotation(8f, Forge.ink2))
             }
             Text("${t.seconds}s", style = ThermoType.data(10f, Forge.ink1))
         }
     }
-    Text("AI runs open 8-bit models through LiteRT. The NPU counts where the phone has a supported one " +
-        "(most Snapdragon and Dimensity chips from 2021 on); elsewhere it scores 0.",
+    Text("AI runs open 8-bit models through LiteRT on the CPU and the GPU, half each. The NPU isn't scored: no NPU " +
+        "runtime reaches every phone.",
         style = ThermoType.annotation(8f, Forge.ink2))
     for (a in com.example.thermohammer.engine.LlmAccel.entries) {
         Row(verticalAlignment = Alignment.CenterVertically) {

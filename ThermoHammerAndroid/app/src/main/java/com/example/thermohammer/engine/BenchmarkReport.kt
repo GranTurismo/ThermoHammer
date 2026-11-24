@@ -77,12 +77,14 @@ object BenchmarkReport {
                 ux.error?.let { appendLine("UX error: $it") }
             }
             r.ai?.let { ai ->
-                appendLine("AI · %,d pts = CPU %,d · GPU %,d · NPU %,d · NPU %s%s%s".format(ai.score, ai.accelScore(AiAccel.CPU),
-                    ai.accelScore(AiAccel.GPU), ai.accelScore(AiAccel.NPU), ai.npuRuntime ?: "not run: ${ai.npuProblem ?: "?"}",
-                    ai.npuFiles?.let { " ($it)" } ?: "", if (ai.npuBurst) "" else " · default clocks (BURST failed)"))
+                appendLine("AI · %,d pts = CPU %,d · GPU %,d (each half)".format(ai.score, ai.accelScore(AiAccel.CPU), ai.accelScore(AiAccel.GPU)))
+                if (AiAccel.NPU in ai.shown)
+                    appendLine("AI NPU (report only, not scored) · would be %,d pts · %s%s%s".format(ai.accelScore(AiAccel.NPU),
+                        ai.npuRuntime ?: "not run: ${ai.npuProblem ?: "?"}",
+                        ai.npuFiles?.let { " ($it)" } ?: "", if (ai.npuBurst) "" else " · default clocks (BURST failed)"))
                 ai.npuLog?.let { appendLine("  NPU log: $it") }
                 for (t in AiTest.entries) {
-                    appendLine("AI %d %s · %s".format(t.number, t.title, AiAccel.entries.joinToString(", ") { a ->
+                    appendLine("AI %d %s · %s".format(t.number, t.title, ai.shown.joinToString(", ") { a ->
                         val run = ai.runs.firstOrNull { it.test == t && it.accel == a }
                         // a GPU's or an NPU's rate comes with how well its answer agreed with the CPU's (1.00 is a match)
                         if (run != null && run.ips > 0) "%s %.2f/s".format(a.label, run.ips) + (run.agreement?.let { " (agreement %.2f)".format(it) } ?: "")

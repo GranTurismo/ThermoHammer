@@ -1077,7 +1077,10 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
     // ── AI tests ──────────────────────────────────────────────────────────────
 
-    /** Each model on the CPU, the GPU and the NPU, with its result on the stage. Null if the run was stopped. */
+    /**
+     * Each model on the CPU and the GPU (test builds: the NPU too, report only — version 5 doesn't score the NPU), with
+     * its result on the stage. Null if the run was stopped.
+     */
     private suspend fun runAi(gpuRenderer: String): AiResult? = withContext(Dispatchers.Default) {
         _state.update { it.copy(uxTest = null, qrFrames = null, qrFound = null, aiTest = AiTest.CLASSIFY, aiAccel = null,
             aiProgress = 0f, aiRate = -1.0, aiDetail = "LOADING MODELS", aiVisual = null) }
@@ -1085,7 +1088,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         val inputs = com.example.thermohammer.engine.ai.AiInputs(appContext)
         val crashed = aiCrashedAccels()
         val available = bench.available()
-        var npuProblem = bench.npuProblem()
+        // Play builds never run the NPU (not scored, and they carry no NPU runtime); test builds measure it, report only
+        val accels = if (com.example.thermohammer.TestBuild.PROBES) AiAccel.entries else listOf(AiAccel.CPU, AiAccel.GPU)
+        var npuProblem = if (AiAccel.NPU in accels) bench.npuProblem() else "not part of the benchmark"
         // MediaTek's NeuroPilot first proves itself in a process of its own (DriverCheck): a driver that crashes there
         // costs the NPU, not the app
         if (npuProblem == null && bench.npuRuntime() == "MediaTek NeuroPilot" && AiAccel.NPU !in crashed) {
@@ -1152,7 +1157,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 aiDetail = test.model.uppercase(), aiVisual = com.example.thermohammer.engine.ai.AiVisual(test, picture)) }
             var decodedAt = 0L
             var cpuOutputs: List<ByteArray>? = null      // this model's answer on the CPU: what the NPU's is checked against
-            for ((k, accel) in AiAccel.entries.withIndex()) {
+            for ((k, accel) in accels.withIndex()) {
                 if (!_state.value.isRunning) return@withContext null
                 val skip = when {
                     accel in crashed -> "crashed the app here last time"
@@ -1165,7 +1170,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
                 }
                 if (skip != null) { runs += AiRun(test, accel, 0.0, skip); continue }
                 val runtime = if (accel == AiAccel.NPU) bench.npuRuntime() else null
-                _state.update { it.copy(aiAccel = accel, aiRate = -1.0, aiProgress = k / 3f,
+                _state.update { it.copy(aiAccel = accel, aiRate = -1.0, aiProgress = k / accels.size.toFloat(),
                     aiDetail = "${accel.label}${runtime?.let { r -> " · $r" } ?: ""} · INT8 · ${test.model.uppercase()} · COMPILING") }
                 // a run with a tuned setting leaves the setting's own marker: if it crashes, the setting is dropped
                 // next time and the accelerator keeps running with its defaults

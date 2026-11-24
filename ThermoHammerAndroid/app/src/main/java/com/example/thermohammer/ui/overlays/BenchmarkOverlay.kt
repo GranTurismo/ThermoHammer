@@ -503,7 +503,7 @@ private fun AiSummaryCard(ai: AiResult) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("AI · 6 MODELS · INT8", style = ThermoType.label(9f).copy(color = accent))
-                Text("CPU · GPU · NPU", style = ThermoType.data(13f, Forge.ink0, FontWeight.Black))
+                Text(ai.shown.joinToString(" · ") { it.label }, style = ThermoType.data(13f, Forge.ink0, FontWeight.Black))
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("%,d".format(ai.score), style = ThermoType.data(16f, Forge.ink0, FontWeight.Black))
@@ -512,14 +512,14 @@ private fun AiSummaryCard(ai: AiResult) {
         }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            for (a in AiAccel.entries) {
+            for (a in ai.shown) {
                 val pts = ai.accelScore(a)
                 Metric("${a.label} POINTS", if (pts > 0) "%,d".format(pts) else "—", if (pts > 0) Forge.ink0 else Ramp.at(0.85f))
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text(ai.npuRuntime?.let { "NPU: $it. CPU, GPU and NPU count a third each." }
-            ?: "NPU: ${ai.npuProblem ?: "not available"} — 0 points there.",
+        Text("The CPU and the GPU count half each." + if (AiAccel.NPU in ai.shown)
+            " NPU: ${ai.npuRuntime ?: ai.npuProblem ?: "not available"} — report only, not scored." else "",
             style = ThermoType.annotation(8f, Forge.ink2))
     }
 }
@@ -536,7 +536,7 @@ private fun AiCard(test: AiTest, ai: AiResult) {
         Text(test.model, style = ThermoType.annotation(8f, Forge.ink2))
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            for (a in AiAccel.entries) {
+            for (a in ai.shown) {
                 val ips = ai.ips(test, a)
                 Metric("${a.label} INF/S", if (ips > 0) (if (ips < 100) "%.1f" else "%,.0f").format(ips) else "—",
                     if (ips > 0) Forge.ink0 else Ramp.at(0.85f))

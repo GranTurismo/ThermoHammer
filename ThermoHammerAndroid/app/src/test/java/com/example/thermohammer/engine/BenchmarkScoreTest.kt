@@ -141,22 +141,23 @@ class BenchmarkScoreTest {
     }
 
     @Test
-    fun `AI counts CPU, GPU and NPU a third each`() {
+    fun `AI counts the CPU and the GPU half each, the NPU never`() {
         fun result(npu: Boolean, gpu: Boolean = true) = AiResult(AiTest.entries.flatMap { t ->
             AiAccel.entries.map { a ->
                 val on = (a != AiAccel.NPU || npu) && (a != AiAccel.GPU || gpu)
                 AiRun(t, a, if (on) AiScore.ref(t, a) else 0.0, if (on) null else "not here")
             }
         }, npuRuntime = if (npu) "Qualcomm QNN" else null)
-        assertEquals(6000, result(npu = true).accelScore(AiAccel.NPU))
+        assertEquals(6000, result(npu = true).accelScore(AiAccel.NPU))  // what a test build's NPU would score: shown only
         assertEquals(6000, result(npu = true).score)
-        assertEquals(4000, result(npu = false).score)                  // no NPU: two thirds
-        assertEquals(4000, result(npu = true, gpu = false).score)      // no GPU either: that third
+        assertEquals(6000, result(npu = false).score)                  // no NPU: nothing lost
+        assertEquals(3000, result(npu = true, gpu = false).score)      // no GPU: its half
+        assertEquals(listOf(AiAccel.CPU, AiAccel.GPU), AiResult(result(npu = false).runs.filter { it.accel != AiAccel.NPU }, null).shown)
         val oneModelShort = AiResult(result(npu = true).runs.map {
             if (it.test == AiTest.SOUND && it.accel == AiAccel.CPU) it.copy(ips = 0.0) else it }, "Qualcomm QNN")
         assertEquals(5000, oneModelShort.accelScore(AiAccel.CPU))      // a model short costs a sixth
         val total = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, ai = result(npu = false))
-        assertEquals(5000 + 4000, total.total)
+        assertEquals(5000 + 6000, total.total)
     }
 
     @Test

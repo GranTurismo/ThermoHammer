@@ -58,7 +58,7 @@ class BenchmarkReportTest {
                 "UX 6 VIDEO EXPORT · 3,500 pts · HEVC 4K 140.50 fps 41.2 dB (HW c2.qti.hevc.encoder)",
                 "H.264 4K 150.00 fps 22.4 dB LOW QUALITY", "AV1 4K 0 (no hardware AV1 encoder)",
                 "exports H.264 4K30✗ 4K60✗", "exports HEVC  4K30✓ 4K60✓ 4K120✓ 4K240– 8K30✗",
-                "NPU not run: no NPU runtime for this chip", "+ MEM ",
+                "AI NPU (report only, not scored)", "+ MEM ",
                 "MEM 1 RAM", "read 48.20, write 39.50, copy 24.75 GB/s · latency 151.30 ns",
                 "seq read 2890, seq write 1950 MB/s · random read 58000, random write 47000 IOPS · 512 MB file, cached I/O",
                 "MEM 3 DATABASE", "insert 805, update 790 tx/s · query 5100/s", "AI 1 IMAGE CLASSIFICATION · CPU 845.04/s, GPU 0 (Failed to compile model)")) {
