@@ -45,7 +45,7 @@ CATALOG = {
         ],
     },
     "ai": {
-        "blurb": "Six open models, each on the CPU, the GPU and the NPU.",
+        "blurb": "Six open models, each on the CPU and the GPU.",
         "tests": [
             ("A1", "Image classification", "MobileNet-v2 · 224×224"),
             ("A2", "Object detection", "YOLOX · 640×640"),
@@ -54,7 +54,8 @@ CATALOG = {
             ("A5", "Depth estimation", "MiDaS v2 · 256×256"),
             ("A6", "Sound recognition", "YAMNet · 0.96 s of audio"),
         ],
-        "note": "The models are open and 8-bit. The NPU counts where the device has a supported one; elsewhere it scores 0.",
+        "note": "The models are open and 8-bit. The CPU and the GPU count half each. The NPU isn't scored: no way to run "
+                "models on it reaches every device, and a device shouldn't lose points because its maker's tools aren't public.",
     },
     "llm": {
         "blurb": "Google's Gemma 3 1B language model running on the device itself, on its CPU and its GPU.",

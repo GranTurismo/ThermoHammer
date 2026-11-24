@@ -43,7 +43,8 @@
     <ul>
       <li>Points scale with speed. A test that runs twice as fast as on the reference is worth 12,000.</li>
       <li>A section's score combines the points of its tests, and the total is the six sections added up.</li>
-      <li>A test a device can't run, such as ray tracing or an NPU it doesn't have, scores 0, and its section is lower for it.</li>
+      <li>A test a device can't run, such as ray tracing, scores 0, and its section is lower for it.</li>
+      <li>Only what every device can be measured on counts. The NPU isn't scored, because no way to run models on it reaches every chip.</li>
       <li>The reference never moves between runs, so a score from last month and one from today are on the same scale.</li>
       {% if site.earlier_versions %}<li>When the reference or the tests change, the scoring version goes up and the board starts over. This is version {{ site.version }}; runs scored with version {{ site.earlier_versions | join(' or ') }} stay on their device's page, marked, and aren't compared with today's.</li>{% endif %}
     </ul>
