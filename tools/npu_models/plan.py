@@ -78,7 +78,13 @@ def plugin_socs(version):
     return socs
 
 
+# The Play pack's chips, for a checkout without the version 5 Android code (main before the release).
+PACK_FALLBACK = {"sm8550", "sm8650", "sm8750", "sm8850", "mt6989", "mt6991", "mt6993"}
+
+
 def pack_chips():
+    if not os.path.isfile(NPU_MODELS_KT):
+        return set(PACK_FALLBACK)
     m = re.search(r"val CHIPS = setOf\(([^)]*)\)", open(NPU_MODELS_KT).read())
     return set(re.findall(r'"([a-z0-9]+)"', m.group(1)))
 
