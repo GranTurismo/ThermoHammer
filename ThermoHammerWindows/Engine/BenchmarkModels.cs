@@ -3,7 +3,7 @@ namespace ThermoHammer.Engine;
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK — the same five sections and the same scoring as the Android app
 // (engine/Benchmark.kt), the iPhone app (BenchmarkModels.swift) and the server
-// (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI, every test 6000 points
+// (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI, every test 7200 points (RefPoints)
 // on the Snapdragon 8 Elite reference phone (Honor VKP-NX9) in Performance mode —
 // the median of its runs of 2026-11-23, scoring version 5. Change a number here
 // only together with those three (BenchmarkScoreTests pins the same medians).
@@ -13,6 +13,11 @@ public static class BenchmarkScore
 {
     /// <summary>Bump when a scene, the resolution or the scoring changes — scores compare only within a version.</summary>
     public const int Version = 5;
+    /// <summary>
+    /// What every test's reference is worth: the Honor's medians score this on each test. 7,200 (not 6,000) so the five
+    /// sections still total about 36,000 on the reference phone, as the six did before the LLM test was dropped.
+    /// </summary>
+    public const double RefPoints = 7200;
     public const float WarmupS = 2, WindowS = 5;
 
     public static int Points(GpuTest t, double fps) => (int)Math.Round(fps * t.Weight(), MidpointRounding.AwayFromZero);
@@ -87,8 +92,8 @@ public static class GpuTests
     public static string Title(this GpuTest t) => t switch { GpuTest.LakeValley => "LAKE VALLEY", GpuTest.NeonCity => "NEON CITY", _ => "NEON CITY RT" };
     public static int Seconds(this GpuTest t) => t switch { GpuTest.LakeValley => 50, _ => 60 };
     public static bool RayTracing(this GpuTest t) => t == GpuTest.NeonCityRT;
-    /// <summary>fps → points: the reference phone's 129.85, 28.98 and 14.12 fps = 6000.</summary>
-    public static double Weight(this GpuTest t) => t switch { GpuTest.LakeValley => 46.21, GpuTest.NeonCity => 207.0, _ => 424.9 };
+    /// <summary>fps → points: the reference phone's 129.85, 28.98 and 14.12 fps = 7200 (the 6000-point weights × 1.2).</summary>
+    public static double Weight(this GpuTest t) => t switch { GpuTest.LakeValley => 55.452, GpuTest.NeonCity => 248.4, _ => 509.88 };
 }
 
 public sealed record GpuTestResult(GpuTest Test, bool Supported, double AvgFps, double LowFps, int Frames, float StabilityPct, int Points)
@@ -138,10 +143,10 @@ public sealed record CpuResult(List<CpuTestRun> Runs)
 
 public static class CpuScore
 {
-    // geometric-mean kernel ops/s worth 6000 points (the Honor in Performance mode, 2026-11-23 — see Benchmark.kt)
+    // geometric-mean kernel ops/s worth RefPoints (the Honor in Performance mode, 2026-11-23 — see Benchmark.kt)
     public const double RefMath = 3039, RefData = 1533, RefCrypto = 1184, RefMulti = 8884;
     public static double Ref(CpuTest t) => t switch { CpuTest.Math => RefMath, CpuTest.Data => RefData, CpuTest.Crypto => RefCrypto, _ => RefMulti };
-    public static int Points(CpuTest t, double value) => BenchmarkScore.Round(6000 * Math.Max(value, 0) / Ref(t));
+    public static int Points(CpuTest t, double value) => BenchmarkScore.Round(BenchmarkScore.RefPoints * Math.Max(value, 0) / Ref(t));
     public static int Overall(IReadOnlyCollection<int> points) => BenchmarkScore.Geomean(points);
 }
 
@@ -182,9 +187,9 @@ public static class MemScore
     // version 5: the database steps are timed after their warm-up (MemBench.WarmUp) — the old references timed the climb
     public const double RefInsert = 15_700, RefUpdate = 389_000, RefQuery = 43_800;
 
-    /// <summary>6000 × the geometric mean of value ÷ reference; 0 if any part is 0.</summary>
+    /// <summary>RefPoints × the geometric mean of value ÷ reference; 0 if any part is 0.</summary>
     private static int Geo(double[] ratios) =>
-        ratios.Any(r => r <= 0) ? 0 : BenchmarkScore.Round(6000 * Math.Exp(ratios.Sum(Math.Log) / ratios.Length));
+        ratios.Any(r => r <= 0) ? 0 : BenchmarkScore.Round(BenchmarkScore.RefPoints * Math.Exp(ratios.Sum(Math.Log) / ratios.Length));
     public static int Ram(double read, double write, double copy, double latencyNs) =>
         latencyNs > 0 ? Geo([read / RefRead, write / RefWrite, copy / RefCopy, RefLatency / latencyNs]) : 0;
     public static int Storage(double sr, double sw, double rr, double rw) =>
@@ -269,29 +274,29 @@ public static class UxScore
     // 8K decode: the mean of the Honor's HEVC (91.1) and AV1 (75.0) rates. Export: one of its 4K hardware encoders' rate (it has no
     // AV1 encoder, so it scores two thirds of the 4K part); 8K export = a quarter of that (the same pixel rate), as it encodes no 8K
     public const double RefVideo8k = 83.1, RefExport = 136.3, RefExport8k = 34.1;
-    public const double QrWeight = 5.122;   // zxing-cpp decodes/s → points: the Honor's 1,171.5/s = 6000
+    public const double QrWeight = 6.1464;  // zxing-cpp decodes/s → points: the Honor's 1,171.5/s = 7200 (5.122 × 1.2)
     /// <summary>dB on the lower third: honest encodes 29.7–33.9, a starved one 24.2 — below this the export is broken.</summary>
     public const double MinPsnr = 26;
 
     public static int WebPoints(WebResult r)
     {
         double[] parts = [r.Layout / RefLayout, r.Canvas / RefCanvas, r.Css / RefCss, r.Svg / RefSvg, r.Js / RefJs];
-        return parts.Any(p => p <= 0) ? 0 : BenchmarkScore.Round(6000 * Math.Exp(parts.Sum(Math.Log) / parts.Length));
+        return parts.Any(p => p <= 0) ? 0 : BenchmarkScore.Round(BenchmarkScore.RefPoints * Math.Exp(parts.Sum(Math.Log) / parts.Length));
     }
-    public static int ScrollPoints(double speed) => BenchmarkScore.Round(6000 * Math.Max(speed, 0) / RefScroll);
+    public static int ScrollPoints(double speed) => BenchmarkScore.Round(BenchmarkScore.RefPoints * Math.Max(speed, 0) / RefScroll);
     public static int GalleryPoints(GalleryResult r) =>
-        BenchmarkScore.Round(6000 * (Math.Max(r.Jpeg, 0) / RefJpeg + Math.Max(r.Webp, 0) / RefWebp + Math.Max(r.Avif, 0) / RefAvif) / 3);
-    public static int PhotoPoints(double mps) => BenchmarkScore.Round(6000 * Math.Max(mps, 0) / RefPhoto);
+        BenchmarkScore.Round(BenchmarkScore.RefPoints * (Math.Max(r.Jpeg, 0) / RefJpeg + Math.Max(r.Webp, 0) / RefWebp + Math.Max(r.Avif, 0) / RefAvif) / 3);
+    public static int PhotoPoints(double mps) => BenchmarkScore.Round(BenchmarkScore.RefPoints * Math.Max(mps, 0) / RefPhoto);
     public static int VideoPoints(VideoResult r)
     {
         VideoClip[] k4 = [VideoClip.Avc4k, VideoClip.Hevc4k, VideoClip.Vp94k, VideoClip.Av14k], k8 = [VideoClip.Hevc8k, VideoClip.Av18k];
-        return BenchmarkScore.Round(6000 * (0.75 * k4.Sum(c => Math.Max(r.Fps(c), 0)) / (RefVideo * k4.Length) +
+        return BenchmarkScore.Round(BenchmarkScore.RefPoints * (0.75 * k4.Sum(c => Math.Max(r.Fps(c), 0)) / (RefVideo * k4.Length) +
                                             0.25 * k8.Sum(c => Math.Max(r.Fps(c), 0)) / (RefVideo8k * k8.Length)));
     }
     public static int ExportPoints(ExportResult r)
     {
         ExportJob[] k4 = [ExportJob.Avc4k, ExportJob.Hevc4k, ExportJob.Av14k];
-        return BenchmarkScore.Round(6000 * (0.75 * k4.Sum(j => Math.Max(r.Counted(j), 0)) / (RefExport * k4.Length) +
+        return BenchmarkScore.Round(BenchmarkScore.RefPoints * (0.75 * k4.Sum(j => Math.Max(r.Counted(j), 0)) / (RefExport * k4.Length) +
                                             0.25 * Math.Max(r.Counted(ExportJob.Hevc8k), 0) / RefExport8k));
     }
     public static int QrPoints(double rate) => BenchmarkScore.Round(Math.Max(rate, 0) * QrWeight);
@@ -340,7 +345,7 @@ public static class AiScore
     public static readonly double[] RefNpu = [1726, 485, 214.6, 689.3, 986, 2154];
     public static double Ref(AiTest t, AiAccel a) => (a switch { AiAccel.Cpu => RefCpu, AiAccel.Gpu => RefGpu, _ => RefNpu })[(int)t - 1];
     public static int Accel(AiAccel a, double[] ips) =>
-        BenchmarkScore.Round(AiTests.All.Select((t, i) => 6000 * Math.Max(ips[i], 0) / Ref(t, a)).Sum() / AiTests.All.Length);
+        BenchmarkScore.Round(AiTests.All.Select((t, i) => BenchmarkScore.RefPoints * Math.Max(ips[i], 0) / Ref(t, a)).Sum() / AiTests.All.Length);
     /// <summary>The CPU and the GPU each half; one that can't run the models scores 0 there.</summary>
     public static int Overall(int cpu, int gpu) => BenchmarkScore.Round((Math.Max(cpu, 0) + Math.Max(gpu, 0)) / 2.0);
 }

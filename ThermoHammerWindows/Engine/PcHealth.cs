@@ -21,7 +21,7 @@ public static class PcHealth
     public sealed record Report(Verdict Verdict, string Headline, int? Percent, int Runs, int Total, int? Median, int? P25, int? P75,
         int? Best, List<Finding> Findings);
 
-    /// <summary>The run's parts, each 6000 on the reference phone — named as the server names them.</summary>
+    /// <summary>The run's parts, each RefPoints (7200) on the reference phone — named as the server names them.</summary>
     public static Dictionary<string, int> Parts(BenchmarkResult r)
     {
         var p = new Dictionary<string, int>();

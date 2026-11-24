@@ -10,7 +10,7 @@ namespace ThermoHammer.UI;
 // ─────────────────────────────────────────────────────────────────────────────
 // WELCOME — what ThermoHammer is and why its numbers can be trusted, on six
 // pages (the phones' WelcomeScreen / WelcomeView, worded for a PC): the
-// instrument, its six sections, the same work on every platform, scoring that
+// instrument, its five sections, the same work on every platform, scoring that
 // can't be gamed, PC Health and the heat test. The pictures are drawn live and
 // play their entrance as their page comes in. Shown on first launch; the "?" in
 // the header opens it again. Arrow keys, the wheel or NEXT turn the pages.
@@ -23,13 +23,13 @@ public sealed class WelcomeView : Grid
     private static readonly Page[] Pages =
     [
         new("THERMOHAMMER", "The benchmark that tells the truth",
-            "Six sections, scored on our server, the same test on every device — and the only one that also tells you when your PC gets too hot to keep up.",
+            "Five sections, scored on our server, the same test on every device — and the only one that also tells you when your PC gets too hot to keep up.",
             Forge.PhaseMeasured),
-        new("01 · SIX SECTIONS", "One honest score",
-            "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, AI on the NPU, and a language model running right on your PC. Each test is 6,000 points on a Snapdragon 8 Elite phone.",
+        new("01 · FIVE SECTIONS", "One honest score",
+            "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, and AI image and sound models on the CPU and the GPU. Each test is 7,200 points on a Snapdragon 8 Elite phone.",
             Ramp.At(0.25)),
         new("02 · SAME WORK EVERYWHERE", "Byte-identical on every platform",
-            "Windows, Android, iPhone and Mac run the very same C++, the same 3D scenes, the same AI models and the same seeded language model. A score means the same thing on every device.",
+            "Windows, Android, iPhone and Mac run the very same C++, the same 3D scenes and the same AI models. A score means the same thing on every device.",
             Forge.PhaseCooldown),
         new("03 · CAN'T BE GAMED", "Scored where no one can tune for it",
             "Makers have been caught boosting known benchmarks. Your raw results are signed and scored on our server, and only clean runs — cool, nothing else running, no power saving — reach the leaderboard.",
@@ -252,7 +252,7 @@ public sealed class WelcomeArt : Instrument
                 dc.DrawRoundedRectangle(colors[i].WithAlpha(0.8 * p).Brush(), null, new Rect(x + 12 + b * bw * 1.6, y + tileH - 12 - bh, bw, bh), bw / 2, bw / 2);
             }
         }
-        int total = (int)(30021 * Stage(a, 0.45, 0.55));
+        int total = (int)(36026 * Stage(a, 0.45, 0.55));   // about the reference phone's total
         double ty = h * 0.80;
         Label(dc, "TOTAL", new Point(0, ty), Forge.Ink2, 10);
         Label(dc, total.N0(), new Point(0, ty + 14), Forge.Ink0, 30, true);

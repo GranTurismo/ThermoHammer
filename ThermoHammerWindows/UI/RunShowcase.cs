@@ -144,13 +144,13 @@ public static class RunArt
     }
 
     /// <summary>
-    /// The five section bars, one row each in [area]: the name, a bar as long as score ÷ max(12000, the largest score), the score.
+    /// The five section bars, one row each in [area]: the name, a bar as long as score ÷ max(twice the reference, the largest score), the score.
     /// [size] is the text size; rows share the height.
     /// </summary>
     public static void Bars(DrawingContext dc, Rect area, IReadOnlyList<(string Key, int Score)> sections, double size, double ppd)
     {
         if (sections.Count == 0) return;
-        double top = Math.Max(12000, sections.Max(s => s.Score));
+        double top = Math.Max(2 * BenchmarkScore.RefPoints, sections.Max(s => s.Score));
         double row = area.Height / sections.Count, bar = Math.Max(4, size * 0.42);
         double nameW = Text("MEM", size, Forge.Ink0, Forge.W.Black, false, ppd).Width + size * 0.9;
         double valueW = Text("888,888", size, Forge.Ink0, Forge.W.Black, false, ppd).Width + size * 0.9;
