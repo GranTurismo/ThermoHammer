@@ -1,4 +1,9 @@
-# The LLM test's NPU model files (Android, scoring version 5)
+# The LLM test's NPU model files (Android): dormant
+
+> **Status (2026-11-24):** scoring version 5 doesn't score the NPU, because no way to run it reaches every chip
+> (Exynos, Snapdragon 7/8s, some Dimensity, Windows NPUs). The daily job is disabled in GitHub Actions; test builds
+> still run the NPU report-only. Everything here is kept for a later version.
+
 
 The LLM test runs Gemma 3 1B on the NPU through LiteRT-LM, and an NPU runs only a file compiled for its own chip.
 Google publishes such files for seven chips. A phone with any other chip would score 0 on the NPU third because

@@ -328,7 +328,23 @@ Decided by the user on 2026-11-23: the reference phone (Honor VKP-NX9, Snapdrago
 - **Windows:** no NPU LLM engine; that third counts 0.
 - **New chips:** superseded on 2026-11-24, see below.
 
-## Android NPU files for every chip (2026-11-24)
+## Decision 2026-11-24 (evening): the NPU isn't scored in version 5
+
+- **The user's rule:** "can we cover all devices with NPU? If yes, keep NPU, otherwise keep GPU and CPU".
+- **The answer was no**, and the gaps are outside our control:
+  - Samsung keeps the Exynos NPU compiler private.
+  - MediaTek's tools reject the Dimensity 7200, 8100 and 8400.
+  - Windows NPUs need a separate engine for each chip maker.
+- **Version 5's LLM score on every platform is therefore half CPU, half GPU** (llama.cpp). The references are unchanged, so the Honor still scores ≈6,000.
+- **Store builds:** no NPU run, no model download, no Play AI pack, no model-missing flag. Android Play builds also drop LiteRT-LM (~23 MB).
+- **Test builds:** Android still runs the NPU report-only, and on iOS so does the `-llmNpuReport` launch argument. The server keeps the payload's NPU fields (always 0 / empty) but never scores them. `/benchmark/chips` and the chip catalog are gone.
+- **Kept for a later version:**
+  - `tools/npu_models` (forms q4, q8 and q4att8);
+  - the iPhone `.aar` and the Android files on the site;
+  - the daily job, disabled in GitHub Actions.
+- **Known skew that remains:** the LLM GPU half. llama.cpp's fast OpenCL path runs only on Adreno; other GPUs get Vulkan, far slower for a software reason. Next candidate: a vendor-neutral GPU engine (e.g. LiteRT-LM's GPU backend).
+
+## Android NPU files for every chip (2026-11-24, superseded the same evening: the NPU isn't scored)
 
 The user rejected every rule that lets a newer chip lose points while its Gemma file is missing: the AI-NPU proxy, the best engine, dropping the NPU, holding new chips back, and "pending" runs. We now build the files ourselves.
 
@@ -365,24 +381,23 @@ Steps 1–4 can happen in any order; step 5 is the switch.
   - Issue #1 lists the chips phones use that have no file (mt6886, mt6899, s5e9945). Issue #2 is closed.
 - The Honor compare run is done (see "Android NPU files for every chip"). Decision: Google's files stay in the pack, ours for every other chip.
 
-1. **Android NPU files (our builds):**
+1. **Android NPU files:** not needed any more (the NPU isn't scored). The notes below are kept for a later version.
    - On the Honor's test build, push our 8 Elite file to `…/files/npu-llm/compare/` and run LLM only with the picker. The report then has Google's line and `LLM NPU COMPARE` for ours, measured on the same phone.
    - The X300 Pro can do the same with our `mt6993`. The 11T needs our `mt6893` file, which the CI job builds; then put it in `npu-llm/` (its chip has no Google file).
    - Decide: Google's files in the pack, or ours everywhere (see "Android NPU files for every chip").
    - Publish every file that passed the gate to the site, **before** the apps go live: `tools/npu_models/publish.sh <files>` (needs the site deployed with the `/models` route, step 3).
 2. **Android:**
-   - Put the chosen model file(s) in `gemma.npu.dir`.
-   - Run `./gradlew :ai:gemma_npu:linkGemmaModels`, then `THERMOHAMMER_VK_GLSLC=/opt/homebrew/bin/glslc ./gradlew :app:bundleRelease`. It refuses to build while a chip's file is missing.
-   - Upload to **internal testing** first and install from Play on the Honor. That's the only real test of AI pack delivery.
+   - Run `THERMOHAMMER_VK_GLSLC=/opt/homebrew/bin/glslc ./gradlew :app:bundleRelease`. There's no model pack any more.
+   - Upload to **internal testing** first and install from Play on the Honor.
    - Then production with **managed publishing** (held until step 5).
 3. **iPhone/Mac:**
    - Put the model on the server: `ThermoHammerWeb/deploy/upload_model.sh ~/Downloads/gemma3-1b-it-lut4-ctx1280-v1.aar` (997 MB, SHA-256 `af5e93c1…`).
    - Run `deploy/deploy.sh`; thweb gets the `models` volume and route.
    - Check `curl -I https://thermohammer.gtgroup.dev/models/gemma3-1b-it-lut4-ctx1280-v1.aar` → 200.
-   - **The iPhone app must not go live before the model is online:** without it, every run on a capable device is incomplete.
+   - The model is no longer needed by Store builds (the Neural Engine isn't scored). It stays on the site for `-llmNpuReport`.
    - Archive and upload iOS and macOS 2.2.0 (46). Submit both with **manual release**.
 4. **Windows:**
-   - Packages: `ThermoHammerWindows/msix/out/ThermoHammer_2.2.0.0_{x64,arm64}.msix` (also in Downloads). Exports were checked against the app's imports.
+   - Packages: **rebuild** with `msix/build.sh --store`. The ones in Downloads predate the CPU + GPU rule. Check the exports against the app's imports again.
    - Run one VM test (Gemma shape on Vulkan, database warm-up).
    - Partner Center submission with **manual publish**.
 5. **The switch, once all three stores have approved:**
