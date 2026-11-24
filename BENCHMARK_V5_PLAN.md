@@ -358,7 +358,11 @@ Steps 1–4 can happen in any order; step 5 is the switch.
 **Done on 2026-11-24, with the user's OK:**
 - **Site config on the server:** only the `/models` route and folder (Caddyfile and docker-compose.yaml; backups `*.bak-20261124` in `~/docker/thweb`). The version 5 page text is **not** deployed; that's step 5.4.
 - **Uploaded:** `models/gemma3-1b-it-lut4-ctx1280-v1.aar` (iPhone/Mac, SHA-256 checked) and `models/android/…_sm8845.litertlm` with `manifest.json`.
-- **Pushed to main:** `9572609 [skip ci]`, only `tools/npu_models` and `npu-models.yml`, so thapi wasn't redeployed. Run 45393468629 builds the MediaTek v8 chips, and issue #1 lists mt6899 and s5e9945.
+- **Pushed to main:** `9572609`, `e8894a8` and `098e0f2`, all `[skip ci]`, only `tools/npu_models` and `npu-models.yml`, so thapi wasn't redeployed.
+  - The first CI run failed: a permission bug on the calibration marker.
+  - Run 45417736085 built the MediaTek v8 chips and published mt6897 and mt8189.
+  - Every other chip is explained in `tools/npu_models/README.md` "Coverage": 11 can't run the model on their NPU (hardware), and 3 hit a compiler gap.
+  - Issue #1 lists the chips phones use that have no file (mt6886, mt6899, s5e9945). Issue #2 is closed.
 - The Honor compare run is done (see "Android NPU files for every chip"). Decision: Google's files stay in the pack, ours for every other chip.
 
 1. **Android NPU files (our builds):**
