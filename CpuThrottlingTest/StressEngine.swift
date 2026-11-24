@@ -440,29 +440,27 @@ final class StressEngine: ObservableObject {
         gates.append(GateResult(id: "bgload", title: "BACKGROUND LOAD", blocking: true,
                                 passed: loadOK,
                                 detail: loadOK ? "\(loadPct)% ambient" : "\(loadPct)% busy — close other apps"))
-        // The LLM test's Neural Engine model (scoring version 5), on the devices that can run it: downloaded once over
-        // Wi-Fi. Never blocking — a run without it is incomplete (can't be submitted), and the checklist says so first.
+        // Development only (-llmNpuReport): the report-only Neural Engine run's model. Never blocking, never scored.
         #if !targetEnvironment(simulator)
-        if benchmark, #available(iOS 18.0, macOS 15.0, *) {
+        if benchmark, LlmSection.npuReport, #available(iOS 18.0, macOS 15.0, *) {
             let model = LlmNpuModel.shared
             model.start()                                   // harmless when it's ready or already on its way
             let state = await MainActor.run { model.state }
             let ready = LlmNpuModel.isReadyForBenchmark
             let cannot = LlmNpuModel.cannotRunReason
             let detail: String
-            if let cannot { detail = "not on this device: \(cannot) — the NPU part counts 0" }
+            if let cannot { detail = "not on this device: \(cannot) (report only)" }
             else if ready { detail = "Gemma 3 1B for the Neural Engine ready" }
             else {
                 switch state {
-                case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~1 GB — wait, or this run can't be submitted"
-                case .waitingForWifi: detail = "waiting for Wi-Fi (~1 GB) — or this run can't be submitted"
-                case .preparing: detail = "compiling for the Neural Engine (once, a few minutes) — wait, or this run can't be submitted"
-                case .failed(let why): detail = "\(why.prefix(70)) — it tries again soon; this run can't be submitted"
-                default: detail = "not downloaded yet — this run can't be submitted"
+                case .downloading(let f): detail = "downloading \(Int(f * 100))% of ~1 GB (report only)"
+                case .waitingForWifi: detail = "waiting for Wi-Fi (~1 GB) (report only)"
+                case .preparing: detail = "compiling for the Neural Engine (once, a few minutes) (report only)"
+                case .failed(let why): detail = "\(why.prefix(70)) — it tries again soon"
+                default: detail = "not downloaded yet (report only)"
                 }
             }
             gates.append(GateResult(id: "npumodel", title: "LLM NPU MODEL", blocking: false, passed: ready || cannot != nil, detail: detail))
-            if !ready && cannot == nil { hints |= BenchFlag.npuModelMissing }
         }
         #endif
 

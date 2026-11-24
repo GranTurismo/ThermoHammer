@@ -5,10 +5,10 @@ import SwiftUI
 struct CpuThrottlingTestApp: App {
     init() {
         AppTelemetry.configureIfProduction()
-        // The LLM test's Neural Engine model (scoring version 5): fetched once in the background, over Wi-Fi only, so it's
-        // here by the first benchmark (as Play's AI pack is on Android). Nothing on the simulator or before iOS 18.
+        // The report-only Neural Engine LLM run's model (development, -llmNpuReport): fetched in the background over Wi-Fi.
+        // Store builds never fetch it — version 5 doesn't score the NPU. Nothing on the simulator or before iOS 18.
         #if !targetEnvironment(simulator)
-        if #available(iOS 18.0, macOS 15.0, *) { LlmNpuModel.shared.start() }
+        if LlmSection.npuReport, #available(iOS 18.0, macOS 15.0, *) { LlmNpuModel.shared.start() }
         #endif
         // XcodeGen's INFOPLIST_KEY_UIAppFonts never reaches the generated Info.plist, so the bundled fonts
         // (JetBrains Mono, Space Grotesk) are registered here instead.

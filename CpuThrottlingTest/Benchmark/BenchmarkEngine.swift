@@ -130,7 +130,7 @@ final class BenchmarkEngine: ObservableObject {
         guard !isRunning else { return }
         UIDevice.current.isBatteryMonitoringEnabled = true
         lock.withLock { active = true }
-        LlmNpuEngine.noteRunStart()          // the LLM's NPU part runs only if its model was ready now
+        if LlmSection.npuReport { LlmNpuEngine.noteRunStart() }   // report-only NPU run: only if its model was ready now
         result = nil; error = nil; record = nil; cpuTest = nil; memTest = nil; cpuProgress = nil; memProgress = nil
         phase = .preparing
         watchFront()
@@ -215,7 +215,7 @@ final class BenchmarkEngine: ObservableObject {
     }
 
     /// Every LLM engine's planned seconds, in run order (the progress bar).
-    static let llmSeconds = LlmAccel.allCases.map(\.seconds) + [LlmSection.npuSeconds]
+    static let llmSeconds = LlmAccel.allCases.map(\.seconds) + (LlmSection.npuReport ? [LlmSection.npuSeconds] : [])
 
     /** The UX test on the stage now: its progress, what it's doing and its live number. */
     func publishUx(_ test: UxTest?, progress: Double = 0, detail: String = "", value: Double = -1, unit: String = "") {

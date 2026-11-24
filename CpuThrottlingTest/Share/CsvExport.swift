@@ -154,7 +154,7 @@ enum CsvExport {
         }
         if let llm = r.llm {
             pts("llm", "prefill", llm.prefillPoints); pts("llm", "decode", llm.decodePoints)
-            pts("llm", "cpu", llm.points(.cpu)); pts("llm", "gpu", llm.points(.gpu)); pts("llm", "npu", llm.npuPoints)
+            pts("llm", "cpu", llm.points(.cpu)); pts("llm", "gpu", llm.points(.gpu))
             add("llm", "prefill", llm.prefill, "tokens/s"); add("llm", "decode", llm.decode, "tokens/s")
             for a in LlmAccel.allCases {
                 let run = llm.run(a)

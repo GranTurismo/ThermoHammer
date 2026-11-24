@@ -64,7 +64,7 @@ enum PhoneHealth {
         }
         if let a = r.ai { p["ai.cpu"] = a.accelScore(.cpu); p["ai.gpu"] = a.accelScore(.gpu); p["ai.npu"] = a.accelScore(.npu) }
         // version 5: each LLM engine's points (rule B) — the server's BenchmarkScoring.Parts names them the same
-        if let l = r.llm { p["llm.cpu"] = l.points(.cpu); p["llm.gpu"] = l.points(.gpu); p["llm.npu"] = l.npuPoints }
+        if let l = r.llm { p["llm.cpu"] = l.points(.cpu); p["llm.gpu"] = l.points(.gpu) }
         return p
     }
 

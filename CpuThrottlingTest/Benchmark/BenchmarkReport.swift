@@ -71,8 +71,8 @@ enum BenchmarkReport {
             }
         }
         if let llm = r.llm {
-            line("LLM · \(pts(llm.score)) pts = CPU \(pts(llm.points(.cpu))) · GPU \(pts(llm.points(.gpu))) · NPU \(pts(llm.npuPoints)) " +
-                 "(each a third; Gemma 3 1B on every engine) · \(f(llm.freeGb)) GB free, largest model \(llm.largestModel)B" +
+            line("LLM · \(pts(llm.score)) pts = CPU \(pts(llm.points(.cpu))) · GPU \(pts(llm.points(.gpu))) " +
+                 "(each half; Gemma 3 1B on both) · \(f(llm.freeGb)) GB free, largest model \(llm.largestModel)B" +
                  (llm.error.map { " · not run: \($0)" } ?? ""))
             for a in LlmAccel.allCases {
                 if let run = llm.run(a), run.decode > 0 {
@@ -84,8 +84,8 @@ enum BenchmarkReport {
             }
             if let n = llm.npu {
                 line(llm.npuCounted != nil
-                     ? "LLM NPU · \(pts(llm.npuPoints)) pts · prefill \(f(n.prefill)) tok/s · decode \(f(n.decode)) tok/s · \(LlmNpuEngine.engineName) · \(n.model ?? "?") · answer right"
-                     : "LLM NPU · 0 (\(n.error ?? "its answer was wrong"))")
+                     ? "LLM NPU (report only, not scored) · would be \(pts(llm.npuPoints)) pts · prefill \(f(n.prefill)) tok/s · decode \(f(n.decode)) tok/s · \(LlmNpuEngine.engineName) · \(n.model ?? "?") · answer right"
+                     : "LLM NPU (report only, not scored) · no result (\(n.error ?? "its answer was wrong"))")
                 n.lines.forEach(line)
             }
         }

@@ -355,7 +355,7 @@ struct BenchmarkResultView: View {
                 }
                 if llm.error == nil, let e = run?.error { note("\(a.label): \(e)", missing) }
             }
-            // the third engine: the Neural Engine, running the real model — its rates count only with the right answer
+            // report only (-llmNpuReport): the Neural Engine, running the real model — never part of the score
             if let n = llm.npu {
                 let ok = llm.npuCounted != nil
                 HStack {
@@ -363,9 +363,9 @@ struct BenchmarkResultView: View {
                     metric("NPU DECODE TOK/S", ok ? tokensPerS(n.decode) : "—", ok ? Forge.ink0 : missing); Spacer()
                     metric("ANSWER", n.error != nil ? "—" : n.right ? "RIGHT" : "WRONG", ok ? Forge.ink1 : missing)
                 }
-                if let e = n.error { note("NPU: \(e)", missing) }
+                note("NPU: report only, not scored" + (n.error.map { " — \($0)" } ?? ""), missing)
             }
-            note("CPU \(llm.points(.cpu).formatted()) · GPU \(llm.points(.gpu).formatted()) · NPU \(llm.npuPoints.formatted()) points — each a third.", Forge.ink1)
+            note("CPU \(llm.points(.cpu).formatted()) · GPU \(llm.points(.gpu).formatted()) points — each half.", Forge.ink1)
             if let e = llm.error { note("Not run: \(e).", missing) }
             note(llm.largestModel > 0
                  ? String(format: "Largest common model that fits in the memory iOS lets the app take now: %dB (4-bit, %.1f GB).", llm.largestModel, llm.freeGb)

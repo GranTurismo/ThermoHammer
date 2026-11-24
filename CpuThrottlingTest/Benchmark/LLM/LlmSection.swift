@@ -34,6 +34,10 @@ struct LlmSection: BenchmarkSection {
     static let noticeS = 3.0                        // how long "not run" stays up when the test can't run
     static let model = "GEMMA 3 1B · Q4_0"
     static let npuSeconds = 16                      // the stage's estimate of the NPU engine's run (CPU 20 s, GPU 16 s)
+    /// The Neural Engine run, report only, for development (launch argument -llmNpuReport): scoring version 5 doesn't
+    /// score the NPU — no way to run it reaches every device yet (BENCHMARK_V5_PLAN.md) — so Store builds never run it
+    /// and never download its ~1 GB model.
+    static let npuReport = ProcessInfo.processInfo.arguments.contains("-llmNpuReport")
     #if targetEnvironment(simulator)
     static let simulator = true
     #else
@@ -131,20 +135,20 @@ struct LlmSection: BenchmarkSection {
             if run.threads > 0 { threads = Int32(run.threads) }
             runs.append(run)
         }
-        // the third engine, the Neural Engine: after llama.cpp's runs, whose models are freed by now
-        let npu: LlmNpuRun
-        if crashed.contains("npu") {
-            let why = "crashed the app twice in this version"
-            npu = LlmNpuRun(prefill: 0, decode: 0, right: false, error: why, lines: ["LLM NPU · \(LlmNpuEngine.engineName) · not run: \(why)"])
-        } else {
-            BenchmarkEngine.setRunningMarker("\(Self.build):npu", forKey: Self.runningKey)
-            defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
-            guard let ran = Self.runNpu(engine) else { return }   // stopped
-            Self.clearStrikes("npu")
-            npu = ran
+        // report only (-llmNpuReport): the Neural Engine, after llama.cpp's runs, whose models are freed by now
+        var npu: LlmNpuRun? = nil
+        if Self.npuReport {
+            if crashed.contains("npu") {
+                let why = "crashed the app twice in this version"
+                npu = LlmNpuRun(prefill: 0, decode: 0, right: false, error: why, lines: ["LLM NPU · \(LlmNpuEngine.engineName) · not run: \(why)"])
+            } else {
+                BenchmarkEngine.setRunningMarker("\(Self.build):npu", forKey: Self.runningKey)
+                defer { BenchmarkEngine.clearRunningMarker(Self.runningKey) }
+                guard let ran = Self.runNpu(engine) else { return }   // stopped
+                Self.clearStrikes("npu")
+                npu = ran
+            }
         }
-        // a device that can run the model without it yet: incomplete, never submitted as "no NPU"
-        if npu.missingModel { r.validityFlags |= BenchFlag.npuModelMissing }
         let gpuRan = runs.contains { $0.accel == .gpu && $0.decode > 0 }
         r.llm = LlmResult(runs: runs, gpuName: gpuRan && !gpuName.isEmpty ? gpuName : nil, freeGb: freeGb, largestModel: largest, npu: npu)
         engine.publishLlm(nil, phase: .build, progress: 0, rate: -1, detail: "")

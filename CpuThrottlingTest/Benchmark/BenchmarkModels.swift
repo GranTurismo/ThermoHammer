@@ -63,8 +63,8 @@ enum BenchFlag {
     static let powerEvent = 1 << 2
     static let envCapped = 1 << 5
     static let cooldownTimeout = 1 << 7
-    /// The Neural Engine LLM's model wasn't on the device yet (LlmNpuModel): the LLM's NPU third is missing, not 0 — the
-    /// run is incomplete (Android's NPU_MODEL_MISSING, the same bit)
+    /// Reserved (Android's NPU_MODEL_MISSING, the same bit): version 5's drafts flagged a missing NPU model; the NPU isn't
+    /// scored, so nothing sets it
     static let npuModelMissing = 1 << 10
 }
 
@@ -494,36 +494,34 @@ struct LlmResult {
     let freeGb: Double                // memory iOS still let the app take when the test began (reported)
     let largestModel: Int             // the largest common 4-bit model that fits in it, billions of parameters (reported)
     var error: String? = nil          // why the test couldn't run at all
-    /** The third engine, the Neural Engine (LlmNpuEngine); nil: it wasn't tried (the test couldn't run at all). */
+    /** Report only (-llmNpuReport): the Neural Engine (LlmNpuEngine); nil: not run. Never part of the score. */
     var npu: LlmNpuRun? = nil
     func run(_ a: LlmAccel) -> LlmRun? { runs.first { $0.accel == a } }
     /** One engine's points: its prompt and reply rates against the same engine's reference (LlmScore). */
     func points(_ a: LlmAccel) -> Int { run(a).map { LlmScore.engine(a, $0.prefill, $0.decode) } ?? 0 }
     /** The NPU's result when it counts: it ran, and answered the check question right. */
     var npuCounted: LlmNpuRun? { npu.flatMap { $0.right && $0.error == nil ? $0 : nil } }
-    /** The NPU's points; 0 when it didn't run, failed, or answered the check question wrongly. */
+    /** What the NPU would score against its reference (report only; never part of the score). */
     var npuPoints: Int { npuCounted.map { LlmScore.npu($0.prefill, $0.decode) } ?? 0 }
-    private var rates: [(Double, Double)] { runs.map { ($0.prefill, $0.decode) } + (npuCounted.map { [($0.prefill, $0.decode)] } ?? []) }
+    private var rates: [(Double, Double)] { runs.map { ($0.prefill, $0.decode) } }
     /// The fastest engine at each — what a chat app on this device could get (shown, not scored).
     var prefill: Double { rates.map(\.0).max() ?? 0 }
     var decode: Double { rates.map(\.1).max() ?? 0 }
     /// The best engine's points for each phase, against that engine's own reference (CSV, the report).
     var prefillPoints: Int {
-        max(run(.cpu).map { LlmScore.phase($0.prefill, LlmScore.refCpuPrefill) } ?? 0, run(.gpu).map { LlmScore.phase($0.prefill, LlmScore.refGpuPrefill) } ?? 0,
-            npuPoints > 0 ? LlmScore.phase(npu!.prefill, LlmScore.refNpuPrefill) : 0)
+        max(run(.cpu).map { LlmScore.phase($0.prefill, LlmScore.refCpuPrefill) } ?? 0, run(.gpu).map { LlmScore.phase($0.prefill, LlmScore.refGpuPrefill) } ?? 0)
     }
     var decodePoints: Int {
-        max(run(.cpu).map { LlmScore.phase($0.decode, LlmScore.refCpuDecode) } ?? 0, run(.gpu).map { LlmScore.phase($0.decode, LlmScore.refGpuDecode) } ?? 0,
-            npuPoints > 0 ? LlmScore.phase(npu!.decode, LlmScore.refNpuDecode) : 0)
+        max(run(.cpu).map { LlmScore.phase($0.decode, LlmScore.refCpuDecode) } ?? 0, run(.gpu).map { LlmScore.phase($0.decode, LlmScore.refGpuDecode) } ?? 0)
     }
-    /// Version 5's rule B: the CPU, the GPU and the NPU each count a third — an engine that can't run the task counts 0.
-    var score: Int { LlmScore.overall(points(.cpu), points(.gpu), npuPoints) }
+    /// Version 5: the CPU and the GPU each count half — an engine that can't run the task counts 0. The NPU isn't scored.
+    var score: Int { LlmScore.overall(points(.cpu), points(.gpu)) }
 }
 
 enum LlmScore {
-    // Version 5: Gemma 3 1B (4-bit) on each engine, each against the same engine's reference, then the three averaged
-    // (rule B, BENCHMARK_V5_PLAN.md). Tokens/s worth 6000 points per engine: the Honor VKP-NX9 in Performance mode, the
-    // median of its test runs of 2026-11-23 (Benchmark.kt, BenchmarkScoring.cs)
+    // Version 5: Gemma 3 1B (4-bit) on the CPU and the GPU, each against the same engine's reference, then the two
+    // averaged (BENCHMARK_V5_PLAN.md). Tokens/s worth 6000 points per engine: the Honor VKP-NX9 in Performance mode, the
+    // median of its test runs of 2026-11-23 (Benchmark.kt, BenchmarkScoring.cs). refNpu*: what a report-only NPU run would score
     static let refCpuPrefill = 160.0, refCpuDecode = 55.0
     static let refGpuPrefill = 890.0, refGpuDecode = 32.0
     static let refNpuPrefill = 5450.0, refNpuDecode = 52.0
@@ -541,8 +539,8 @@ enum LlmScore {
         }
     }
     static func npu(_ prefill: Double, _ decode: Double) -> Int { engine(prefill, decode, refNpuPrefill, refNpuDecode) }
-    /// Each engine counts a third; one the device lacks or can't run the task on scores 0 there.
-    static func overall(_ cpu: Int, _ gpu: Int, _ npu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0) + max(npu, 0)) / 3).rounded()) }
+    /// The CPU and the GPU each count half; one the device lacks or can't run the task on scores 0 there.
+    static func overall(_ cpu: Int, _ gpu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0)) / 2).rounded()) }
 }
 
 // MARK: - The whole run

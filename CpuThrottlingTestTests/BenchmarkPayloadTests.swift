@@ -62,13 +62,13 @@ final class BenchmarkPayloadTests: XCTestCase {
         XCTAssertEqual(right.llm?.prefillNpu, LlmScore.refNpuPrefill)
         XCTAssertEqual(right.llm?.decodeNpu, LlmScore.refNpuDecode)
         XCTAssertEqual(right.llm?.npu, "\(LlmNpuEngine.engineName) · gemma-3-1b-lut4")
-        XCTAssertEqual(right.sectionScores["llm"], 4000)                           // (6000 + 0 + 6000) / 3, re-derived from the record
+        XCTAssertEqual(right.sectionScores["llm"], 3000)                           // (6000 + 0) / 2: the NPU is kept, never scored
         // a wrong answer: the model ran (it's named), its rates don't count
         let wrong = BenchmarkRecord(llm(npu: LlmNpuRun(prefill: 9000, decode: 90, right: false, model: "gemma-3-1b-lut4")))
         XCTAssertEqual(wrong.llm?.prefillNpu, 0)
         XCTAssertEqual(wrong.llm?.decodeNpu, 0)
         XCTAssertEqual(wrong.llm?.npu, "\(LlmNpuEngine.engineName) · gemma-3-1b-lut4")
-        XCTAssertEqual(wrong.sectionScores["llm"], 2000)
+        XCTAssertEqual(wrong.sectionScores["llm"], 3000)
         // no engine in this build: nothing ran, nothing named
         let none = BenchmarkRecord(llm(npu: LlmNpuRun(prefill: 0, decode: 0, right: false, error: "no Neural Engine LLM engine in this build yet")))
         XCTAssertEqual(none.llm?.prefillNpu, 0)
