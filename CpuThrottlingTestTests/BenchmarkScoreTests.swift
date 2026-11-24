@@ -6,11 +6,11 @@ final class BenchmarkScoreTests: XCTestCase {
 
     /**
      * The reference phone (Honor VKP-NX9, Snapdragon 8 Elite, Performance mode): the median of every measurement over its
-     * 11 runs of 2026-11-23 scores 6000 on each test — the same numbers pin Benchmark.kt, BenchmarkScoring.cs and
+     * 11 runs of 2026-11-23 scores 7200 (refPoints) on each test — the same numbers pin Benchmark.kt, BenchmarkScoring.cs and
      * BenchmarkModels.cs, so the four copies of the references can't drift apart.
      */
-    func testTheReferencePhonesMediansScore6000OnEveryTest() {
-        func near(_ points: Int, _ what: String) { XCTAssertTrue((5970...6030).contains(points), "\(what) scored \(points)") }
+    func testTheReferencePhonesMediansScore7200OnEveryTest() {
+        func near(_ points: Int, _ what: String) { XCTAssertTrue((7164...7236).contains(points), "\(what) scored \(points)") }
         let cpu: [(CpuTest, Double)] = [(.math, 3039.31), (.data, 1533.32), (.crypto, 1184.12), (.multi, 8884.08)]
         for (t, v) in cpu { near(CpuScore.points(t, v), t.title) }
         near(MemScore.ram(63.51, 28.26, 19.71, 133.94), "RAM")
@@ -30,19 +30,20 @@ final class BenchmarkScoreTests: XCTestCase {
         let jobs: [(ExportJob, Double)] = [(.avc4k, 136.3), (.hevc4k, 136.3), (.av14k, 0), (.hevc8k, 0)]
         XCTAssertEqual(UxScore.exportPoints(ExportResult(jobs: jobs.map {
             ExportJobResult(job: $0.0, fps: $0.1, psnr: $0.1 > 0 ? 40 : 0, encoder: nil, hardware: $0.1 > 0)
-        })), 3000)
+        })), 3600)
         near(AiScore.accel(.cpu, [543.63, 28.67, 7.73, 4.59, 64.54, 3967.59]), "AI CPU")
         near(AiScore.accel(.gpu, [280.7, 36.7, 16.6, 38.8, 74.2, 582.0]), "AI GPU")
         near(AiScore.accel(.npu, [1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38]), "AI NPU")
         XCTAssertEqual(BenchmarkScore.version, 5)
+        XCTAssertEqual(BenchmarkScore.refPoints, 7200)            // five sections: the reference phone totals 36,000
     }
 
     func testTheTotalIsTheFiveSectionsWithNoLlm() {
         var r = BenchmarkResult()
         r.ai = AiResult(runs: AiTest.allCases.flatMap { t in [AiAccel.cpu, .gpu].map { AiRun(test: t, accel: $0, ips: AiScore.ref(t, $0)) } },
                         npuRuntime: nil)
-        XCTAssertEqual(r.aiScore, 6000)
-        XCTAssertEqual(r.total, 6000)                                                 // CPU + MEM + GPU + UX + AI: nothing else adds
+        XCTAssertEqual(r.aiScore, 7200)
+        XCTAssertEqual(r.total, 7200)                                                 // CPU + MEM + GPU + UX + AI: nothing else adds
         XCTAssertFalse(PhoneHealth.parts(r).keys.contains { $0.hasPrefix("llm.") })   // nothing for Phone Health to compare
         XCTAssertFalse(r.isComplete)                                                  // CPU, MEM, GPU and UX didn't run
     }
@@ -54,9 +55,9 @@ final class BenchmarkScoreTests: XCTestCase {
                 return AiRun(test: t, accel: a, ips: a == .gpu && !gpu ? 0 : AiScore.ref(t, a))
             } }, npuRuntime: npu ? "Core ML · Neural Engine" : nil)
         }
-        XCTAssertEqual(result(npu: true).score, 6000)
-        XCTAssertEqual(result(npu: false).score, 6000)                 // no NPU: nothing lost
-        XCTAssertEqual(result(npu: true, gpu: false).score, 3000)      // no GPU: its half
+        XCTAssertEqual(result(npu: true).score, 7200)
+        XCTAssertEqual(result(npu: false).score, 7200)                 // no NPU: nothing lost
+        XCTAssertEqual(result(npu: true, gpu: false).score, 3600)      // no GPU: its half
         XCTAssertEqual(result(npu: false).shown, [.cpu, .gpu])         // a Store build's run shows no NPU column
         XCTAssertEqual(result(npu: true).shown, [.cpu, .gpu, .npu])    // a -npuReport run does, report only
         var r = BenchmarkResult()

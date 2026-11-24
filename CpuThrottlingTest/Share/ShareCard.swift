@@ -199,7 +199,7 @@ struct ShareCardView: View {
 
 // MARK: - Pieces shared with the presentation
 
-/** The five section bars: each bar's length is its points against max(12000, the largest section). */
+/** The five section bars: each bar's length is its points against max(2 × the reference (14,400), the largest section). */
 struct SectionBars: View {
     let sections: [SectionScore]
     var nameSize: CGFloat = 14
@@ -210,7 +210,7 @@ struct SectionBars: View {
     var valueWidth: CGFloat = 80
 
     var body: some View {
-        let top = Double(max(12000, sections.map(\.points).max() ?? 0))
+        let top = max(2 * BenchmarkScore.refPoints, Double(sections.map(\.points).max() ?? 0))
         VStack(spacing: spacing) {
             ForEach(sections) { s in
                 HStack(spacing: nameSize * 0.75) {

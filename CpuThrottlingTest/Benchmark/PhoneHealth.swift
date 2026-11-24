@@ -49,7 +49,7 @@ enum PhoneHealth {
         let findings: [Finding]
     }
 
-    /** The run's parts, each 6000 on the reference phone — named as the server names them. */
+    /** The run's parts, each 7200 (BenchmarkScore.refPoints) on the reference phone — named as the server names them. */
     static func parts(_ r: BenchmarkResult) -> [String: Int] {
         var p: [String: Int] = [:]
         if let c = r.cpu {

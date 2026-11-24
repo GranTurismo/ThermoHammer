@@ -29,7 +29,7 @@ struct WelcomeView: View {
                     body: "Five sections, scored on our server, the same test on every phone — and the only one that also tells you when your phone gets too hot to keep up.",
                     accent: Forge.phaseMeasured, art: 0),
         WelcomePage(kicker: "01 · FIVE SECTIONS", title: "One honest score",
-                    body: "Processor, memory and storage, 3D graphics with ray tracing, everyday apps and AI image models. Each test is 6,000 points on a Snapdragon 8 Elite.",
+                    body: "Processor, memory and storage, 3D graphics with ray tracing, everyday apps and AI image models. Each test is 7,200 points on a Snapdragon 8 Elite.",
                     accent: Ramp.at(0.25), art: 1),
         WelcomePage(kicker: "02 · SAME WORK EVERYWHERE", title: "Byte-identical on every platform",
                     body: "iPhone, Android and Mac run the very same C\u{2060}+\u{2060}+, the same 3D scenes and the same AI models. A score means the same thing on every device.",

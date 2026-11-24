@@ -3,14 +3,18 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK — the same five sections and the same scoring as the Android app
 // (engine/Benchmark.kt) and the server (BenchmarkScoring.cs): CPU + MEM + GPU
-// + UX + AI, every test 6000 points on the reference phone (Honor VKP-NX9,
-// Snapdragon 8 Elite) in Performance mode — scoring version 5. Change a number
+// + UX + AI, every test 7200 points (BenchmarkScore.refPoints) on the reference
+// phone (Honor VKP-NX9, Snapdragon 8 Elite) in Performance mode — scoring
+// version 5, so its total is 36,000. Change a number
 // here only together with those two (BenchmarkScoreTests pins them).
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum BenchmarkScore {
     /// Bump when a scene, the resolution or the scoring changes — scores compare only within a version.
     static let version = 5
+    /// What every test's reference is worth: 7,200, so the reference phone's five sections total 36,000 — what six
+    /// sections at 6,000 gave before the LLM test was dropped (Benchmark.kt and BenchmarkScoring.cs: the same).
+    static let refPoints = 7200.0
     /// Frames that start before this (s) are driver/shader warm-up and not scored.
     static let warmupS: Float = 2
     static let windowS: Float = 5
@@ -69,14 +73,14 @@ enum BenchFlag {
 
 // MARK: - GPU
 
-/// One GPU test: its scene, timeline length and the weight that turns fps into points (129.85 / 28.98 / 14.12 fps → 6000).
+/// One GPU test: its scene, timeline length and the weight that turns fps into points (129.85 / 28.98 / 14.12 fps → 7200).
 enum GpuTest: Int, CaseIterable {
     case lakeValley = 1, neonCity = 2, neonCityRT = 3
 
     var number: Int { rawValue }
     var title: String { ["", "LAKE VALLEY", "NEON CITY", "NEON CITY RT"][rawValue] }
     var seconds: Int { [0, 50, 60, 60][rawValue] }
-    var weight: Double { [0, 46.21, 207.0, 424.9][rawValue] }
+    var weight: Double { [0, 55.452, 248.4, 509.88][rawValue] }
     var rayTracing: Bool { self == .neonCityRT }
 }
 
@@ -137,13 +141,13 @@ struct CpuResult {
 }
 
 enum CpuScore {
-    // geometric-mean kernel ops/s worth 6000 points (the Honor in Performance mode, the median of 11 runs on 2026-11-23 — see Benchmark.kt)
+    // geometric-mean kernel ops/s worth 7200 points (the Honor in Performance mode, the median of 11 runs on 2026-11-23 — see Benchmark.kt)
     static let refMath = 3039.0, refData = 1533.0, refCrypto = 1184.0, refMulti = 8884.0
 
     static func ref(_ t: CpuTest) -> Double {
         switch t { case .math: return refMath; case .data: return refData; case .crypto: return refCrypto; case .multi: return refMulti }
     }
-    static func points(_ t: CpuTest, _ value: Double) -> Int { Int((6000 * max(value, 0) / ref(t)).rounded()) }
+    static func points(_ t: CpuTest, _ value: Double) -> Int { Int((BenchmarkScore.refPoints * max(value, 0) / ref(t)).rounded()) }
     static func overall(_ points: [Int]) -> Int { geomean(points) }
 }
 
@@ -185,10 +189,10 @@ enum MemScore {
     // timed after each step's warm-up (MemBench.warmUp): the version 4 references timed SQLite's climb
     static let refInsert = 15_700.0, refUpdate = 389_000.0, refQuery = 43_800.0
 
-    /// 6000 × the geometric mean of value ÷ reference; 0 if any part is 0.
+    /// refPoints × the geometric mean of value ÷ reference; 0 if any part is 0.
     private static func geo(_ ratios: [Double]) -> Int {
         guard ratios.allSatisfy({ $0 > 0 }) else { return 0 }
-        return Int((6000 * exp(ratios.map(log).reduce(0, +) / Double(ratios.count))).rounded())
+        return Int((BenchmarkScore.refPoints * exp(ratios.map(log).reduce(0, +) / Double(ratios.count))).rounded())
     }
     static func ram(_ read: Double, _ write: Double, _ copy: Double, _ latencyNs: Double) -> Int {
         latencyNs > 0 ? geo([read / refRead, write / refWrite, copy / refCopy, refLatency / latencyNs]) : 0
@@ -387,30 +391,30 @@ enum UxScore {
     static let refVideo8k = 83.1        // 8K frames/s, mean of HEVC and AV1
     static let refExport = 136.3        // encoded 4K frames/s, mean of H.264, HEVC, AV1
     static let refExport8k = 34.1       // encoded 8K frames/s, HEVC
-    static let qrWeight = 5.122         // zxing-cpp decodes/s → points (the Honor's 1,171.5/s → 6000, as on Android)
+    static let qrWeight = 6.1464        // zxing-cpp decodes/s → points (the Honor's 1,171.5/s → 7200, as on Android)
 
     static func webPoints(_ r: WebResult) -> Int {
         let parts = [r.layout / refLayout, r.canvas / refCanvas, r.css / refCss, r.svg / refSvg, r.js / refJs]
         guard parts.allSatisfy({ $0 > 0 }) else { return 0 }
-        return Int((6000 * exp(parts.map(log).reduce(0, +) / Double(parts.count))).rounded())
+        return Int((BenchmarkScore.refPoints * exp(parts.map(log).reduce(0, +) / Double(parts.count))).rounded())
     }
-    static func scrollPoints(_ speed: Double) -> Int { Int((6000 * max(speed, 0) / refScroll).rounded()) }
+    static func scrollPoints(_ speed: Double) -> Int { Int((BenchmarkScore.refPoints * max(speed, 0) / refScroll).rounded()) }
     /// Mean over the three formats, so a browser without AVIF loses a third instead of everything.
     static func galleryPoints(_ r: GalleryResult) -> Int {
-        Int((6000 * (max(r.jpeg, 0) / refJpeg + max(r.webp, 0) / refWebp + max(r.avif, 0) / refAvif) / 3).rounded())
+        Int((BenchmarkScore.refPoints * (max(r.jpeg, 0) / refJpeg + max(r.webp, 0) / refWebp + max(r.avif, 0) / refAvif) / 3).rounded())
     }
-    static func photoPoints(_ mps: Double) -> Int { Int((6000 * max(mps, 0) / refPhoto).rounded()) }
+    static func photoPoints(_ mps: Double) -> Int { Int((BenchmarkScore.refPoints * max(mps, 0) / refPhoto).rounded()) }
     /// 4K three quarters (mean of the four codecs), 8K one quarter (mean of HEVC and AV1).
     static func videoPoints(_ r: VideoResult) -> Int {
         let k4 = VideoClip.allCases.filter { !$0.k8 }.map { max(r.fps($0), 0) }
         let k8 = VideoClip.allCases.filter { $0.k8 }.map { max(r.fps($0), 0) }
-        return Int((6000 * (0.75 * k4.reduce(0, +) / (refVideo * Double(k4.count)) +
+        return Int((BenchmarkScore.refPoints * (0.75 * k4.reduce(0, +) / (refVideo * Double(k4.count)) +
                             0.25 * k8.reduce(0, +) / (refVideo8k * Double(k8.count)))).rounded())
     }
     /// The same split: 4K (mean of H.264, HEVC, AV1) three quarters, 8K HEVC one quarter; a failed quality check = 0.
     static func exportPoints(_ r: ExportResult) -> Int {
         let k4 = ExportJob.allCases.filter { !$0.k8 }.map { max(r.counted($0), 0) }
-        return Int((6000 * (0.75 * k4.reduce(0, +) / (refExport * Double(k4.count)) +
+        return Int((BenchmarkScore.refPoints * (0.75 * k4.reduce(0, +) / (refExport * Double(k4.count)) +
                             0.25 * max(r.counted(.hevc8k), 0) / refExport8k)).rounded())
     }
     static func qrPoints(_ rate: Double) -> Int { Int((max(rate, 0) * qrWeight).rounded()) }
@@ -469,10 +473,10 @@ enum AiScore {
         let i = t.rawValue - 1
         switch a { case .cpu: return refCpu[i]; case .gpu: return refGpu[i]; case .npu: return refNpu[i] }
     }
-    static func points(_ t: AiTest, _ a: AiAccel, _ ips: Double) -> Int { Int((6000 * max(ips, 0) / ref(t, a)).rounded()) }
+    static func points(_ t: AiTest, _ a: AiAccel, _ ips: Double) -> Int { Int((BenchmarkScore.refPoints * max(ips, 0) / ref(t, a)).rounded()) }
     /// One accelerator: mean of its six model points — a model it can't run costs a sixth.
     static func accel(_ a: AiAccel, _ ips: [Double]) -> Int {
-        Int((AiTest.allCases.enumerated().map { 6000 * max(ips[$0.offset], 0) / ref($0.element, a) }.reduce(0, +) / Double(AiTest.allCases.count)).rounded())
+        Int((AiTest.allCases.enumerated().map { BenchmarkScore.refPoints * max(ips[$0.offset], 0) / ref($0.element, a) }.reduce(0, +) / Double(AiTest.allCases.count)).rounded())
     }
     /// The CPU and the GPU each half; one that can't run the models scores 0 there.
     static func overall(_ cpu: Int, _ gpu: Int) -> Int { Int((Double(max(cpu, 0) + max(gpu, 0)) / 2).rounded()) }
