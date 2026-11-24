@@ -345,6 +345,10 @@ The user rejected every rule that lets a newer chip lose points while its Gemma 
 - **Automatic:** `.github/workflows/npu-models.yml` runs daily (active once on main). It builds what's missing, checks the CPU answers, and runs the publish gate (`verify.py`: whole model on the NPU, Google's settings). Then it publishes to the site's `models/android/` using the deploy secrets that already exist, over a pinned host key.
   - Phones download their file (`NpuServerModels`).
   - The server requires that chip's NPU part within 30 minutes (`NpuChipCatalog`).
+- **Honor compare run (2026-11-24 16:19, report-20261124-1619-6508):** Google's sm8750 file vs ours on the same phone, ours right after Google's.
+  - Google: prompt 5,532 tok/s, reply 60.68 tok/s, 6,530 pts.
+  - Ours: prompt 5,710 tok/s (+3.2 %), reply 58.98 tok/s (−2.8 %), ≈6,540 pts.
+  - Both answered "Paris". The scores are equal within noise.
 - **Open, for the user after the Honor compare run:** keep Google's files for the seven pack chips, or ship our build for every chip (one toolchain for all; the NPU reference would then be re-measured with our sm8750 file).
 
 ## Release runbook (version 5)
