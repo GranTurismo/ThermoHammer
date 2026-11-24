@@ -105,7 +105,7 @@ class CsvExportTest {
         val lines = CsvExport.benchmark(r).trimEnd('\n').split('\n')
         assertEquals("section,metric,value,unit", lines[0])
         assertTrue(lines.drop(1).all { it.split(',').size == 4 })
-        for (row in listOf("cpu,math_points,6000,points", "cpu,math_matrix_multiply,3039.00,ops/s",
+        for (row in listOf("cpu,math_points,7200,points", "cpu,math_matrix_multiply,3039.00,ops/s",
                 "mem,ram_read,48.20,GB/s", "mem,ram_latency,151.30,ns", "mem,storage_direct_io,0,bool", "mem,db_query,5100.00,queries/s",
                 "gpu,lake_valley_avg_fps,121.37,fps", "gpu,lake_valley_start_temp,35.0,C", "gpu,neon_city_rt_supported,0,bool",
                 "ux,web_layout,3700.00,complexity", "ux,photo_edit,118.30,MP/s", "ux,video_h_264_4k_fps,241.50,fps",

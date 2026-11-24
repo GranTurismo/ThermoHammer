@@ -37,7 +37,7 @@ object PhoneHealth {
         val findings: List<Finding>
     )
 
-    /** The run's parts, each 6000 on the reference phone — named as the server names them (BenchmarkScoring.Parts). */
+    /** The run's parts, each BenchmarkScore.REF_POINTS (7,200) on the reference phone — named as the server names them (BenchmarkScoring.Parts). */
     fun parts(r: BenchmarkResult): Map<String, Int> {
         fun gpu(t: BenchmarkTest) = r.tests.firstOrNull { it.test == t }?.points ?: 0
         return buildMap {

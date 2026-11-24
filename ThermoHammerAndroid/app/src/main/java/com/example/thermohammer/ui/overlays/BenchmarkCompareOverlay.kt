@@ -84,7 +84,7 @@ private fun mono(size: TextUnit, color: Color, weight: FontWeight = FontWeight.N
     TextStyle(color = color, fontSize = size, fontFamily = InstrumentMono, fontWeight = weight, textAlign = align ?: TextAlign.Unspecified, letterSpacing = spacing)
 
 /**
- * Two leaderboard runs head to head: who leads overall and by how much, the shape of both across the six sections, every
+ * Two leaderboard runs head to head: who leads overall and by how much, the shape of both across the five sections, every
  * section as mirrored bars that open into each test's numbers (the better one lit in its side's colour), and the facts of
  * both devices. [a] and [b] are board entries; their full runs are loaded here.
  */

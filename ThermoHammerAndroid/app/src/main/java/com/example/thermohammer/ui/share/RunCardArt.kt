@@ -216,7 +216,7 @@ object RunCardArt {
         }
     }
 
-    /** The six section rows inside [r], evenly spaced: name, a bar of value / max(12000, largest section), value. */
+    /** The section rows inside [r], evenly spaced: name, a bar of value / max(RunCard.BAR_FLOOR, largest section), value. */
     fun drawSections(c: Canvas, r: RectF, card: RunCard.Benchmark, s: Float, f: CardFonts) {
         if (card.sections.isEmpty()) return
         val rowH = r.height() / card.sections.size

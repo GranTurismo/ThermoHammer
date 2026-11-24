@@ -4,6 +4,7 @@ import com.example.thermohammer.data.ShareLinks
 import com.example.thermohammer.data.StressCurve
 import com.example.thermohammer.data.deviceDisplayName
 import com.example.thermohammer.engine.BenchmarkResult
+import com.example.thermohammer.engine.BenchmarkScore
 import com.example.thermohammer.engine.StampV2
 import com.example.thermohammer.network.BenchmarkDetailDto
 import com.example.thermohammer.network.BenchmarkDto
@@ -42,7 +43,7 @@ sealed interface RunCard {
     ) : RunCard {
         override val settings: String get() = "FULL BENCHMARK · ${sections.size} SECTIONS"
         override val shareText: String get() = ShareLinks.benchmarkText(device, total, url, mine)
-        /** A bar's full length: the largest section, but never under 12,000 points. */
+        /** A bar's full length: the largest section, but never under [BAR_FLOOR] (twice the reference phone's section). */
         val barMax: Int get() = maxOf(BAR_FLOOR, sections.maxOfOrNull { it.points } ?: 0)
     }
 
@@ -65,7 +66,7 @@ sealed interface RunCard {
     }
 
     companion object {
-        const val BAR_FLOOR = 12_000
+        const val BAR_FLOOR = 2 * BenchmarkScore.REF_POINTS   // 14,400
         val SECTION_ORDER = listOf("CPU", "MEM", "GPU", "UX", "AI")
 
         /** The five sections in their order, without the ones the run doesn't have (0 points). */

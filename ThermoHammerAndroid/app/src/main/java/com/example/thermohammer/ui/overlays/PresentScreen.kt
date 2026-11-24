@@ -48,7 +48,7 @@ import kotlin.math.roundToInt
 //   Full screen (its own window above the tab bar, system bars hidden), the
 //   screen kept awake. Only the device, one line of context and the data: the
 //   stress curve (the share card's own drawing, resized live to the screen) or
-//   the total and the six section bars. A small ✕ fades after 3 s and comes
+//   the total and the five section bars. A small ✕ fades after 3 s and comes
 //   back on a tap; Back / Esc close it. Portrait and landscape alike.
 // ─────────────────────────────────────────────────────────────────────────────
 

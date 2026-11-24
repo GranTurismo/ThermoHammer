@@ -74,9 +74,9 @@ class ShareLinksTest {
         assertEquals(listOf("CPU", "MEM", "UX", "AI"), s.map { it.name })
     }
 
-    @Test fun barsReachTwelveThousandUnlessASectionIsBigger() {
+    @Test fun barsReachTwiceTheReferenceUnlessASectionIsBigger() {
         val small = card(RunCard.sections(6000, 5000, 4000, 7000, 3000))
-        assertEquals(12_000, small.barMax)
+        assertEquals(14_400, small.barMax)
         val big = card(RunCard.sections(16000, 5000, 4000, 7000, 3000))
         assertEquals(16_000, big.barMax)
     }

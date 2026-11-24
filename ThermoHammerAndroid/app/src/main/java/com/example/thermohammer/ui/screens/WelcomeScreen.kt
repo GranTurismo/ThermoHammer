@@ -76,7 +76,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
                     "when your phone gets too hot to keep up.", Forge.phaseMeasured) { t, a -> ReactorArt(t, a) },
             Page("01 · FIVE SECTIONS", "One honest score",
                 "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, and AI image models running " +
-                    "right on your phone. Each test is 6,000 points on a Snapdragon 8 Elite.",
+                    "right on your phone. Each test is 7,200 points on a Snapdragon 8 Elite.",
                 Ramp.at(0.25f)) { t, a -> SectionsArt(t, a) },
             Page("02 · SAME WORK EVERYWHERE", "Byte-identical on every platform",
                 "Android, iPhone and Mac run the very same C++, the same 3D scenes and the same AI models. A score means " +

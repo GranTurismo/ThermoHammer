@@ -221,7 +221,7 @@ private fun BenchmarkBoard(isNetworkConnected: Boolean, platform: Int) {
                 Column(Modifier.weight(1f)) {
                     Text("PHONE BENCHMARK", style = TextStyle(color = Forge.ink0, fontSize = 18.sp, fontFamily = InstrumentMono,
                         fontWeight = FontWeight.Black, letterSpacing = 1.5.sp))
-                    Text("All six sections · best verified run per phone",
+                    Text("All five sections · best verified run per phone",
                         style = TextStyle(color = Forge.ink0.copy(alpha = 0.4f), fontSize = 9.sp, fontFamily = InstrumentMono))
                 }
                 ComparePill(on = picking) { if (picking) stopComparing() else { picking = true; picked = emptyList() } }

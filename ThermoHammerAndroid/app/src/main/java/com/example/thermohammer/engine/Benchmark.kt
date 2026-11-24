@@ -24,12 +24,12 @@ enum class RunKind { BENCHMARK, STRESS }
  */
 enum class BenchSection(val label: String) { CPU("CPU"), MEM("MEM"), GPU("GPU"), UX("UX"), AI("AI") }
 
-/** One GPU test: its scene, timeline length and the weight that turns fps into points — the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5) = 6000 (BenchmarkScoring.cs repeats them). */
+/** One GPU test: its scene, timeline length and the weight that turns fps into points — the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5) = 7,200 (BenchmarkScore.REF_POINTS; BenchmarkScoring.cs repeats them). */
 enum class BenchmarkTest(val number: Int, val scene: GpuSceneId, val title: String, val seconds: Int,
                          val weight: Double, val rayTracing: Boolean = false) {
-    LAKE_VALLEY(1, GpuSceneId.LAKE_VALLEY, "LAKE VALLEY", 50, 46.21),                      // 129.85 fps
-    NEON_CITY(2, GpuSceneId.NEON_CITY, "NEON CITY", 60, 207.0),                            // 28.98 fps
-    NEON_CITY_RT(3, GpuSceneId.NEON_CITY, "NEON CITY RT", 60, 424.9, rayTracing = true);  // 14.12 fps
+    LAKE_VALLEY(1, GpuSceneId.LAKE_VALLEY, "LAKE VALLEY", 50, 55.452),                     // 129.85 fps
+    NEON_CITY(2, GpuSceneId.NEON_CITY, "NEON CITY", 60, 248.4),                            // 28.98 fps
+    NEON_CITY_RT(3, GpuSceneId.NEON_CITY, "NEON CITY RT", 60, 509.88, rayTracing = true); // 14.12 fps
 }
 
 data class BenchmarkTestResult(
@@ -103,7 +103,7 @@ data class MemResult(val ram: RamResult, val storage: StorageResult, val db: DbR
 }
 
 object MemScore {
-    // Reference values, 6000 points each: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5).
+    // Reference values, 7,200 points each (BenchmarkScore.REF_POINTS): the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5).
     // Never calibrate on the emulator — its RAM and storage are the Mac's. Repeated in BenchmarkScoring.cs.
     const val REF_READ = 63.5              // GB/s, every core
     const val REF_WRITE = 28.3
@@ -119,9 +119,9 @@ object MemScore {
     const val REF_UPDATE = 389_000.0
     const val REF_QUERY = 43_800.0         // chats opened/s
 
-    /** 6000 × the geometric mean of value ÷ reference; 0 if any part is 0. */
+    /** REF_POINTS × the geometric mean of value ÷ reference; 0 if any part is 0. */
     private fun geo(vararg ratios: Double): Int =
-        if (ratios.any { !(it > 0) }) 0 else (6000 * exp(ratios.sumOf { ln(it) } / ratios.size)).roundToInt()
+        if (ratios.any { !(it > 0) }) 0 else (BenchmarkScore.REF_POINTS * exp(ratios.sumOf { ln(it) } / ratios.size)).roundToInt()
 
     fun ram(read: Double, write: Double, copy: Double, latencyNs: Double): Int =
         if (!(latencyNs > 0)) 0 else geo(read / REF_READ, write / REF_WRITE, copy / REF_COPY, REF_LATENCY / latencyNs)
@@ -147,7 +147,7 @@ data class CpuResult(val runs: List<CpuTestRun>) {
 }
 
 object CpuScore {
-    // Reference values (geometric mean of the test's kernel ops/s, the shared C++ kernels of BenchCore), 6000 points
+    // Reference values (geometric mean of the test's kernel ops/s, the shared C++ kernels of BenchCore), 7,200 points
     // each: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5). Repeated in BenchmarkScoring.cs.
     const val REF_MATH = 3039.0
     const val REF_DATA = 1533.0
@@ -161,7 +161,7 @@ object CpuScore {
         CpuTest.MULTI -> REF_MULTI
     }
 
-    fun points(t: CpuTest, value: Double): Int = (6000 * value.coerceAtLeast(0.0) / ref(t)).roundToInt()
+    fun points(t: CpuTest, value: Double): Int = (BenchmarkScore.REF_POINTS * value.coerceAtLeast(0.0) / ref(t)).roundToInt()
 
     /** Geometric mean of the four tests. */
     fun overall(points: List<Int>): Int {
@@ -367,7 +367,7 @@ data class UxResult(
 }
 
 object UxScore {
-    // Reference results, scored at 6000 points each: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5).
+    // Reference results, scored at 7,200 points each (BenchmarkScore.REF_POINTS): the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5).
     // The server repeats these numbers (BenchmarkScoring.cs).
     const val REF_LAYOUT = 3061.0     // cards reflowed every frame
     const val REF_CANVAS = 4818.0     // gradient shapes
@@ -386,30 +386,30 @@ object UxScore {
     const val REF_VIDEO_8K = 83.1     // decoded 8K frames/s, mean of HEVC and AV1
     const val REF_EXPORT = 136.3      // encoded 4K frames/s, mean of H.264, HEVC, AV1
     const val REF_EXPORT_8K = 34.1    // encoded 8K frames/s, HEVC
-    // zxing-cpp decodes/s → points: the Honor's 1,171.5/s → 6000
-    const val QR_WEIGHT = 5.122
+    // zxing-cpp decodes/s → points: the Honor's 1,171.5/s → 7,200
+    const val QR_WEIGHT = 6.1464
 
     fun webPoints(r: WebResult): Int {
         val parts = doubleArrayOf(r.layout / REF_LAYOUT, r.canvas / REF_CANVAS, r.css / REF_CSS, r.svg / REF_SVG, r.js / REF_JS)
         if (parts.any { !(it > 0.0) }) return 0
-        return (6000 * exp(parts.sumOf { ln(it) } / parts.size)).roundToInt()
+        return (BenchmarkScore.REF_POINTS * exp(parts.sumOf { ln(it) } / parts.size)).roundToInt()
     }
 
-    fun scrollPoints(speed: Double): Int = (6000 * speed.coerceAtLeast(0.0) / REF_SCROLL).roundToInt()
+    fun scrollPoints(speed: Double): Int = (BenchmarkScore.REF_POINTS * speed.coerceAtLeast(0.0) / REF_SCROLL).roundToInt()
 
     /** Mean over the three formats, so a WebView without AVIF loses a third instead of everything. */
     fun galleryPoints(r: GalleryResult): Int =
-        (6000 * (r.jpeg.coerceAtLeast(0.0) / REF_JPEG + r.webp.coerceAtLeast(0.0) / REF_WEBP +
+        (BenchmarkScore.REF_POINTS * (r.jpeg.coerceAtLeast(0.0) / REF_JPEG + r.webp.coerceAtLeast(0.0) / REF_WEBP +
             r.avif.coerceAtLeast(0.0) / REF_AVIF) / 3).roundToInt()
 
-    fun photoPoints(mps: Double): Int = (6000 * mps.coerceAtLeast(0.0) / REF_PHOTO).roundToInt()
+    fun photoPoints(mps: Double): Int = (BenchmarkScore.REF_POINTS * mps.coerceAtLeast(0.0) / REF_PHOTO).roundToInt()
 
     /**
      * 4K counts three quarters (mean over the four codecs, so a codec the phone lacks costs a quarter of that), 8K one
      * quarter (mean of HEVC and AV1) — a phone without 8K loses a little, not half.
      */
     fun videoPoints(fps4k: List<Double>, fps8k: List<Double>): Int =
-        (6000 * (0.75 * fps4k.sumOf { it.coerceAtLeast(0.0) } / (REF_VIDEO * fps4k.size) +
+        (BenchmarkScore.REF_POINTS * (0.75 * fps4k.sumOf { it.coerceAtLeast(0.0) } / (REF_VIDEO * fps4k.size) +
             0.25 * fps8k.sumOf { it.coerceAtLeast(0.0) } / (REF_VIDEO_8K * fps8k.size))).roundToInt()
 
     fun videoPoints(r: VideoResult): Int = videoPoints(VideoClip.entries.filter { !it.k8 }.map { r.fps(it) },
@@ -417,7 +417,7 @@ object UxScore {
 
     /** Same split: 4K (mean of the three encoders) three quarters, 8K HEVC one quarter; a failed quality check = 0. */
     fun exportPoints(fps4k: List<Double>, fps8k: Double): Int =
-        (6000 * (0.75 * fps4k.sumOf { it.coerceAtLeast(0.0) } / (REF_EXPORT * fps4k.size) +
+        (BenchmarkScore.REF_POINTS * (0.75 * fps4k.sumOf { it.coerceAtLeast(0.0) } / (REF_EXPORT * fps4k.size) +
             0.25 * fps8k.coerceAtLeast(0.0) / REF_EXPORT_8K)).roundToInt()
 
     fun exportPoints(r: ExportResult): Int = exportPoints(ExportJob.entries.filter { !it.k8 }.map { r.counted(it) },
@@ -490,7 +490,7 @@ data class AiResult(
 }
 
 object AiScore {
-    // Inferences per second worth 6000 points, per accelerator, in AiTest order: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5)
+    // Inferences per second worth 7,200 points (BenchmarkScore.REF_POINTS), per accelerator, in AiTest order: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode, the median of 11 runs on 2026-11-23 (scoring version 5)
     // (REF_NPU: what a test build's report-only NPU run would score; the NPU isn't scored). Repeated in BenchmarkScoring.cs.
     val REF_CPU = doubleArrayOf(543.6, 28.67, 7.73, 4.59, 64.5, 3968.0)
     // version 5: the GPU's references re-measured on the path that answers right — LiteRT's OpenGL backend on the Adreno 830
@@ -503,11 +503,11 @@ object AiScore {
         AiAccel.CPU -> REF_CPU; AiAccel.GPU -> REF_GPU; AiAccel.NPU -> REF_NPU
     }[t.ordinal]
 
-    fun points(t: AiTest, a: AiAccel, ips: Double): Int = (6000 * ips.coerceAtLeast(0.0) / ref(t, a)).roundToInt()
+    fun points(t: AiTest, a: AiAccel, ips: Double): Int = (BenchmarkScore.REF_POINTS * ips.coerceAtLeast(0.0) / ref(t, a)).roundToInt()
 
     /** Mean over the models, so one an accelerator can't run costs a sixth instead of everything. */
     fun accel(a: AiAccel, ips: List<Double>): Int =
-        (AiTest.entries.sumOf { t -> 6000 * ips[t.ordinal].coerceAtLeast(0.0) / ref(t, a) } / AiTest.entries.size).roundToInt()
+        (AiTest.entries.sumOf { t -> BenchmarkScore.REF_POINTS * ips[t.ordinal].coerceAtLeast(0.0) / ref(t, a) } / AiTest.entries.size).roundToInt()
 
     /** The CPU and the GPU each count half; one the phone can't run the models on scores 0 there. */
     fun overall(cpu: Int, gpu: Int): Int = ((cpu.coerceAtLeast(0) + gpu.coerceAtLeast(0)) / 2.0).roundToInt()
@@ -516,6 +516,11 @@ object AiScore {
 object BenchmarkScore {
     /** Bump when a scene, the resolution or the scoring changes — scores compare only within a version. */
     const val VERSION = 5
+    /**
+     * What every test scores at its reference (the Snapdragon 8 Elite, Honor VKP-NX9, in Performance mode): 7,200 since
+     * version 5 has five sections (6,000 × 6 / 5), so the reference phone still totals 36,000. The server repeats it.
+     */
+    const val REF_POINTS = 7200
     /** Frames that start before this (s) are driver/shader warm-up and not scored. */
     const val WARMUP_S = 2f
     private const val WINDOW_S = 5f
