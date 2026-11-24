@@ -1,6 +1,6 @@
 # Benchmark v5: a fair test for non-Snapdragon phones
 
-Status: **built on `feature/v5-gpu-tile`, not released.** Planned with the owner on 2026-11-22. Since 2026-11-24 version 5 has no NPU and no LLM test (see the last decisions); the earlier sections are kept as history.
+Status: **built on `feature/v5-gpu-tile`, not released.** Planned with the owner on 2026-11-22. Since 2026-11-24 version 5 has no NPU and no LLM test, and every test is worth 7,200 on the reference phone (see the last decisions); the earlier sections are kept as history.
 
 ## Why
 
@@ -365,6 +365,15 @@ The user: "let's remove llm test entirely". This replaces every LLM decision abo
   - `BenchCore/llm`, `bench_llm.h`, the LLM tests and the vendored llama.cpp are deleted, and so are `tools/npu_models` and the `npu-models` workflow. Git history keeps them.
 - **The data keeps its shape:** the payload and the signed text keep every LLM field (always 0 or empty). The server never scores them and keeps `llmScore` / `sections.llm` at 0 in its answers, so installed version 4 apps still read the board.
 - **Phone Health:** no `llm.*` parts.
+
+## Decision 2026-11-24 (late): the scale, 7,200 per test
+
+The user: "we should scale scores to be similar as before", and chose "every test × 1.2" over scaling only the total.
+- **Every test's reference is worth 7,200 points** (`REF_POINTS` / `refPoints` / `RefPoints` in each app, `BenchmarkScoring.RefPoints` on the server), not 6,000. The reference phone's five sections total 36,000, what six sections × 6,000 gave, and the total is still the plain sum.
+- **GPU and QR weights are the 6,000-point ones × 1.2 exactly:** Lake Valley 55.452, Neon City 248.4, Neon City RT 509.88, QR 6.1464. So every score is 1.2× the earlier version 5 build's, give or take rounding.
+- **Raw references, the payload and the version (5) are unchanged.** Export on the Honor (no AV1 encoder, no 8K encoder): 3,600.
+- **The calibration tests** on every platform now pin 7,200 per test, with the same ±0.5 % window.
+- **The website** reads each run against its own version: 6,000 per section for version 4 runs, 7,200 for version 5. The server's version 4 run pages keep their own CPU sub-test points (version 4 references).
 
 ## Android NPU files for every chip (2026-11-24, superseded the same evening: the NPU isn't scored)
 
