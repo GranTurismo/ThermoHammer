@@ -12,7 +12,7 @@ It compares:
   * the newest ai-edge-litert on PyPI, whose plugins may know chips our pinned one doesn't.
 
 "build" = chips the pinned toolchain knows that have no model anywhere: the job builds them before any phone with that
-chip shows up. "alerts" = chips phones reported that no model covers and the pinned toolchain can't build: either a
+chip shows up ("soc:8" = with 8-bit weights, for an NPU without 4-bit ones). "alerts" = chips phones reported that no model covers and the pinned toolchain can't build: either a
 newer ai-edge-litert knows them (bump the pins) or no LiteRT compiler does yet (nothing to build from; the NPU third
 stays 0 for that chip, as for any phone whose NPU no compiler supports).
 """
@@ -40,14 +40,18 @@ VENDOR_PLUGINS = {"qualcomm": "sm", "mediatek": "mt"}
 #                  the hardware's limit, as for a phone without an NPU
 #   NO_COMPILER:   the chip maker's compiler fails on it: a software gap, reported in the issue while phones use the chip
 _ATTN = "Hexagon {}: attention's 100 int16 BATCH_MATMULs stay on the CPU"
-_FC = "{}: the 177 int4-weight FULLY_CONNECTED layers stay on the CPU"
 _DT = "{}: NPU has no int16 activations / int4 weights (\"unsupported data type\")"
 NPU_CANT_HOLD = {
     "sm8350": _ATTN.format("v68"), "sm8450": _ATTN.format("v69"), "sm8475": _ATTN.format("v69"),
-    "mt6878": _FC.format("Dimensity 7300"), "mt6983": _FC.format("Dimensity 9000"), "mt6985": _FC.format("Dimensity 9200"),
     "mt6853": _DT.format("Dimensity 720"), "mt6877": _DT.format("Dimensity 900/1080"), "mt6893": _DT.format("Dimensity 1200"),
     "mt8188": _DT.format("MT8188"),
     "mt6879": "Dimensity 920-class: MDLA/EDMA \"unsupported operation\" on 1,128 ops",
+}
+# Every chip runs the same model in the most compact form its NPU runs whole: 4-bit weights, else 8-bit. These NPUs
+# take everything but 4-bit weights (at 4 bits the 177 FULLY_CONNECTED layers stayed on the CPU, run 45417736085), so
+# they get 8-bit weights: a bigger file and a slower reply than 4-bit hardware would give, but the same task, scored.
+NEEDS_W8 = {
+    "mt6878": "Dimensity 7300", "mt6983": "Dimensity 9000", "mt6985": "Dimensity 9200",
 }
 NO_COMPILER = {
     "mt6886": "NeuroPilot 8's compiler: \"Not a valid platform: mt6886\"",
@@ -143,7 +147,9 @@ def plan():
     return {
         "pinned": pinned, "latest": latest, "site_manifest": site_up, "seen_source": seen_source,
         "can_build": sorted(can_build), "pack": sorted(pack), "published": sorted(published),
-        "build": sorted(can_build - have - set(NPU_CANT_HOLD) - set(NO_COMPILER)),
+        # "soc" = 4-bit weights, "soc:8" = 8-bit (NEEDS_W8)
+        "build": sorted(f"{s}:8" if s in NEEDS_W8 else s for s in can_build - have - set(NPU_CANT_HOLD) - set(NO_COMPILER)),
+        "needs_w8": NEEDS_W8,
         "npu_cant_hold": NPU_CANT_HOLD,
         "no_compiler": NO_COMPILER,
         "alerts": alerts,
@@ -162,6 +168,7 @@ def main():
           + ("" if p["site_manifest"] else " (site manifest not found)"))
     print(f"build:     {' '.join(p['build']) or 'nothing'}")
     print(f"NPU can't hold the model: {' '.join(p['npu_cant_hold']) or '-'}")
+    print(f"8-bit weights:            {' '.join(p['needs_w8']) or '-'}")
     print(f"compiler fails:           {' '.join(p['no_compiler']) or '-'}")
     for a in p["alerts"]:
         print(f"ALERT {a['soc']:10} {a['why']}  [{a['devices']}]")

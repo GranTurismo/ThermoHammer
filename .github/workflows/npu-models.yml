@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       socs:
-        description: "Chips to build, space-separated (e.g. sm8845 mt6893). Empty: whatever plan.py finds missing."
+        description: "Chips to build, space-separated; soc:8 for 8-bit weights (e.g. sm8845 mt6983:8). Empty: what plan.py finds."
         required: false
         default: ""
       publish:
@@ -48,7 +48,7 @@ jobs:
         run: |
           python3 -I tools/npu_models/plan.py --json > plan.json
           python3 -I tools/npu_models/plan.py || true
-          socs="$(printf '%s' "${INPUT_SOCS:-}" | tr -cs 'a-z0-9' ' ' | xargs)"
+          socs="$(printf '%s' "${INPUT_SOCS:-}" | tr -cs 'a-z0-9:' ' ' | xargs)"
           [ -n "$socs" ] || socs="$(python3 -I -c 'import json; print(" ".join(json.load(open("plan.json"))["build"]))')"
           echo "socs=$socs" >> "$GITHUB_OUTPUT"
           echo "### Build: ${socs:-nothing}" >> "$GITHUB_STEP_SUMMARY"
@@ -114,15 +114,17 @@ jobs:
         run: |
           mkdir -p "$NPU/out" "$NPU/publish"
           : > "$NPU/failed.txt"
-          for soc in $SOCS; do
-            if MODEL_DIR="$NPU/gemma" OUT_DIR="$NPU/out" CACHE_DIR="$NPU/cache" COMPILE_IMG="${COMPILE_IMG:-}" \
+          # each token: "soc" (4-bit weights) or "soc:8" (8-bit weights, for an NPU without 4-bit ones)
+          for tok in $SOCS; do
+            soc="${tok%%:*}"; bits=4; case "$tok" in *:*) bits="${tok#*:}";; esac
+            if WEIGHT_BITS="$bits" MODEL_DIR="$NPU/gemma" OUT_DIR="$NPU/out" CACHE_DIR="$NPU/cache" COMPILE_IMG="${COMPILE_IMG:-}" \
                  tools/npu_models/builder/build.sh "$soc" 2>&1 | tee "$NPU/out/build-$soc.log"; then
-              echo "built $soc"
+              echo "built $soc ($bits-bit weights)"
             else
               echo "$soc (build failed)" >> "$NPU/failed.txt"
-              # export, calibration and quantization are shared: if they failed, every other chip would fail the same way
-              if [ ! -f "$NPU/out/work/common/quantized.litertlm" ]; then
-                for rest in $SOCS; do grep -q "^$rest " "$NPU/failed.txt" || echo "$rest (not tried: the shared preparation failed)" >> "$NPU/failed.txt"; done
+              # export and calibration are shared: if they failed, every other chip would fail the same way
+              if [ ! -f "$NPU/out/work/common/calib/.done" ]; then
+                for rest in $SOCS; do grep -q "^${rest%%:*} " "$NPU/failed.txt" || echo "${rest%%:*} (not tried: the shared preparation failed)" >> "$NPU/failed.txt"; done
                 break
               fi
             fi
@@ -130,18 +132,22 @@ jobs:
             if docker image inspect thnpu:compile-amd64 >/dev/null 2>&1; then COMPILE_IMG=thnpu:compile-amd64; fi
           done
 
-      - name: Answers on the CPU (the quantized model every file is compiled from)
+      - name: Answers on the CPU (each quantized model the files are compiled from)
         run: |
-          test -f "$NPU/out/work/common/quantized.litertlm"
-          docker run --rm --platform linux/amd64 -v "$NPU/gemma":/model:ro -v "$NPU/out/work":/work \
-            -v "$PWD/tools/npu_models/builder/scripts":/s:ro thnpu:full-amd64 \
-            bash /s/cpu_check.sh /opt/venv-export /work/common/quantized.litertlm /model 40 | tee "$NPU/cpu-check.txt"
-          grep -A1 "capital of France" "$NPU/cpu-check.txt" | grep -qi "paris"
-          grep -A1 "3 apples" "$NPU/cpu-check.txt" | grep -qE "\b2\b|two"
+          ls "$NPU"/out/work/common/quantized*.litertlm
+          for q in "$NPU"/out/work/common/quantized*.litertlm; do
+            name="$(basename "$q")"
+            echo "### $name"
+            docker run --rm --platform linux/amd64 -v "$NPU/gemma":/model:ro -v "$NPU/out/work":/work \
+              -v "$PWD/tools/npu_models/builder/scripts":/s:ro thnpu:full-amd64 \
+              bash /s/cpu_check.sh /opt/venv-export "/work/common/$name" /model 40 | tee "$NPU/cpu-check-$name.txt"
+            grep -A1 "capital of France" "$NPU/cpu-check-$name.txt" | grep -qi "paris"
+            grep -A1 "3 apples" "$NPU/cpu-check-$name.txt" | grep -qE "\b2\b|two"
+          done
 
       - name: Publish gate (whole model on the NPU, Google's settings)
         run: |
-          for f in "$NPU"/out/Gemma3-1B-IT_q4_ekv1280_*.litertlm; do
+          for f in "$NPU"/out/Gemma3-1B-IT_q[48]_ekv1280_*.litertlm; do
             [ -f "$f" ] || continue
             name="$(basename "$f")"
             if docker run --rm --platform linux/amd64 -v "$NPU/out":/out:ro thnpu:compile-amd64 \
@@ -153,6 +159,15 @@ jobs:
           done
           { echo "### Passed"; ls -l "$NPU/publish"; echo "### Failed"; cat "$NPU/failed.txt"; } >> "$GITHUB_STEP_SUMMARY"
           ls "$NPU"/publish/*.litertlm >/dev/null 2>&1 || { echo "nothing passed"; exit 1; }
+
+      - name: Keep the files (a run that doesn't publish)
+        if: "!((github.event_name == 'schedule' || inputs.publish) && vars.NPU_AUTO_PUBLISH != 'false')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: npu-models
+          path: /mnt/npu/publish/
+          retention-days: 7
+          compression-level: 0
 
       - name: Publish on the site
         if: (github.event_name == 'schedule' || inputs.publish) && vars.NPU_AUTO_PUBLISH != 'false'
