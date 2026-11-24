@@ -1,0 +1,26 @@
+# LlmMetadata for Gemma 3 1B IT, same values as Google's
+# Gemma3-1B-IT_q4_ekv1280_*.litertlm (litert-community/Gemma3-1B-IT).
+start_token {
+  token_ids {
+    ids: 2
+  }
+}
+stop_tokens {
+  token_str: "<end_of_turn>"
+}
+stop_tokens {
+  token_ids {
+    ids: 1
+  }
+}
+prompt_templates {
+  user {
+    prefix: "<start_of_turn>user\n"
+    suffix: "<end_of_turn>\n"
+  }
+  model {
+    prefix: "<start_of_turn>model\n"
+    suffix: "<end_of_turn>\n"
+  }
+}
+max_num_tokens: 1280

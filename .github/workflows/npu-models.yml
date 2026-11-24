@@ -1,0 +1,191 @@
+# The LLM test's NPU model files (scoring version 5): builds Gemma 3 1B for every phone chip the Qualcomm and MediaTek
+# compilers know and no model covers yet, checks each file, and publishes it to the site — phones with that chip download
+# it, no app update (tools/npu_models/README.md). Chips phones report that no compiler can target yet open an issue.
+#
+# Daily, or by hand (Actions → NPU model files → Run workflow, optionally with chips to rebuild).
+# Turn publishing off without a code change: repository variable NPU_AUTO_PUBLISH = false.
+# Optional secret HF_TOKEN (an account that accepted the Gemma terms): weights from Google's repo instead of the mirror.
+name: NPU model files
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      socs:
+        description: "Chips to build, space-separated (e.g. sm8845 mt6893). Empty: whatever plan.py finds missing."
+        required: false
+        default: ""
+      publish:
+        description: "Publish the files that pass the checks"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: npu-models
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash          # -eo pipefail: a build piped through tee still fails when it fails
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      socs: ${{ steps.plan.outputs.socs }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: What needs building
+        id: plan
+        env:
+          INPUT_SOCS: ${{ inputs.socs }}
+        run: |
+          python3 -I tools/npu_models/plan.py --json > plan.json
+          python3 -I tools/npu_models/plan.py || true
+          socs="$(printf '%s' "${INPUT_SOCS:-}" | tr -cs 'a-z0-9' ' ' | xargs)"
+          [ -n "$socs" ] || socs="$(python3 -I -c 'import json; print(" ".join(json.load(open("plan.json"))["build"]))')"
+          echo "socs=$socs" >> "$GITHUB_OUTPUT"
+          echo "### Build: ${socs:-nothing}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Issue for chips no compiler covers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="NPU model files: chips phones use that no compiler covers"
+          python3 -I - <<'PY' > body.md
+          import json
+          p = json.load(open("plan.json"))
+          a = p["alerts"]
+          print(f"<!-- socs: {','.join(x['soc'] for x in a)} -->")
+          print("Phones with these chips get 0 for the LLM test's NPU third until a model exists for them "
+                "(tools/npu_models/README.md).\n")
+          print("| chip | phones | what's needed |\n|---|---|---|")
+          for x in a:
+              print(f"| {x['soc']} | {x['devices']} | {x['why']} |")
+          if p["newer_toolchain_adds"]:
+              print(f"\nai-edge-litert {p['latest']} also adds: {' '.join(p['newer_toolchain_adds'])}")
+          PY
+          now="$(head -1 body.md)"
+          num="$(gh issue list --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)"
+          if grep -q '|' <(tail -n +5 body.md); then
+            if [ -z "$num" ]; then
+              gh issue create --title "$title" --body-file body.md
+            else
+              before="$(gh issue view "$num" --json body --jq .body | head -1)"
+              gh issue edit "$num" --body-file body.md
+              [ "$before" = "$now" ] || gh issue comment "$num" --body "The list changed: ${now}"
+            fi
+          elif [ -n "$num" ]; then
+            gh issue close "$num" --comment "Every chip phones reported has a model now."
+          fi
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.socs != ''
+    runs-on: ubuntu-latest        # x86-64 with AVX2, 4 cores / 16 GB in a public repository
+    timeout-minutes: 330
+    env:
+      SOCS: ${{ needs.plan.outputs.socs }}
+      NPU: /mnt/npu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Room to work (disk, swap)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo mkdir -p "$NPU" && sudo chown "$USER" "$NPU"
+          # the export step peaks around 14 GB
+          sudo fallocate -l 16G /mnt/npu-swap && sudo chmod 600 /mnt/npu-swap && sudo mkswap /mnt/npu-swap && sudo swapon /mnt/npu-swap
+          grep -qw avx2 /proc/cpuinfo
+          free -g; df -h / /mnt
+
+      - name: Gemma 3 1B IT QAT weights (SHA-256 checked)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python3 -I tools/npu_models/fetch_weights.py "$NPU/gemma"
+
+      - name: Build
+        run: |
+          mkdir -p "$NPU/out" "$NPU/publish"
+          : > "$NPU/failed.txt"
+          for soc in $SOCS; do
+            if MODEL_DIR="$NPU/gemma" OUT_DIR="$NPU/out" CACHE_DIR="$NPU/cache" COMPILE_IMG="${COMPILE_IMG:-}" \
+                 tools/npu_models/builder/build.sh "$soc" 2>&1 | tee "$NPU/out/build-$soc.log"; then
+              echo "built $soc"
+            else
+              echo "$soc (build failed)" >> "$NPU/failed.txt"
+            fi
+            # the compile image is built once; reused for the next chips if it exists
+            if docker image inspect thnpu:compile-amd64 >/dev/null 2>&1; then COMPILE_IMG=thnpu:compile-amd64; fi
+          done
+
+      - name: Answers on the CPU (the quantized model every file is compiled from)
+        run: |
+          test -f "$NPU/out/work/common/quantized.litertlm"
+          docker run --rm --platform linux/amd64 -v "$NPU/gemma":/model:ro -v "$NPU/out/work":/work \
+            -v "$PWD/tools/npu_models/builder/scripts":/s:ro thnpu:full-amd64 \
+            bash /s/cpu_check.sh /opt/venv-export /work/common/quantized.litertlm /model 40 | tee "$NPU/cpu-check.txt"
+          grep -A1 "capital of France" "$NPU/cpu-check.txt" | grep -qi "paris"
+          grep -A1 "3 apples" "$NPU/cpu-check.txt" | grep -qE "\b2\b|two"
+
+      - name: Publish gate (whole model on the NPU, Google's settings)
+        run: |
+          for f in "$NPU"/out/Gemma3-1B-IT_q4_ekv1280_*.litertlm; do
+            [ -f "$f" ] || continue
+            name="$(basename "$f")"
+            if docker run --rm --platform linux/amd64 -v "$NPU/out":/out:ro thnpu:compile-amd64 \
+                 python -I /opt/thnpu/thnpu/verify.py "/out/$name"; then
+              mv "$f" "$NPU/publish/" && (cd "$NPU/publish" && sha256sum "$name" | cut -d' ' -f1 > "$name.sha256")
+            else
+              echo "${name} (failed the gate)" >> "$NPU/failed.txt"
+            fi
+          done
+          { echo "### Passed"; ls -l "$NPU/publish"; echo "### Failed"; cat "$NPU/failed.txt"; } >> "$GITHUB_STEP_SUMMARY"
+          ls "$NPU"/publish/*.litertlm >/dev/null 2>&1 || { echo "nothing passed"; exit 1; }
+
+      - name: Publish on the site
+        if: (github.event_name == 'schedule' || inputs.publish) && vars.NPU_AUTO_PUBLISH != 'false'
+        env:
+          SSHPASS: ${{ secrets.REMOTE_PASS }}
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          # the server's host key, pinned (ssh-keyscan -t ed25519 51.77.65.222): no trust-on-first-use
+          HOST_KEY: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILz/XlM1d4KGPzAKKQfA3XE0kLsPAZXmZKFAKjuGT1wS"
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          mkdir -p ~/.ssh && echo "thserver $HOST_KEY" > ~/.ssh/known_hosts
+          SSH="ssh -o HostKeyAlias=thserver -o StrictHostKeyChecking=yes -o BatchMode=no"
+          remote() { sshpass -e $SSH "$REMOTE_USER@$REMOTE_HOST" "$@"; }
+          BASE='~/docker/thweb'        # expanded on the server
+          remote "mkdir -p $BASE/models/android $BASE/.npu-incoming"
+          cp tools/npu_models/manifest.py tools/npu_models/server_install.sh "$NPU/publish/"
+          # copied outside what the site serves, checked there, then moved into place
+          sshpass -e rsync -a --partial -e "$SSH" "$NPU/publish/" "$REMOTE_USER@$REMOTE_HOST:docker/thweb/.npu-incoming/"
+          remote "bash $BASE/.npu-incoming/server_install.sh"
+          echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+          for f in "$NPU"/publish/*.litertlm; do basename "$f"; done >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Issue for builds that failed
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="NPU model files: builds that failed"
+          num="$(gh issue list --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)"
+          if [ -s "$NPU/failed.txt" ]; then
+            { echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; echo
+              echo "These chips got no file today, so their NPU third stays 0. A file that failed the gate (not fully on the"
+              echo "NPU) means the chip's NPU can't hold the model: add it to NPU_CANT_HOLD in tools/npu_models/plan.py so it"
+              echo "isn't rebuilt daily. A build that failed needs a look at its log."; echo
+              sed 's/^/- /' "$NPU/failed.txt"; } > failed.md
+            if [ -z "$num" ]; then gh issue create --title "$title" --body-file failed.md
+            else gh issue edit "$num" --body-file failed.md; gh issue comment "$num" --body "Failed again: $(paste -sd, "$NPU/failed.txt")"; fi
+          elif [ -n "$num" ]; then
+            gh issue close "$num" --comment "Today's builds all passed."
+          fi
