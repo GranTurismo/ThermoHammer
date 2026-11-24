@@ -33,7 +33,11 @@ object NpuModels {
     val CHIPS = setOf("sm8550", "sm8650", "sm8750", "sm8850", "mt6989", "mt6991", "mt6993")
 
     fun soc(): String = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL.lowercase() else ""
-    fun supported(soc: String = soc()): Boolean = soc in CHIPS
+    /** In this release's Play AI pack. */
+    fun inPack(soc: String = soc()): Boolean = soc in CHIPS
+    /** The chip has an NPU model: in the Play pack, or listed by the site (NpuServerModels — a chip added since this release). */
+    fun supported(context: Context, soc: String = soc()): Boolean =
+        soc.isNotBlank() && (inPack(soc) || NpuServerModels.entry(context, soc) != null)
     fun fileName(soc: String): String = "Gemma3-1B-IT_q4_ekv1280_$soc.litertlm"
 
     /** Rough download size for the checklist: Snapdragon files are ~690 MB, Dimensity ~1,030 MB. */
@@ -60,11 +64,12 @@ object NpuModels {
         return File(assets, "gemma/${fileName(soc)}").takeIf { it.isFile }
     }
 
-    /** The model for this phone's chip — from Play, or in a test build from its own folder — or null. */
+    /** The model for this phone's chip — from Play, from the site, or in a test build from its own folder — or null. */
     fun modelFile(context: Context): File? {
         val soc = soc()
         if (soc.isBlank()) return null
-        if (supported(soc)) packFile(context, soc)?.let { return it }
+        if (inPack(soc)) packFile(context, soc)?.let { return it }
+        NpuServerModels.file(context, soc)?.let { return it }
         if (com.example.thermohammer.TestBuild.PROBES)
             return testDir(context).listFiles().orEmpty()
                 .filter { it.name.endsWith(".litertlm") && soc in it.name.lowercase() }.maxByOrNull { it.lastModified() }
@@ -91,8 +96,19 @@ object NpuModels {
     /** Where the model stands. With `fetch`, asks Play to download it if it isn't on the phone (harmless when it is). */
     suspend fun status(context: Context, fetch: Boolean = false): Status {
         val soc = soc()
-        if (!supported(soc)) return Status.NotNeeded
+        if (!supported(context, soc)) return Status.NotNeeded
         modelFile(context)?.let { return Status.Ready(it) }
+        // a chip added since this release: its file comes from the site, not Play
+        if (!inPack(soc)) {
+            val entry = NpuServerModels.entry(context, soc) ?: return Status.NotNeeded
+            if (fetch) NpuServerModels.startDownload(context, entry)
+            return when {
+                NpuServerModels.isRunning() -> Status.Downloading(NpuServerModels.progress.coerceAtLeast(0))
+                NpuServerModels.waitingForWifi -> Status.WaitingForWifi
+                NpuServerModels.lastError != null -> Status.Unavailable(NpuServerModels.lastError!!)
+                else -> Status.Unavailable("not downloaded yet")
+            }
+        }
         val manager = runCatching { AiPackManagerFactory.getInstance(context) }.getOrNull()
             ?: return Status.Unavailable("Google Play isn't available")
         val task = runCatching { if (fetch) manager.fetch(listOf(PACK)) else manager.getPackStates(listOf(PACK)) }

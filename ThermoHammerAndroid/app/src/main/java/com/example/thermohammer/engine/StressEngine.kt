@@ -1717,7 +1717,7 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
 
         // The LLM test's NPU model (version 5), on the chips Google builds one for: Play downloads it after the install.
         // Never blocking — a run without it is incomplete (can't be submitted), and the checklist says so before it starts.
-        if (benchmark && com.example.thermohammer.engine.llm.NpuModels.supported()) {
+        if (benchmark && com.example.thermohammer.engine.llm.NpuModels.supported(appContext)) {
             val models = com.example.thermohammer.engine.llm.NpuModels
             // ask Play once per app session to fetch it, if it isn't coming already; afterwards just read its progress
             val status = models.status(appContext, fetch = !npuFetchAsked).also { npuFetchAsked = true }

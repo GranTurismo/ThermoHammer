@@ -61,8 +61,14 @@ class MainActivity : ComponentActivity() {
         com.example.thermohammer.engine.llm.NpuModels.confirmLauncher = npuConfirm
         // The LLM test's NPU model (version 5): Play downloads it after the install (fast-follow); asking again here
         // restarts a download that stopped, so it's on the phone by the first benchmark. Nothing on other chips.
-        if (savedInstanceState == null && com.example.thermohammer.engine.llm.NpuModels.supported())
-            lifecycleScope.launch { com.example.thermohammer.engine.llm.NpuModels.status(applicationContext, fetch = true) }
+        // The site's list of chips added since this release (NpuServerModels) is refreshed too, twice a day at most.
+        if (savedInstanceState == null)
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val app = applicationContext
+                com.example.thermohammer.engine.llm.NpuServerModels.refreshManifest(app)
+                if (com.example.thermohammer.engine.llm.NpuModels.supported(app))
+                    com.example.thermohammer.engine.llm.NpuModels.status(app, fetch = true)
+            }
 
         // Prevent screen sleep/lock during CPU stress diagnostic runs
         lifecycleScope.launch {

@@ -73,12 +73,13 @@ object NpuLlmProbe {
         // name: the NPU scores 0 and the run stays complete — the phone has its file, the NPU just couldn't run it
         fun failed(why: String) = LlmNpuRun(0.0, 0.0, false, model = model?.name, error = why, lines = listOf("$HEAD · $why"))
         if (model == null) {
-            val why = if (NpuModels.supported(soc))
+            val supported = NpuModels.supported(context, soc)
+            val why = if (supported)
                 "not run: the NPU model for this chip (${NpuModels.fileName(soc)}) isn't on the phone — Google Play " +
                     "downloads it after the install; this run can't be submitted"
             else "not run: Google builds no Gemma 3 1B NPU model for this chip (${soc.ifBlank { "unknown" }}) — counts 0"
             return@withContext LlmNpuRun(0.0, 0.0, false, error = why.removePrefix("not run: "), lines = listOf("$HEAD · $why"),
-                missingModel = NpuModels.supported(soc))
+                missingModel = supported)
         }
         val done = CompletableDeferred<LlmNpuRun>()
         var step = "starting"

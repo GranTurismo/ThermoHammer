@@ -586,7 +586,7 @@ public static class BenchmarkScoring
         if (r.LlmPrefillNpu > 0 != r.LlmDecodeNpu > 0) return "Implausible LLM result";
         // a phone whose chip has a Gemma NPU model gets it from Play: without the NPU engine's line the run is incomplete
         // (the app flags it too) — scored, it would look like a phone without an NPU
-        if (r.Os == OsPlatform.Android && NpuLlmChips.Contains((r.SocModel ?? "").Trim().ToLowerInvariant())
+        if (r.Os == OsPlatform.Android && ThermoHammer.Api.Tools.NpuChipCatalog.Contains(r.SocModel)
             && string.IsNullOrWhiteSpace(r.LlmNpu))
             return "This run is missing the LLM test's NPU part. Let Google Play finish downloading ThermoHammer's NPU model, then run the benchmark again.";
         return r.ValidityFlags < 0 ? "Invalid flags" : null;

@@ -376,6 +376,24 @@ public class BenchmarkMappingTests
     }
 
     [Fact]
+    public void AChipTheSiteAddedMustSendItsNpuPartToo()
+    {
+        // SM8635 isn't in the apps' Play pack; the site's manifest adds it (its file comes from the site)
+        Assert.Null(BenchmarkScoring.Problem(Request(r => r.SocModel = "SM8635")));
+        ThermoHammer.Api.Tools.NpuChipCatalog.Set(ThermoHammer.Api.Tools.NpuChipCatalog.Parse(
+            """{"chips": {"SM8635": {"file": "Gemma3-1B-IT_q4_ekv1280_sm8635.litertlm", "sha256": "ab", "size": 1}}}"""));
+        try
+        {
+            Assert.NotNull(BenchmarkScoring.Problem(Request(r => r.SocModel = " sm8635 ")));
+            Assert.Null(BenchmarkScoring.Problem(Request(r => { r.SocModel = "SM8635"; r.LlmNpu = "LiteRT-LM 0.19.1 · Gemma3-1B-IT_q4_ekv1280_sm8635"; })));
+            Assert.Contains("sm8635", ThermoHammer.Api.Tools.NpuChipCatalog.All);
+            Assert.Contains("sm8750", ThermoHammer.Api.Tools.NpuChipCatalog.All);
+        }
+        finally { ThermoHammer.Api.Tools.NpuChipCatalog.Set([]); }
+        Assert.ThrowsAny<System.Text.Json.JsonException>(() => ThermoHammer.Api.Tools.NpuChipCatalog.Parse("not json"));
+    }
+
+    [Fact]
     public void AnOlderAppIsToldToUpdate()
     {
         var why = BenchmarkScoring.Problem(Request(r => r.BenchmarkVersion = 4));

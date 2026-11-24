@@ -109,6 +109,27 @@ public static class ThermoEndpointsMapper
         });
 
         // verified runs only (BenchmarkScoring.IsVerified): no charger, battery saver, warm start or busy phone
+        // The Android chips seen in this version's runs and whether each has a Gemma NPU model: the ones without are what
+        // the NPU model build (tools/npu_models) makes next — a new chip shows up here with its first run
+        app.MapGet("/benchmark/chips", async (ThermoDbContext db) =>
+        {
+            var rows = await db.BenchmarkRuns
+                .Where(r => r.BenchmarkVersion == BenchmarkScoring.CurrentVersion && r.Os == OsPlatform.Android && r.SocModel != null)
+                .Select(r => new { r.SocModel, r.DeviceModel, r.CreatedAt })
+                .ToListAsync();
+            var chips = rows.GroupBy(r => r.SocModel!.Trim().ToLowerInvariant())
+                .Select(g => new
+                {
+                    soc = g.Key,
+                    hasNpuModel = NpuChipCatalog.Contains(g.Key),
+                    runs = g.Count(),
+                    lastSeen = g.Max(r => r.CreatedAt),
+                    devices = g.Select(r => r.DeviceModel).Distinct().Take(5).ToList(),
+                })
+                .OrderBy(c => c.hasNpuModel).ThenByDescending(c => c.runs).ToList();
+            return Results.Ok(new { withModel = NpuChipCatalog.All, chips });
+        });
+
         app.MapGet("/benchmark/leaderboard", async (ThermoDbContext db) =>
         {
             var runs = await db.BenchmarkRuns
