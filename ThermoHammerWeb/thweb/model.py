@@ -40,8 +40,8 @@ def sections_of(version: int) -> list[tuple]:
 
 def reference_points(version: int) -> int:
     """Points the reference phone scores per test and section in a scoring version (BenchmarkScoring.RefPoints): 6,000
-    up to version 4 (six sections), 7,200 since version 5 dropped the LLM test, so five sections still total 36,000."""
-    return 6000 if 0 < version <= LAST_LLM_VERSION else 7200
+    up to version 4 (six sections), 9,000 since version 5, so the board's phones total about what they did in version 4."""
+    return 6000 if 0 < version <= LAST_LLM_VERSION else 9000
 
 
 def reference_total(version: int) -> int:

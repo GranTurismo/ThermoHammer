@@ -338,14 +338,14 @@ class MixedTest(WorldTest):
         self.assertNotIn('data-value="llm"', board)
         how = self.page("/how-it-works/")
         self.assertIn("The benchmark: five sections", how)
-        # five sections × 7,200 = the 36,000 six sections × 6,000 gave
-        self.assertIn("<b>7,200</b>", how)
-        self.assertIn("<b>36,000</b>", how)
-        self.assertIn("is worth 14,400", how)
+        # five sections × 9,000 = 45,000 for the reference
+        self.assertIn("<b>9,000</b>", how)
+        self.assertIn("<b>45,000</b>", how)
+        self.assertIn("is worth 18,000", how)
         self.assertNotIn("LLM", how)
-        # each run against its own version's reference: 7,200 for version 5, 6,000 for version 4
-        self.assertIn("7,200 points:", run)
-        self.assertIn("dashed: the 7,200 reference", run)
+        # each run against its own version's reference: 9,000 for version 5, 6,000 for version 4
+        self.assertIn("9,000 points:", run)
+        self.assertIn("dashed: the 9,000 reference", run)
         self.assertIn("6,000 points:", self.page("/run/4/"))
         self.assertIn("Back then, 6,000 points per section", self.page("/run/4/"))
         self.assertNotIn("LLM", self.page("/"))

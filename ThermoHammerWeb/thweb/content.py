@@ -59,7 +59,7 @@ CATALOG = {
     },
 }
 
-# What a section's reference points (6,000 up to version 4, 7,200 since 5) stood for, by scoring version (BenchmarkScoring.CurrentVersion on the server). A new
+# What a section's reference points (6,000 up to version 4, 9,000 since 5) stood for, by scoring version (BenchmarkScoring.CurrentVersion on the server). A new
 # version restarts the board; runs of an earlier one stay on their pages, measured against their own reference.
 REFERENCES = {
     4: "a Snapdragon 8 Elite phone as it ships, in Balanced mode",

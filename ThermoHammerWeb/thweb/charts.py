@@ -176,7 +176,7 @@ def _poly(points: list[tuple[float, float]]) -> str:
 
 def radar(sections: list[dict], size: int = 380, title: str = "") -> str:
     """One run's sections (BenchRun.section_list: five since scoring version 5, six with the LLM before) on a common
-    scale, with its version's reference (each section dict's "ref": 7,200 since version 5) drawn dashed."""
+    scale, with its version's reference (each section dict's "ref": 9,000 since version 5) drawn dashed."""
     cx = cy = size / 2
     radius = size / 2 - 58
     values = [max(0, s["points"]) for s in sections]
