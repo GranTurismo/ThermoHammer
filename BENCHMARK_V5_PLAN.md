@@ -1,6 +1,6 @@
 # Benchmark v5: a fair test for non-Snapdragon phones
 
-Status: **built on `feature/v5-gpu-tile`, not released.** Planned with the owner on 2026-11-22. Since 2026-11-24 version 5 has no NPU and no LLM test, and every test is worth 7,200 on the reference phone (see the last decisions); the earlier sections are kept as history.
+Status: **built on `feature/v5-gpu-tile`, not released.** Planned with the owner on 2026-11-22. Since 2026-11-24 version 5 has no NPU and no LLM test, and every test is worth 9,000 on the reference phone (decision of 2026-11-25); the earlier sections are kept as history.
 
 ## Why
 
@@ -366,7 +366,7 @@ The user: "let's remove llm test entirely". This replaces every LLM decision abo
 - **The data keeps its shape:** the payload and the signed text keep every LLM field (always 0 or empty). The server never scores them and keeps `llmScore` / `sections.llm` at 0 in its answers, so installed version 4 apps still read the board.
 - **Phone Health:** no `llm.*` parts.
 
-## Decision 2026-11-24 (late): the scale, 7,200 per test
+## Decision 2026-11-24 (late): the scale, 7,200 per test (superseded 2026-11-25: 9,000)
 
 The user: "we should scale scores to be similar as before", and chose "every test × 1.2" over scaling only the total.
 - **Every test's reference is worth 7,200 points** (`REF_POINTS` / `refPoints` / `RefPoints` in each app, `BenchmarkScoring.RefPoints` on the server), not 6,000. The reference phone's five sections total 36,000, what six sections × 6,000 gave, and the total is still the plain sum.
@@ -374,6 +374,16 @@ The user: "we should scale scores to be similar as before", and chose "every tes
 - **Raw references, the payload and the version (5) are unchanged.** Export on the Honor (no AV1 encoder, no 8K encoder): 3,600.
 - **The calibration tests** on every platform now pin 7,200 per test, with the same ±0.5 % window.
 - **The website** reads each run against its own version: 6,000 per section for version 4 runs, 7,200 for version 5. The server's version 4 run pages keep their own CPU sub-test points (version 4 references).
+
+## Decision 2026-11-25: 9,000 per test, so phones keep about their old totals
+
+The user: "but we said to scale to match previous results". 7,200 only gave the reference total of six sections at 6,000, but version 5's reference is the Honor in **Performance** mode (version 4's was Balanced), so at 7,200 real phones landed about 20 % below their board totals.
+
+- **The fit:** all 21 board runs (version 4) re-scored with version 5's rules (`/benchmark/{id}` rows; the database part bridged through the Honor's run 5, since version 5 warms the database up). Version 4 total ÷ version 5 total at 7,200, best run per phone: 1.16 to 1.34, geometric mean 1.23 for phones (1.25 with the PC and the Mac). So **9,000 per test** (1.5 × 6,000, 1.25 × 7,200).
+- **Weights:** the 6,000-point ones × 1.5 exactly: Lake Valley 69.315, Neon City 310.5, Neon City RT 637.35, QR 7.683. Raw references, the payload and the version (5) are unchanged. Calibration window 8,955–9,045.
+- **The Honor in Performance mode:** CPU, MEM, GPU and AI 9,000 each, UX 8,357 (export 4,500: no AV1 and no 8K encoder), **total ≈ 44,400** (board: 49,080 in version 4, whose AI GPU part was the pre-2.1.5 wrong-answer speed and which had its strong LLM section).
+- **Estimates at 9,000 (version 4 board total → version 5):** X300 Pro 44,905 → ≈45,700 (2.1.7 run), S25 FE 34,132 → ≈35,300, POCO X8 Pro Max 34,953 → ≈37,800, motorola signature 37,665 → ≈35,200, S23 Ultra 29,802 → ≈28,200, Xiaomi 17T 26,931 → ≈28,900, Xiaomi 11T 16,963 → ≈16,700, REDMI Note 15 Pro 14,289 → ≈14,300, Vivo T3 12,018 → ≈12,600, POCO M8x 9,546 → ≈9,200, Mac (M5) 98,795 → ≈83,300 (its LLM was 23,120), PC (i7-12700KF + RTX 3080 Ti) 134,594 → ≈141,300.
+- **The website:** 6,000 per section for version 4 runs, 9,000 for version 5 (`reference_points`).
 
 ## Android NPU files for every chip (2026-11-24, superseded the same evening: the NPU isn't scored)
 
