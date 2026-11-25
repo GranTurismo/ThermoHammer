@@ -26,7 +26,7 @@ public sealed class WelcomeView : Grid
             "Five sections, scored on our server, the same test on every device — and the only one that also tells you when your PC gets too hot to keep up.",
             Forge.PhaseMeasured),
         new("01 · FIVE SECTIONS", "One honest score",
-            "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, and AI image and sound models on the CPU and the GPU. Each test is 7,200 points on a Snapdragon 8 Elite phone.",
+            "Processor, memory and storage, 3D graphics with ray tracing, everyday apps, and AI image and sound models on the CPU and the GPU. Each test is 9,000 points on a Snapdragon 8 Elite phone.",
             Ramp.At(0.25)),
         new("02 · SAME WORK EVERYWHERE", "Byte-identical on every platform",
             "Windows, Android, iPhone and Mac run the very same C++, the same 3D scenes and the same AI models. A score means the same thing on every device.",

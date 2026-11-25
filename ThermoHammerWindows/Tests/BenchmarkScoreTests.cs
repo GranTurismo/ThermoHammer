@@ -9,23 +9,23 @@ public class BenchmarkScoreTests
     public void Points_scale_linearly_with_fps_and_the_tests_land_on_the_same_scale()
     {
         // the Snapdragon 8 Elite reference (Performance mode): 129.85, 28.98 and 14.12 fps
-        Assert.Equal(7200, BenchmarkScore.Points(GpuTest.LakeValley, 129.85));
-        Assert.Equal(7199, BenchmarkScore.Points(GpuTest.NeonCity, 28.98));
-        Assert.Equal(7200, BenchmarkScore.Points(GpuTest.NeonCityRT, 14.12));
-        Assert.Equal(14400, BenchmarkScore.Points(GpuTest.NeonCity, 7200 * 2 / GpuTest.NeonCity.Weight()));
-        Assert.Equal(7200, BenchmarkScore.Overall(7200, 7200, 7200));
+        Assert.Equal(9001, BenchmarkScore.Points(GpuTest.LakeValley, 129.85));   // 129.85 × 69.315 = 9,000.6
+        Assert.Equal(8998, BenchmarkScore.Points(GpuTest.NeonCity, 28.98));     // 28.98 × 310.5 = 8,998.3
+        Assert.Equal(8999, BenchmarkScore.Points(GpuTest.NeonCityRT, 14.12));   // 14.12 × 637.35 = 8,999.4
+        Assert.Equal(18000, BenchmarkScore.Points(GpuTest.NeonCity, 9000 * 2 / GpuTest.NeonCity.Weight()));
+        Assert.Equal(9000, BenchmarkScore.Overall(9000, 9000, 9000));
     }
 
     /// <summary>
     /// The reference phone (Honor VKP-NX9, Snapdragon 8 Elite, Performance mode): the median of every measurement over its 11 runs of
-    /// 2026-11-23 scores 7200 on each test (RefPoints: 6000 × 1.2, so five sections total about 36,000 as six did) — the same numbers
+    /// 2026-11-23 scores 9000 on each test (RefPoints: 6000 × 1.5, so phones total about what they did in version 4) — the same numbers
     /// pin Benchmark.kt, BenchmarkScoring.cs and BenchmarkModels.swift, so the copies of the references can't drift apart.
     /// </summary>
     [Fact]
-    public void The_reference_phones_medians_score_7200_on_every_test()
+    public void The_reference_phones_medians_score_9000_on_every_test()
     {
-        Assert.Equal(7200, BenchmarkScore.RefPoints);
-        static void Near(int points, string what) => Assert.True(points is >= 7164 and <= 7236, $"{what} scored {points}");   // ±0.5 %
+        Assert.Equal(9000, BenchmarkScore.RefPoints);
+        static void Near(int points, string what) => Assert.True(points is >= 8955 and <= 9045, $"{what} scored {points}");   // ±0.5 %
         foreach (var (t, v) in new[] { (CpuTest.Math, 3039.31), (CpuTest.Data, 1533.32), (CpuTest.Crypto, 1184.12), (CpuTest.Multi, 8884.08) })
             Near(CpuScore.Points(t, v), t.ToString());
         Near(MemScore.Ram(63.51, 28.26, 19.71, 133.94), "RAM");
@@ -45,7 +45,7 @@ public class BenchmarkScoreTests
         ])), "video");
         Near(UxScore.QrPoints(1171.51), "QR");
         // export: the reference phone has two of the three 4K encoders and no 8K one — two thirds of the 4K part
-        Assert.Equal(3600, UxScore.ExportPoints(new ExportResult(
+        Assert.Equal(4500, UxScore.ExportPoints(new ExportResult(
         [
             new(ExportJob.Avc4k, 136.3, 40, "hw", true), new(ExportJob.Hevc4k, 136.3, 40, "hw", true),
             new(ExportJob.Av14k, 0, 0, null, false), new(ExportJob.Hevc8k, 0, 0, null, false),
@@ -74,9 +74,9 @@ public class BenchmarkScoreTests
         AiResult Result(bool npu, bool gpu = true) => new(AiTests.All.SelectMany(t => AiTests.Accels
             .Where(a => a != AiAccel.Npu || npu)
             .Select(a => new AiRun(t, a, a == AiAccel.Gpu && !gpu ? 0 : AiScore.Ref(t, a)))).ToList(), npu ? "QNN" : null);
-        Assert.Equal(7200, Result(npu: true).Score);
-        Assert.Equal(7200, Result(npu: false).Score);              // no NPU: nothing lost
-        Assert.Equal(3600, Result(npu: false, gpu: false).Score);  // no GPU: its half
+        Assert.Equal(9000, Result(npu: true).Score);
+        Assert.Equal(9000, Result(npu: false).Score);              // no NPU: nothing lost
+        Assert.Equal(4500, Result(npu: false, gpu: false).Score);  // no GPU: its half
         Assert.Equal([AiAccel.Cpu, AiAccel.Gpu], AiTests.Scored);
     }
 

@@ -3,7 +3,7 @@ namespace ThermoHammer.Engine;
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK — the same five sections and the same scoring as the Android app
 // (engine/Benchmark.kt), the iPhone app (BenchmarkModels.swift) and the server
-// (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI, every test 7200 points (RefPoints)
+// (BenchmarkScoring.cs): CPU + MEM + GPU + UX + AI, every test 9000 points (RefPoints)
 // on the Snapdragon 8 Elite reference phone (Honor VKP-NX9) in Performance mode —
 // the median of its runs of 2026-11-23, scoring version 5. Change a number here
 // only together with those three (BenchmarkScoreTests pins the same medians).
@@ -14,10 +14,10 @@ public static class BenchmarkScore
     /// <summary>Bump when a scene, the resolution or the scoring changes — scores compare only within a version.</summary>
     public const int Version = 5;
     /// <summary>
-    /// What every test's reference is worth: the Honor's medians score this on each test. 7,200 (not 6,000) so the five
-    /// sections still total about 36,000 on the reference phone, as the six did before the LLM test was dropped.
+    /// What every test's reference is worth: the Honor's medians score this on each test. 9,000 (1.5 × 6,000) so the
+    /// board's phones total about what they did in version 4 (fitted on its runs re-scored with version 5's rules).
     /// </summary>
-    public const double RefPoints = 7200;
+    public const double RefPoints = 9000;
     public const float WarmupS = 2, WindowS = 5;
 
     public static int Points(GpuTest t, double fps) => (int)Math.Round(fps * t.Weight(), MidpointRounding.AwayFromZero);
@@ -92,8 +92,8 @@ public static class GpuTests
     public static string Title(this GpuTest t) => t switch { GpuTest.LakeValley => "LAKE VALLEY", GpuTest.NeonCity => "NEON CITY", _ => "NEON CITY RT" };
     public static int Seconds(this GpuTest t) => t switch { GpuTest.LakeValley => 50, _ => 60 };
     public static bool RayTracing(this GpuTest t) => t == GpuTest.NeonCityRT;
-    /// <summary>fps → points: the reference phone's 129.85, 28.98 and 14.12 fps = 7200 (the 6000-point weights × 1.2).</summary>
-    public static double Weight(this GpuTest t) => t switch { GpuTest.LakeValley => 55.452, GpuTest.NeonCity => 248.4, _ => 509.88 };
+    /// <summary>fps → points: the reference phone's 129.85, 28.98 and 14.12 fps = 9000 (the 6000-point weights × 1.5).</summary>
+    public static double Weight(this GpuTest t) => t switch { GpuTest.LakeValley => 69.315, GpuTest.NeonCity => 310.5, _ => 637.35 };
 }
 
 public sealed record GpuTestResult(GpuTest Test, bool Supported, double AvgFps, double LowFps, int Frames, float StabilityPct, int Points)
@@ -274,7 +274,7 @@ public static class UxScore
     // 8K decode: the mean of the Honor's HEVC (91.1) and AV1 (75.0) rates. Export: one of its 4K hardware encoders' rate (it has no
     // AV1 encoder, so it scores two thirds of the 4K part); 8K export = a quarter of that (the same pixel rate), as it encodes no 8K
     public const double RefVideo8k = 83.1, RefExport = 136.3, RefExport8k = 34.1;
-    public const double QrWeight = 6.1464;  // zxing-cpp decodes/s → points: the Honor's 1,171.5/s = 7200 (5.122 × 1.2)
+    public const double QrWeight = 7.683;  // zxing-cpp decodes/s → points: the Honor's 1,171.5/s = 9000 (5.122 × 1.5)
     /// <summary>dB on the lower third: honest encodes 29.7–33.9, a starved one 24.2 — below this the export is broken.</summary>
     public const double MinPsnr = 26;
 
