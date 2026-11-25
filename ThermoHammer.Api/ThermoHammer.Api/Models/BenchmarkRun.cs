@@ -308,17 +308,17 @@ public static class BenchmarkScoring
     /// <summary>Scene/scoring version the server accepts — matches BenchmarkScore.VERSION in the app.</summary>
     public const int CurrentVersion = 5;
     /// <summary>
-    /// Points a test's reference result is worth. 7,200 since the LLM test went (2026-11-24): five sections × 7,200 =
-    /// 36,000 for the reference phone, what six sections × 6,000 gave — BenchmarkScore.REF_POINTS in the apps.
+    /// Points a test's reference result is worth: 9,000 (2026-11-25), so the board's phones total about what they did in
+    /// version 4 (fitted on its runs, re-scored with version 5's rules) — BenchmarkScore.REF_POINTS in the apps.
     /// </summary>
-    public const int RefPoints = 7200;
+    public const int RefPoints = 9000;
     // Every reference below: the Snapdragon 8 Elite (Honor VKP-NX9) in Performance mode scores RefPoints on each test — the
     // median of each measurement over its runs of 2026-11-23 (scoring version 5). They must match engine/Benchmark.kt in
     // the app (BenchmarkModels.swift and BenchmarkModels.cs repeat them); BenchmarkMappingTests pins them.
-    // fps → points: the 6,000-point weights × 1.2 exactly (46.21, 207.0, 424.9), so every GPU score is 1.2× the old scale
-    public const double Test1Weight = 55.452; // Lake Valley:  129.85 fps → 7200 points
-    public const double Test2Weight = 248.4;  // Neon City:     28.98 fps → 7200 points
-    public const double Test3Weight = 509.88; // Neon City RT:  14.12 fps → 7200 points
+    // fps → points: the 6,000-point weights × 1.5 exactly (46.21, 207.0, 424.9), so every GPU score is 1.5× the 6,000-point scale
+    public const double Test1Weight = 69.315; // Lake Valley:  129.85 fps → 9000 points
+    public const double Test2Weight = 310.5;  // Neon City:     28.98 fps → 9000 points
+    public const double Test3Weight = 637.35; // Neon City RT:  14.12 fps → 9000 points
 
     // UX references, RefPoints each
     public const double RefLayout = 3061, RefCanvas = 4818, RefCss = 3061, RefSvg = 4898, RefJs = 4002;
@@ -331,7 +331,7 @@ public static class BenchmarkScoring
     public const double RefExport = 136.3;   // encoded 4K frames/s per encoder, mean of H.264, HEVC, AV1
     public const double RefExport8k = 34.1;  // encoded 8K frames/s, HEVC
     public const double MinExportPsnr = 26;  // dB: below it the export is broken and its speed doesn't count
-    public const double QrWeight = 6.1464;   // zxing-cpp decodes/s → points (1,171.5/s → 7200; 5.122 × 1.2)
+    public const double QrWeight = 7.683;   // zxing-cpp decodes/s → points (1,171.5/s → 9000; 5.122 × 1.5)
 
     // CPU references (geometric-mean kernel ops/s of the shared C++ kernels), RefPoints each
     public const double RefCpuMath = 3039, RefCpuData = 1533, RefCpuCrypto = 1184, RefCpuMulti = 8884;
