@@ -18,10 +18,10 @@ class BenchmarkScoreTest {
     @Test
     fun `points scale linearly with fps and the tests land on the same scale`() {
         // the Snapdragon 8 Elite reference (Performance mode): 129.85, 28.98 and 14.12 fps
-        assertEquals(7200, BenchmarkScore.points(BenchmarkTest.LAKE_VALLEY, 129.85))
-        assertEquals(7199, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 28.98))
-        assertEquals(7200, BenchmarkScore.points(BenchmarkTest.NEON_CITY_RT, 14.12))
-        assertEquals(14400, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 7200.0 * 2 / BenchmarkTest.NEON_CITY.weight))
+        assertEquals(9001, BenchmarkScore.points(BenchmarkTest.LAKE_VALLEY, 129.85))   // 129.85 × 69.315 = 9,000.6
+        assertEquals(8998, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 28.98))     // 28.98 × 310.5 = 8,998.3
+        assertEquals(8999, BenchmarkScore.points(BenchmarkTest.NEON_CITY_RT, 14.12))   // 14.12 × 637.35 = 8,999.4
+        assertEquals(18000, BenchmarkScore.points(BenchmarkTest.NEON_CITY, 9000.0 * 2 / BenchmarkTest.NEON_CITY.weight))
         assertEquals(6000, BenchmarkScore.overall(6000, 6000, 6000))
     }
 
@@ -77,26 +77,26 @@ class BenchmarkScoreTest {
         exportPoints = export, qrPoints = qr)
 
     @Test
-    fun `each UX test scores 7200 at its reference`() {
+    fun `each UX test scores 9000 at its reference`() {
         val ref = WebResult(UxScore.REF_LAYOUT, UxScore.REF_CANVAS, UxScore.REF_CSS, UxScore.REF_SVG, UxScore.REF_JS)
-        assertEquals(7200, UxScore.webPoints(ref))
-        assertEquals(14400, UxScore.webPoints(ref.copy(layout = ref.layout * 32)))   // 32^(1/5) = 2
+        assertEquals(9000, UxScore.webPoints(ref))
+        assertEquals(18000, UxScore.webPoints(ref.copy(layout = ref.layout * 32)))   // 32^(1/5) = 2
         assertEquals(0, UxScore.webPoints(ref.copy(canvas = 0.0)))
-        assertEquals(7200, UxScore.scrollPoints(UxScore.REF_SCROLL))
-        assertEquals(7200, UxScore.galleryPoints(GalleryResult(UxScore.REF_JPEG, UxScore.REF_WEBP, UxScore.REF_AVIF)))
-        assertEquals(4800, UxScore.galleryPoints(GalleryResult(UxScore.REF_JPEG, UxScore.REF_WEBP, 0.0)))  // no AVIF: a third off
-        assertEquals(7200, UxScore.photoPoints(UxScore.REF_PHOTO))
-        assertEquals(7200, UxScore.qrPoints(7200 / UxScore.QR_WEIGHT))
+        assertEquals(9000, UxScore.scrollPoints(UxScore.REF_SCROLL))
+        assertEquals(9000, UxScore.galleryPoints(GalleryResult(UxScore.REF_JPEG, UxScore.REF_WEBP, UxScore.REF_AVIF)))
+        assertEquals(6000, UxScore.galleryPoints(GalleryResult(UxScore.REF_JPEG, UxScore.REF_WEBP, 0.0)))  // no AVIF: a third off
+        assertEquals(9000, UxScore.photoPoints(UxScore.REF_PHOTO))
+        assertEquals(9000, UxScore.qrPoints(9000 / UxScore.QR_WEIGHT))
     }
 
     @Test
     fun `video averages its clips, 4K three quarters and 8K one`() {
         val r4 = UxScore.REF_VIDEO; val r8 = UxScore.REF_VIDEO_8K
         fun video(vararg fps: Double) = VideoResult(VideoClip.entries.mapIndexed { i, c -> VideoCodecResult(c, fps[i], "dec", true) })
-        assertEquals(7200, UxScore.videoPoints(video(r4, r4, r4, r4, r8, r8)))
-        assertEquals(5400, UxScore.videoPoints(video(r4, r4, r4, r4, 0.0, 0.0)))        // no 8K: a quarter off
-        assertEquals(5850, UxScore.videoPoints(video(r4, r4, r4, 0.0, r8, r8)))         // no 4K AV1: a quarter of 4K
-        assertEquals(3600, UxScore.videoPoints(video(r4 / 2, r4 / 2, r4 / 2, r4 / 2, r8 / 2, r8 / 2)))
+        assertEquals(9000, UxScore.videoPoints(video(r4, r4, r4, r4, r8, r8)))
+        assertEquals(6750, UxScore.videoPoints(video(r4, r4, r4, r4, 0.0, 0.0)))        // no 8K: a quarter off
+        assertEquals(7313, UxScore.videoPoints(video(r4, r4, r4, 0.0, r8, r8)))         // no 4K AV1: a quarter of 4K
+        assertEquals(4500, UxScore.videoPoints(video(r4 / 2, r4 / 2, r4 / 2, r4 / 2, r8 / 2, r8 / 2)))
         val mixed = VideoResult(listOf(VideoCodecResult(VideoClip.AVC_4K, 200.0, "a", true),
             VideoCodecResult(VideoClip.AV1_4K, 30.0, "b", false), VideoCodecResult(VideoClip.HEVC_8K, 64.0, "c", true),
             VideoCodecResult(VideoClip.VP9_4K, 0.0, null, false, "no decoder")))
@@ -118,10 +118,10 @@ class BenchmarkScoreTest {
         fun export(vararg r: Pair<Double, Double>) =
             ExportResult(ExportJob.entries.mapIndexed { i, j -> ExportJobResult(j, r[i].first, r[i].second, "enc", true) })
         val good = 40.0
-        assertEquals(7200, UxScore.exportPoints(export(r4 to good, r4 to good, r4 to good, r8 to good)))
-        assertEquals(5400, UxScore.exportPoints(export(r4 to good, r4 to good, r4 to good, 0.0 to 0.0)))
+        assertEquals(9000, UxScore.exportPoints(export(r4 to good, r4 to good, r4 to good, r8 to good)))
+        assertEquals(6750, UxScore.exportPoints(export(r4 to good, r4 to good, r4 to good, 0.0 to 0.0)))
         // a fast but broken encode counts nothing: H.264 ten times the reference below the quality floor = no H.264
-        assertEquals(3600, UxScore.exportPoints(export(r4 * 10 to 20.0, r4 to good, r4 to good, 0.0 to 0.0)))
+        assertEquals(4500, UxScore.exportPoints(export(r4 * 10 to 20.0, r4 to good, r4 to good, 0.0 to 0.0)))
         assertEquals(0.0, ExportJobResult(ExportJob.AVC_4K, 500.0, VideoGrid.MIN_PSNR - 0.01, null, true).counted, 0.0)
         assertEquals(500.0, ExportJobResult(ExportJob.AVC_4K, 500.0, VideoGrid.MIN_PSNR, null, true).counted, 0.0)
     }
@@ -148,16 +148,16 @@ class BenchmarkScoreTest {
                 AiRun(t, a, if (on) AiScore.ref(t, a) else 0.0, if (on) null else "not here")
             }
         }, npuRuntime = if (npu) "Qualcomm QNN" else null)
-        assertEquals(7200, result(npu = true).accelScore(AiAccel.NPU))  // what a test build's NPU would score: shown only
-        assertEquals(7200, result(npu = true).score)
-        assertEquals(7200, result(npu = false).score)                  // no NPU: nothing lost
-        assertEquals(3600, result(npu = true, gpu = false).score)      // no GPU: its half
+        assertEquals(9000, result(npu = true).accelScore(AiAccel.NPU))  // what a test build's NPU would score: shown only
+        assertEquals(9000, result(npu = true).score)
+        assertEquals(9000, result(npu = false).score)                  // no NPU: nothing lost
+        assertEquals(4500, result(npu = true, gpu = false).score)      // no GPU: its half
         assertEquals(listOf(AiAccel.CPU, AiAccel.GPU), AiResult(result(npu = false).runs.filter { it.accel != AiAccel.NPU }, null).shown)
         val oneModelShort = AiResult(result(npu = true).runs.map {
             if (it.test == AiTest.SOUND && it.accel == AiAccel.CPU) it.copy(ips = 0.0) else it }, "Qualcomm QNN")
-        assertEquals(6000, oneModelShort.accelScore(AiAccel.CPU))      // a model short costs a sixth
+        assertEquals(7500, oneModelShort.accelScore(AiAccel.CPU))      // a model short costs a sixth
         val total = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, ai = result(npu = false))
-        assertEquals(5000 + 7200, total.total)
+        assertEquals(5000 + 9000, total.total)
     }
 
     @Test
@@ -177,14 +177,14 @@ class BenchmarkScoreTest {
             com.example.thermohammer.engine.cpu.CpuTest.DATA to CpuScore.REF_DATA,
             com.example.thermohammer.engine.cpu.CpuTest.CRYPTO to CpuScore.REF_CRYPTO,
             com.example.thermohammer.engine.cpu.CpuTest.MULTI to CpuScore.REF_MULTI)
-        for ((t, r) in ref) assertEquals(7200, CpuScore.points(t, r))
+        for ((t, r) in ref) assertEquals(9000, CpuScore.points(t, r))
         assertEquals(4000, CpuScore.overall(listOf(8000, 2000, 8000, 2000)))
         assertEquals(0, CpuScore.overall(listOf(8000, 0, 8000, 2000)))
         val cpu = CpuResult(ref.map { (t, r) -> com.example.thermohammer.engine.cpu.CpuTestRun(t, mapOf("K" to r)) })
-        assertEquals(7200, cpu.score)
+        assertEquals(9000, cpu.score)
         val result = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0,
             ux = ux(8000, 2000, 8000, 2000, 8000, 4000, 2000), cpu = cpu)
-        assertEquals(7200 + 5000 + 4000, result.total)
+        assertEquals(9000 + 5000 + 4000, result.total)
     }
 
     @Test
@@ -194,18 +194,18 @@ class BenchmarkScoreTest {
             MemScore.REF_RANDOM_WRITE, direct = true, fileMb = 512)
         val db = DbResult(MemScore.REF_INSERT, MemScore.REF_UPDATE, MemScore.REF_QUERY)
         val mem = MemResult(ram, storage, db)
-        assertEquals(7200, mem.ramPoints)
-        assertEquals(7200, mem.storagePoints)
-        assertEquals(7200, mem.dbPoints)
-        assertEquals(7200, mem.score)
-        // latency: half the time is twice as good for that part — 7200 × 2^(1/4)
-        assertEquals(8562, MemScore.ram(MemScore.REF_READ, MemScore.REF_WRITE, MemScore.REF_COPY, MemScore.REF_LATENCY / 2))
+        assertEquals(9000, mem.ramPoints)
+        assertEquals(9000, mem.storagePoints)
+        assertEquals(9000, mem.dbPoints)
+        assertEquals(9000, mem.score)
+        // latency: half the time is twice as good for that part — 9000 × 2^(1/4)
+        assertEquals(10703, MemScore.ram(MemScore.REF_READ, MemScore.REF_WRITE, MemScore.REF_COPY, MemScore.REF_LATENCY / 2))
         assertEquals(0, MemScore.ram(MemScore.REF_READ, MemScore.REF_WRITE, MemScore.REF_COPY, 0.0))
         assertEquals(0, MemScore.storage(0.0, 1.0, 1.0, 1.0))
         assertEquals(4000, MemScore.overall(listOf(8000, 2000, 4000)))
         val result = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0, mem = mem)
-        assertEquals(7200, result.memScore)
-        assertEquals(12200, result.total)
+        assertEquals(9000, result.memScore)
+        assertEquals(5000 + 9000, result.total)
     }
 
     @Test
@@ -251,21 +251,21 @@ class BenchmarkScoreTest {
     fun `the total is the five sections - version 5 has no LLM test`() {
         val r = BenchmarkResult(emptyList(), gpuScore = 5000, gpuName = "", validityFlags = 0,
             cpu = CpuResult(com.example.thermohammer.engine.cpu.CpuTest.entries.map { com.example.thermohammer.engine.cpu.CpuTestRun(it, mapOf("K" to CpuScore.ref(it))) }))
-        assertEquals(5000 + 7200, r.total)
+        assertEquals(5000 + 9000, r.total)
         assertEquals(listOf("CPU", "MEM", "GPU", "UX", "AI"), BenchSection.entries.map { it.label })
-        // five sections at 7,200 each: the reference phone totals 36,000, as six at 6,000 did
-        assertEquals(7200, BenchmarkScore.REF_POINTS)
-        assertEquals(36_000, BenchmarkScore.REF_POINTS * BenchSection.entries.size)
+        // 9,000 per test: the board's phones total about what they did in version 4 (the reference phone 45,000 at most)
+        assertEquals(9000, BenchmarkScore.REF_POINTS)
+        assertEquals(45_000, BenchmarkScore.REF_POINTS * BenchSection.entries.size)
     }
 
     /**
      * The reference phone (Honor VKP-NX9, Snapdragon 8 Elite, Performance mode): the median of every measurement over its
-     * 11 runs of 2026-11-23 scores 7,200 on each test — the same numbers pin BenchmarkScoring.cs, BenchmarkModels.swift and
+     * 11 runs of 2026-11-23 scores 9,000 on each test — the same numbers pin BenchmarkScoring.cs, BenchmarkModels.swift and
      * BenchmarkModels.cs, so the four copies of the references can't drift apart.
      */
     @Test
-    fun `the reference phone's medians score 7200 on every test`() {
-        fun near(points: Int, what: String) = assertTrue("$what scored $points", points in 7164..7236)   // ±0.5 %
+    fun `the reference phone's medians score 9000 on every test`() {
+        fun near(points: Int, what: String) = assertTrue("$what scored $points", points in 8955..9045)   // ±0.5 %
         mapOf(com.example.thermohammer.engine.cpu.CpuTest.MATH to 3039.31, com.example.thermohammer.engine.cpu.CpuTest.DATA to 1533.32,
             com.example.thermohammer.engine.cpu.CpuTest.CRYPTO to 1184.12, com.example.thermohammer.engine.cpu.CpuTest.MULTI to 8884.08)
             .forEach { (t, v) -> near(CpuScore.points(t, v), t.name) }
@@ -282,7 +282,7 @@ class BenchmarkScoreTest {
         near(UxScore.videoPoints(listOf(269.0, 331.4, 309.6, 274.2), listOf(91.13, 75.02)), "video")
         near(UxScore.qrPoints(1171.51), "QR")
         // export: the reference phone has two of the three 4K encoders and no 8K one — two thirds of the 4K part
-        assertEquals(3600, UxScore.exportPoints(listOf(136.3, 136.3, 0.0), 0.0))
+        assertEquals(4500, UxScore.exportPoints(listOf(136.3, 136.3, 0.0), 0.0))
         near(AiScore.accel(AiAccel.CPU, listOf(543.63, 28.67, 7.73, 4.59, 64.54, 3967.59)), "AI CPU")
         near(AiScore.accel(AiAccel.GPU, listOf(280.7, 36.7, 16.6, 38.8, 74.2, 582.0)), "AI GPU")
         near(AiScore.accel(AiAccel.NPU, listOf(1725.64, 485.03, 214.56, 689.25, 986.01, 2154.38)), "AI NPU")

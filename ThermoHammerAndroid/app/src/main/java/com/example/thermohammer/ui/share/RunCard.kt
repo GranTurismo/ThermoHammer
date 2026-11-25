@@ -66,7 +66,7 @@ sealed interface RunCard {
     }
 
     companion object {
-        const val BAR_FLOOR = 2 * BenchmarkScore.REF_POINTS   // 14,400
+        const val BAR_FLOOR = 2 * BenchmarkScore.REF_POINTS   // 18,000
         val SECTION_ORDER = listOf("CPU", "MEM", "GPU", "UX", "AI")
 
         /** The five sections in their order, without the ones the run doesn't have (0 points). */
