@@ -3,18 +3,18 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────────
 // BENCHMARK — the same five sections and the same scoring as the Android app
 // (engine/Benchmark.kt) and the server (BenchmarkScoring.cs): CPU + MEM + GPU
-// + UX + AI, every test 7200 points (BenchmarkScore.refPoints) on the reference
+// + UX + AI, every test 9000 points (BenchmarkScore.refPoints) on the reference
 // phone (Honor VKP-NX9, Snapdragon 8 Elite) in Performance mode — scoring
-// version 5, so its total is 36,000. Change a number
+// version 5 (five sections of 9,000 at most). Change a number
 // here only together with those two (BenchmarkScoreTests pins them).
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum BenchmarkScore {
     /// Bump when a scene, the resolution or the scoring changes — scores compare only within a version.
     static let version = 5
-    /// What every test's reference is worth: 7,200, so the reference phone's five sections total 36,000 — what six
-    /// sections at 6,000 gave before the LLM test was dropped (Benchmark.kt and BenchmarkScoring.cs: the same).
-    static let refPoints = 7200.0
+    /// What every test's reference is worth: 9,000, so the board's phones total about what they did in version 4
+    /// (fitted on its runs re-scored with version 5's rules, 2026-11-25; Benchmark.kt and BenchmarkScoring.cs: the same).
+    static let refPoints = 9000.0
     /// Frames that start before this (s) are driver/shader warm-up and not scored.
     static let warmupS: Float = 2
     static let windowS: Float = 5
@@ -73,14 +73,14 @@ enum BenchFlag {
 
 // MARK: - GPU
 
-/// One GPU test: its scene, timeline length and the weight that turns fps into points (129.85 / 28.98 / 14.12 fps → 7200).
+/// One GPU test: its scene, timeline length and the weight that turns fps into points (129.85 / 28.98 / 14.12 fps → 9000).
 enum GpuTest: Int, CaseIterable {
     case lakeValley = 1, neonCity = 2, neonCityRT = 3
 
     var number: Int { rawValue }
     var title: String { ["", "LAKE VALLEY", "NEON CITY", "NEON CITY RT"][rawValue] }
     var seconds: Int { [0, 50, 60, 60][rawValue] }
-    var weight: Double { [0, 55.452, 248.4, 509.88][rawValue] }
+    var weight: Double { [0, 69.315, 310.5, 637.35][rawValue] }
     var rayTracing: Bool { self == .neonCityRT }
 }
 
@@ -141,7 +141,7 @@ struct CpuResult {
 }
 
 enum CpuScore {
-    // geometric-mean kernel ops/s worth 7200 points (the Honor in Performance mode, the median of 11 runs on 2026-11-23 — see Benchmark.kt)
+    // geometric-mean kernel ops/s worth 9000 points (the Honor in Performance mode, the median of 11 runs on 2026-11-23 — see Benchmark.kt)
     static let refMath = 3039.0, refData = 1533.0, refCrypto = 1184.0, refMulti = 8884.0
 
     static func ref(_ t: CpuTest) -> Double {
@@ -391,7 +391,7 @@ enum UxScore {
     static let refVideo8k = 83.1        // 8K frames/s, mean of HEVC and AV1
     static let refExport = 136.3        // encoded 4K frames/s, mean of H.264, HEVC, AV1
     static let refExport8k = 34.1       // encoded 8K frames/s, HEVC
-    static let qrWeight = 6.1464        // zxing-cpp decodes/s → points (the Honor's 1,171.5/s → 7200, as on Android)
+    static let qrWeight = 7.683        // zxing-cpp decodes/s → points (the Honor's 1,171.5/s → 9000, as on Android)
 
     static func webPoints(_ r: WebResult) -> Int {
         let parts = [r.layout / refLayout, r.canvas / refCanvas, r.css / refCss, r.svg / refSvg, r.js / refJs]

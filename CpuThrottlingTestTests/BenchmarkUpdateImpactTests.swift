@@ -6,7 +6,7 @@ final class BenchmarkUpdateImpactTests: XCTestCase {
 
     private let model = "iPhone 17 Pro"
 
-    /// A verified, complete run; `cpu` scales the CPU tests (1 = the reference phone, 7200 points).
+    /// A verified, complete run; `cpu` scales the CPU tests (1 = the reference phone, 9000 points).
     private func run(_ day: Double, _ os: String, _ build: String?, score: Int, cpu: Double = 1, model: String? = "iPhone 17 Pro",
                      flags: Int = 0, complete: Bool = true) -> BenchmarkRecord {
         var r = BenchmarkRecord(BenchmarkResult())
@@ -87,7 +87,7 @@ final class BenchmarkUpdateImpactTests: XCTestCase {
 
     func testSectionScoresFromRawNumbers() {
         let s = run(1, "26.4", nil, score: 0).sectionScores
-        XCTAssertEqual(s["cpu"], 7200)                                           // the reference phone's numbers
+        XCTAssertEqual(s["cpu"], 9000)                                           // the reference phone's numbers
         XCTAssertNil(s["gpu"])                                                   // not run: no section
         XCTAssertNil(s["llm"])
     }
