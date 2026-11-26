@@ -74,4 +74,15 @@ public class BenchmarkEndpointTests : IClassFixture<WebApplicationFactory<Progra
         // the refused send leaves its session open, like every other refusal
         Assert.Equal(1, await db.Sessions.CountAsync(s => s.State == SessionState.Open));
     }
+
+    [Fact]
+    public async Task AnOlderAppIsToldToUpdateNotInvalidData()
+    {
+        // a version 4 app signs version 4's field list (no NPU LLM fields), so its hash never matches this version's
+        var old = Mac(r => r.BenchmarkVersion = 4);
+        old.Hash = "signed-with-the-version-4-field-list";
+        var response = await _factory.CreateClient().PostAsJsonAsync("/benchmark", old);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Update ThermoHammer", await response.Content.ReadAsStringAsync());
+    }
 }

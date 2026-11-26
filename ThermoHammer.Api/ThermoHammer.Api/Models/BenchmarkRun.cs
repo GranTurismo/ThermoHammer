@@ -307,6 +307,8 @@ public static class BenchmarkScoring
 {
     /// <summary>Scene/scoring version the server accepts — matches BenchmarkScore.VERSION in the app.</summary>
     public const int CurrentVersion = 5;
+    public const string UpdateMessage =
+        "The leaderboard moved to a new scoring version. Update ThermoHammer and run the benchmark again to submit.";
     /// <summary>
     /// Points a test's reference result is worth: 9,000 (2026-11-25), so the board's phones total about what they did in
     /// version 4 (fitted on its runs, re-scored with version 5's rules) — BenchmarkScore.REF_POINTS in the apps.
@@ -511,7 +513,7 @@ public static class BenchmarkScoring
     {
         // an older app scores the old way: its runs would sit on a board they can't be compared with
         if (r.BenchmarkVersion < CurrentVersion)
-            return "The leaderboard moved to a new scoring version. Update ThermoHammer and run the benchmark again to submit.";
+            return UpdateMessage;
         if (r.BenchmarkVersion != CurrentVersion) return $"Unsupported benchmark version {r.BenchmarkVersion}";
         // only verified runs: started cool, nothing else running, no charger change or power saving (the apps don't offer the rest)
         if (r.ValidityFlags != 0) return "Only verified runs are accepted";

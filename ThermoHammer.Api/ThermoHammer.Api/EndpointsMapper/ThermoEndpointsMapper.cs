@@ -77,6 +77,10 @@ public static class ThermoEndpointsMapper
 
         app.MapPost("/benchmark", async (BenchmarkRequest request, ThermoDbContext db, ThermoEncryptor encryptor, DeviceModelResolver modelResolver) =>
         {
+            // an older app signs its own version's field list, which never matches this version's hash: tell it to update
+            // before the hash check, or it would only see "Invalid data"
+            if (request.BenchmarkVersion < BenchmarkScoring.CurrentVersion)
+                return Results.BadRequest(BenchmarkScoring.UpdateMessage);
             var session = await db.Sessions.FirstOrDefaultAsync(s => s.Id == request.SessionId);
             if (session is null)
                 return Results.NotFound("Session not found");
