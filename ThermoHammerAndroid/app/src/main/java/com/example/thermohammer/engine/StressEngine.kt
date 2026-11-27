@@ -833,6 +833,9 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
         fun <T> Result<T>.noted(test: UxTest): T? = getOrElse { errors += "${test.title.lowercase().replaceFirstChar { c -> c.uppercase() }}: ${it.message}"; null }
         val r2 = BenchmarkScore::round2
         val first = when (from) { "video" -> UxTest.VIDEO; "export" -> UxTest.EXPORT; else -> UxTest.WEB }   // debug starts
+        // the stage shows a CPU or MEM test ahead of UX: a test build's partial run that skips GPU (whose tests clear
+        // them) would otherwise keep the last MEM test on screen, never show the web page and wait for it forever
+        _state.update { it.copy(cpuTest = null, memTest = null) }
 
         val web = if (first > UxTest.WEB) null else (runWebPage(UxTest.WEB) ?: return null).mapCatching { o ->
             WebResult(r2(o.getDouble("layout")), r2(o.getDouble("canvas")), r2(o.getDouble("css")),
@@ -1081,6 +1084,21 @@ class StressEngine(private val appContext: Context) : ViewModel(), DefaultLifecy
             }
             if (!_state.value.isRunning) return@withContext null
             gpuProblem = DriverCheck.problem(outcome, "GPU")
+            // a model that failed gets one more check on its own, in a fresh check process: a failed compile can leave
+            // LiteRT's GPU state broken for every model after it in that process, and a one-off failure must not cost
+            // the model its points (Xiaomi 11T, 2026-11-27: depth then sound "Failed to compile model" in one full run,
+            // both fine in every run after). A model that really can't run fails again and still scores 0.
+            if (gpuProblem == null) for (test in gpuFailed.keys.toList()) {
+                delay(500)      // the last check's process ends itself when let go: give it time, so this one starts fresh
+                val again = HashMap<AiTest, String>()
+                val retry = DriverCheck.gpu(appContext, gpuSetting.id, listOf(test), again) { t ->
+                    _state.update { it.copy(aiTest = t, aiAccel = AiAccel.GPU, aiRate = -1.0, aiProgress = t.ordinal / AiTest.entries.size.toFloat(),
+                        aiDetail = "GPU · ${gpuSetting.label.uppercase()} · CHECKING ${t.model.uppercase()} AGAIN · NOT SCORED") }
+                }
+                if (!_state.value.isRunning) return@withContext null
+                // only a check that ran and passed clears it (a check that couldn't start says nothing about the model)
+                if (retry == DriverCheck.Passed && test !in again) gpuFailed.remove(test)
+            }
         }
         val delegation = ArrayList<AiDelegation>()
         val npuProven = HashSet<AiTest>()        // models whose NPU run is known to be the NPU's own (NpuFallback)

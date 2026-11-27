@@ -80,6 +80,8 @@ fun WebBenchView(
                 .requiredSize(with(density) { WEB_W.toDp() }, with(density) { WEB_H.toDp() })
                 .graphicsLayer { scaleX = scale; scaleY = scale },
             factory = { ctx ->
+                // test builds: the pages can be inspected over adb (chrome://inspect, DevTools protocol)
+                if (com.example.thermohammer.TestBuild.PROBES) WebView.setWebContentsDebuggingEnabled(true)
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.useWideViewPort = true

@@ -146,17 +146,32 @@ const scenes = [
 
 // ── ramp: find the most complexity that still runs at ≥ 28 fps ──────────────
 
+// Untimed frames at the starting load before a scene is measured: a WebView's first frames pay one-off costs (its GPU
+// shaders compiled, caches filled — much more in an app that has never shown a page, as right after an install).
+const WARMUP_MS = 1000;
+
+async function measure(scene) {
+  for (let k = 0; k < 2; k++) scene.frame(await nextFrame());      // settle after the change
+  let start = await nextFrame(); scene.frame(start);
+  let frames = 0, ts = start;
+  while (ts - start < 450 || frames < 4) { ts = await nextFrame(); scene.frame(ts); frames++; }
+  return (ts - start) / frames;
+}
+
 async function ramp(scene, seconds, index) {
   scene.setup();
   let n = scene.start, lo = 0, hi = 0, lastInterval = TARGET_MS;
+  scene.setComplexity(n);
+  const w0 = performance.now();
+  while (performance.now() - w0 < WARMUP_MS) scene.frame(await nextFrame());
   const t0 = performance.now();
-  while (performance.now() - t0 < seconds * 1000) {
+  let confirming = 0;    // time spent re-measuring a load that failed: not counted against the scene's time
+  while (performance.now() - t0 - confirming < seconds * 1000 && performance.now() - t0 < seconds * 1600) {
     scene.setComplexity(Math.max(1, Math.round(n)));
-    for (let k = 0; k < 2; k++) scene.frame(await nextFrame());      // settle after the change
-    let start = await nextFrame(); scene.frame(start);
-    let frames = 0, ts = start;
-    while (ts - start < 450 || frames < 4) { ts = await nextFrame(); scene.frame(ts); frames++; }
-    const interval = (ts - start) / frames;
+    let interval = await measure(scene);
+    // a load "fails" only if it fails twice: one slow spell (a hiccup) must not cap the result for the rest of the
+    // scene — the search never goes back above a load that failed (Xiaomi 11T: a cold first window at 40 cards → 39)
+    if (interval > TARGET_MS) { const c0 = performance.now(); interval = Math.min(interval, await measure(scene)); confirming += performance.now() - c0; }
     lastInterval = interval;
     if (interval <= TARGET_MS) { lo = Math.max(lo, n); n = Math.min(hi ? (n + hi) / 2 : n * 1.8, MAX_N[scene.name]); }
     else { hi = n; n = lo ? (lo + n) / 2 : n / 2; }

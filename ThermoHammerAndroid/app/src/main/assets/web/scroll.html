@@ -70,6 +70,8 @@ const START_SPEED = 3000;       // CSS px/s — a brisk fling
 const STEP = 1.2;               // ×20 % per level: ~31 levels in the time, up to MAX_SPEED
 const MAX_DROPPED = 0.10;       // a level holds while ≤ 10 % of its frames are late
 const MAX_SPEED = 1000000;
+const WARMUP_MS = 1000;         // untimed scrolling at START_SPEED before the first level
+const START_TRIES = 4;          // tries at START_SPEED while no speed has held yet
 const AHEAD = 3 * 720;          // build this far below the viewport
 const KEEP = 90;                // cards kept in the DOM; older ones are recycled
 
@@ -222,7 +224,15 @@ async function run() {
     fill();
     await nextFrame(); await nextFrame();
     const vsync = await refreshInterval();
-    let speed = START_SPEED, level = 0, best = 0, fails = 0, lastDropRate = 1;
+    // untimed scrolling at the starting speed first: the first second of a feed pays one-off costs (GPU shaders, the
+    // first photo decodes), most of all in an app that has never shown a page — as right after an install
+    {
+      const w0 = performance.now(); let p = await nextFrame();
+      while (performance.now() - w0 < WARMUP_MS) {
+        const ts = await nextFrame(); window.scrollBy(0, START_SPEED * Math.min(ts - p, 4 * vsync) / 1000); p = ts; fill();
+      }
+    }
+    let speed = START_SPEED, level = 0, best = 0, fails = 0, lastDropRate = 1, startTries = 0;
     let totalFrames = 0, totalDropped = 0;
     const t0 = performance.now();
     let prev = await nextFrame();
@@ -239,11 +249,16 @@ async function run() {
       }
       const rate = dropped / (frames + dropped);
       totalFrames += frames; totalDropped += dropped;
-      if (rate <= MAX_DROPPED) { best = speed; fails = 0; } else fails++;
-      lastDropRate = level === 0 ? rate : lastDropRate;
+      if (speed === START_SPEED) lastDropRate = Math.min(lastDropRate, rate);
       bridge.progress(`LEVEL ${level + 1} · ${Math.round(1000 / vsync)} HZ · ${Math.round(rate * 100)}% DROPPED`,
         Math.min(1, (performance.now() - t0) / (SECONDS * 1000)), Math.round(speed), speed, level);
-      level++; speed *= STEP;
+      level++;
+      if (rate <= MAX_DROPPED) { best = speed; fails = 0; }
+      // until a speed has held, a missed start is tried again rather than ending the run after two levels: a slow
+      // first second (Xiaomi 11T right after an install: 26 % dropped at 3,000 px/s) said nothing about the phone
+      else if (best === 0 && ++startTries < START_TRIES) continue;
+      else fails++;
+      speed *= STEP;
     }
     // a phone that can't hold even the first speed scores by how far it fell short
     if (best === 0) best = START_SPEED * Math.max(0.05, 1 - lastDropRate);
